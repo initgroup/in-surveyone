@@ -436,10 +436,10 @@
     async function startGuest() {
         const capability = databaseGuestCapability();
         if (!capability?.available) {
-            setAuthBusy(false, capability?.reason || "DB 게스트 계정을 현재 발급할 수 없습니다.", true);
+            setAuthBusy(false, capability?.reason || "게스트 계정을 현재 발급할 수 없습니다.", true);
             return;
         }
-        setAuthBusy(true, "DB 게스트 계정을 발급하고 있습니다.");
+        setAuthBusy(true, "게스트 계정을 발급하고 있습니다.");
         try {
             const payload = await Common.api.post("/api/auth/guest", { mode: "database" });
             const issued = normalizeIssuedGuest(payload);
@@ -450,7 +450,7 @@
             setAuthBusy(false, "");
             renderIssuedGuest();
         } catch (error) {
-            const message = error?.message || "DB 게스트 계정을 현재 발급할 수 없습니다.";
+            const message = error?.message || "게스트 계정을 현재 발급할 수 없습니다.";
             const status = Number(error?.status);
             if (!Number.isFinite(status) || status >= 500) {
                 state.guestCapabilities = fallbackGuestCapabilities(message);
@@ -479,7 +479,7 @@
         dom.guestCredentials.querySelector("[data-guest-login-id]").textContent = issued.loginId;
         dom.guestCredentials.querySelector("[data-guest-initial-password]").textContent = issued.initialPassword;
         dom.guestCredentials.querySelector("[data-guest-expires-at]").textContent = formatGuestExpiry(issued.expiresAt);
-        dom.authMessage.textContent = "자격정보를 먼저 복사한 뒤 로그인 화면에서 quest 계정으로 로그인해 주세요.";
+        dom.authMessage.textContent = "자격정보를 먼저 복사한 뒤 로그인 화면에서 게스트 계정으로 로그인해 주세요.";
         dom.authMessage.classList.remove("is-error");
         requestAnimationFrame(() => dom.guestCredentials.querySelector("[data-guest-credential-title]")?.focus({ preventScroll: true }));
     }
@@ -501,7 +501,7 @@
         const values = {
             loginId: issued.loginId,
             initialPassword: issued.initialPassword,
-            all: `IN-SURVEYONE DB 게스트 계정\n아이디: ${issued.loginId}\n초기 비밀번호: ${issued.initialPassword}\n유효기간: ${formatGuestExpiry(issued.expiresAt)}`
+            all: `IN-SURVEYONE 게스트 계정\n아이디: ${issued.loginId}\n초기 비밀번호: ${issued.initialPassword}\n유효기간: ${formatGuestExpiry(issued.expiresAt)}`
         };
         const value = values[field];
         if (!value) return;
@@ -521,7 +521,7 @@
         form.elements.password.value = issued.initialPassword;
         clearIssuedGuest({ preserveLoginForm: true });
         selectAuthTab("login");
-        dom.authMessage.textContent = "발급된 quest 계정 자격정보를 입력했습니다. 로그인 버튼을 눌러 계속하세요.";
+        dom.authMessage.textContent = "발급된 게스트 계정 자격정보를 입력했습니다. 로그인 버튼을 눌러 계속하세요.";
         dom.authMessage.classList.remove("is-error");
         form.elements.password.focus({ preventScroll: true });
     }
@@ -580,10 +580,11 @@
     function updateUserUi() {
         const user = state.user;
         const name = user?.name || user?.displayName || "방문자";
-        const tenant = user?.organizationName || user?.tenantName || "IN-SURVEYONE";
+        const tenant = String(user?.organizationName || user?.tenantName || "IN-SURVEYONE")
+            .replace(/^DB\s*게스트\s*/i, "게스트 ");
         const guest = Boolean(user && (user.isGuest ?? user.role === "guest"));
         document.querySelector("[data-user-name]").textContent = name;
-        document.querySelector("[data-user-role]").textContent = !user ? "둘러보기" : (guest ? "DB 게스트 계정" : (user.roleLabel || "설문 관리자"));
+        document.querySelector("[data-user-role]").textContent = !user ? "둘러보기" : (guest ? "게스트 계정" : (user.roleLabel || "설문 관리자"));
         document.querySelector("[data-user-avatar]").textContent = name.trim().charAt(0).toUpperCase() || "G";
         document.querySelector("[data-tenant-name]").textContent = tenant;
         document.querySelector("[data-save-state]").innerHTML = user
@@ -612,10 +613,10 @@
             tab.tabIndex = selected ? 0 : -1;
         });
         document.querySelectorAll("[data-auth-panel]").forEach((panel) => { panel.hidden = panel.dataset.authPanel !== mode; });
-        const titles = { guest: "DB 게스트 계정 발급", login: "작업공간으로 돌아오기", signup: "기관 설문 작업공간 만들기" };
+        const titles = { guest: "게스트 체험 계정 발급", login: "작업공간으로 돌아오기", signup: "기관 설문 작업공간 만들기" };
         const intros = {
-            guest: "만료형 quest 계정을 발급받아 독립된 Oracle 작업공간에서 제품 흐름을 체험할 수 있습니다.",
-            login: "회원 아이디 또는 발급받은 quest 계정으로 로그인하세요.",
+            guest: "만료형 게스트 계정을 발급받아 안전하게 분리된 작업공간에서 제품 흐름을 체험할 수 있습니다.",
+            login: "회원 아이디 또는 발급받은 게스트 계정으로 로그인하세요.",
             signup: "기관 전용 설문 작업공간을 만들고 지속적으로 운영하세요."
         };
         document.querySelector("[data-auth-title]").textContent = titles[mode];
@@ -623,13 +624,13 @@
         if (mode === "guest") void loadGuestCapabilities();
     }
 
-    function fallbackGuestCapabilities(reason = "DB 게스트 계정 제공 상태를 확인하지 못했습니다.") {
+    function fallbackGuestCapabilities(reason = "게스트 계정 제공 상태를 확인하지 못했습니다.") {
         return {
             selectedMode: "database",
             modes: [
                 {
                     mode: "database",
-                    title: "DB 게스트 계정",
+                    title: "게스트 계정",
                     available: false,
                     reason,
                     persistence: "oracle",
@@ -655,7 +656,7 @@
             modes: [{
                 ...candidate,
                 mode: "database",
-                title: candidate?.title || "DB 게스트 계정",
+                title: candidate?.title || "게스트 계정",
                 available: Boolean(candidate?.available),
                 limits: candidate?.limits || {},
                 features: candidate?.features || {},
@@ -672,7 +673,7 @@
         }
         if (state.guestCapabilitiesPromise) return state.guestCapabilitiesPromise;
         const status = document.querySelector("[data-guest-capability-status]");
-        if (status) status.textContent = "DB 게스트 계정 발급 상태를 확인하고 있습니다.";
+        if (status) status.textContent = "게스트 계정 발급 상태를 확인하고 있습니다.";
         state.guestCapabilitiesPromise = Common.api.get("/api/auth/guest/capabilities?mode=database")
             .then((payload) => normalizeGuestCapabilities(payload))
             .catch((error) => fallbackGuestCapabilities(error.message))
@@ -716,8 +717,8 @@
             || (available ? "현재 발급할 수 있습니다." : "현재 발급할 수 없습니다.");
         const status = document.querySelector("[data-guest-capability-status]");
         if (status) status.textContent = available
-            ? "DB 게스트 계정을 발급할 수 있습니다. 외부 발송 기능은 제공자 설정 상태를 따릅니다."
-            : `DB 게스트 계정을 현재 발급할 수 없습니다. ${database?.reason || "Oracle 연결 상태를 확인해 주세요."}`;
+            ? "게스트 계정을 발급할 수 있습니다. 외부 발송 기능은 제공자 설정 상태를 따릅니다."
+            : `게스트 계정을 현재 발급할 수 없습니다. ${database?.reason || "서비스 저장소 연결 상태를 확인해 주세요."}`;
     }
 
     function setAuthBusy(busy, message, error = false) {

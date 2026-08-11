@@ -4,6 +4,7 @@
     const optionTypes = new Set(["single", "multiple", "dropdown"]);
     const rangeTypes = new Set(["number", "scale", "slider"]);
     const matrixTypes = new Set(["matrix_single", "matrix_multiple", "table", "repeat_table"]);
+    const choiceMatrixTypes = new Set(["matrix_single", "matrix_multiple"]);
 
     function uid(prefix = "q") {
         return `${prefix}_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`}`;
@@ -16,7 +17,9 @@
         if (type === "scale") Object.assign(question, { min: 1, max: 5, minLabel: "매우 불만족", maxLabel: "매우 만족" });
         if (type === "slider") Object.assign(question, { min: 0, max: 100, unit: "점" });
         if (type === "number") Object.assign(question, { min: null, max: null, unit: "" });
-        if (matrixTypes.has(type)) Object.assign(question, { rows: ["항목 1", "항목 2"], columns: ["매우 불만족", "보통", "매우 만족"] });
+        if (choiceMatrixTypes.has(type)) Object.assign(question, { rows: ["항목 1", "항목 2"], columns: ["매우 불만족", "보통", "매우 만족"] });
+        if (type === "table") Object.assign(question, { rows: ["항목 1", "항목 2"], columns: ["입력값 1", "입력값 2"] });
+        if (type === "repeat_table") Object.assign(question, { rows: [], columns: ["입력값 1", "입력값 2"] });
         if (type === "notice") Object.assign(question, { title: "안내 제목", description: "응답자에게 전달할 안내 내용을 입력하세요." });
         return question;
     }
@@ -66,6 +69,12 @@
                 if (addOption) return this.addOption(addOption.dataset.addOption);
                 const deleteOption = event.target.closest("[data-delete-option]");
                 if (deleteOption) return this.deleteOption(card.dataset.questionId, deleteOption.dataset.deleteOption);
+                const addAxis = event.target.closest("[data-axis-add]");
+                if (addAxis) return this.addAxisItem(addAxis.dataset.axisAdd);
+                const deleteAxis = event.target.closest("[data-axis-delete]");
+                if (deleteAxis) return this.deleteAxisItem(deleteAxis.dataset.axisDelete, Number(deleteAxis.dataset.axisIndex));
+                const moveAxis = event.target.closest("[data-axis-move]");
+                if (moveAxis) return this.moveAxisItem(moveAxis.dataset.axisMove, Number(moveAxis.dataset.axisIndex), Number(moveAxis.dataset.axisDirection));
                 const mode = event.target.closest("[data-builder-mode]");
                 if (mode) return this.setMode(mode.dataset.builderMode);
                 if (event.target.closest("[data-builder-save]")) return this.saveExplicit();
@@ -496,10 +505,26 @@
                 const count = Math.min(10, Math.max(2, Number(question.max || 5) - Number(question.min || 1) + 1));
                 return `<div class="scale-preview" style="--count:${count}">${Array.from({ length: count }, (_, i) => `<span>${Number(question.min || 1) + i}</span>`).join("")}</div><div class="scale-preview-labels"><span>${Common.escapeHtml(this.localizedQuestionField(question, "minLabel"))}</span><span>${Common.escapeHtml(this.localizedQuestionField(question, "maxLabel"))}</span></div>`;
             }
-            if (matrixTypes.has(question.type)) return `<div class="matrix-preview"><table><thead><tr><th>항목</th>${(question.columns || []).map((column, index) => `<th><input type="text" data-matrix-column-index="${index}" value="${Common.escapeHtml(this.localizedIndexedLabel(question, "columns", index))}" aria-label="${index + 1}번 열 제목"></th>`).join("")}</tr></thead><tbody>${(question.rows || []).map((row, rowIndex) => `<tr><td><input type="text" data-matrix-row-index="${rowIndex}" value="${Common.escapeHtml(this.localizedIndexedLabel(question, "rows", rowIndex))}" aria-label="${rowIndex + 1}번 행 제목"></td>${(question.columns || []).map(() => "<td>○</td>").join("")}</tr>`).join("")}</tbody></table></div>`;
+            if (choiceMatrixTypes.has(question.type)) return this.axisTableMarkup(question, question.type === "matrix_multiple" ? "checkbox" : "radio");
+            if (question.type === "table") return this.axisTableMarkup(question, "text");
+            if (question.type === "repeat_table") return this.repeatTableEditorMarkup(question);
             if (question.type === "date") return `<div class="answer-placeholder">연도-월-일</div>`;
             if (question.type === "notice") return `<div class="answer-placeholder long">${Common.escapeHtml(this.localizedQuestionField(question, "description") || "안내 내용을 입력하세요.")}</div>`;
             return `<div class="answer-placeholder">응답 영역</div>`;
+        },
+        axisTableMarkup(question, cellType) {
+            const columns = question.columns || [];
+            const rows = question.rows || [];
+            const cells = (rowIndex) => columns.map((column, columnIndex) => {
+                if (cellType === "text") return `<td><span class="table-cell-placeholder" aria-label="${rowIndex + 1}행 ${columnIndex + 1}열 응답 입력 영역">입력</span></td>`;
+                const markerClass = cellType === "checkbox" ? " is-checkbox" : "";
+                return `<td><span class="matrix-cell-marker${markerClass}" aria-hidden="true"></span></td>`;
+            }).join("");
+            return `<div class="matrix-preview ${cellType === "text" ? "table-input-preview" : ""}"><table><thead><tr><th scope="col">항목</th>${columns.map((column, index) => `<th scope="col"><input type="text" data-matrix-column-index="${index}" value="${Common.escapeHtml(this.localizedIndexedLabel(question, "columns", index))}" aria-label="${index + 1}번 열 제목"></th>`).join("")}</tr></thead><tbody>${rows.map((row, rowIndex) => `<tr><th scope="row"><input type="text" data-matrix-row-index="${rowIndex}" value="${Common.escapeHtml(this.localizedIndexedLabel(question, "rows", rowIndex))}" aria-label="${rowIndex + 1}번 행 제목"></th>${cells(rowIndex)}</tr>`).join("")}</tbody></table></div>`;
+        },
+        repeatTableEditorMarkup(question) {
+            const columns = question.columns || [];
+            return `<div class="repeat-table-editor-preview"><div class="repeat-table-editor-row is-heading" style="--columns:${Math.max(1, columns.length)}">${columns.map((column, index) => `<input type="text" data-matrix-column-index="${index}" value="${Common.escapeHtml(this.localizedIndexedLabel(question, "columns", index))}" aria-label="${index + 1}번 열 제목">`).join("")}<span></span></div><div class="repeat-table-editor-row" style="--columns:${Math.max(1, columns.length)}">${columns.map((column, index) => `<span>${Common.escapeHtml(this.localizedIndexedLabel(question, "columns", index) || `열 ${index + 1}`)} 입력</span>`).join("")}<button type="button" disabled aria-label="행 삭제 예시">×</button></div><span class="repeat-table-add-preview">＋ 응답자가 필요한 만큼 행 추가</span></div>`;
         },
         typeLabel(code) { return window.SURVEYONE_CONFIG.questionTypes.find((item) => item.code === code)?.label || code; },
         addQuestion(type) {
@@ -568,6 +593,32 @@
             }
             this.root.querySelector("[data-prop-min-label]").value = this.localizedQuestionField(question, "minLabel");
             this.root.querySelector("[data-prop-max-label]").value = this.localizedQuestionField(question, "maxLabel");
+            this.renderAxisProperties(question);
+        },
+        renderAxisProperties(question) {
+            const panel = this.root.querySelector("[data-prop-axis-field]");
+            const supportsAxes = matrixTypes.has(question.type);
+            panel.hidden = !supportsAxes;
+            if (!supportsAxes) return;
+            this.syncQuestionCompatibility(question);
+            const sourceEditing = this.editingLocale === this.survey.languages.sourceLocale;
+            const repeat = question.type === "repeat_table";
+            this.root.querySelector("[data-axis-row-group]").hidden = repeat;
+            this.root.querySelector("[data-axis-settings-help]").textContent = repeat
+                ? "가로 열을 구성합니다. 세로 행은 응답자가 필요한 만큼 직접 추가합니다."
+                : question.type === "table"
+                    ? "세로 행과 가로 열마다 텍스트 입력칸이 만들어집니다."
+                    : "세로 행마다 가로 보기 중 하나 또는 여러 개를 선택합니다.";
+            this.root.querySelector("[data-axis-structure-summary]").textContent = repeat
+                ? `${question.columns.length}열 · 행 추가형`
+                : `${question.rows.length}행 × ${question.columns.length}열`;
+            ["rows", "columns"].forEach((field) => {
+                const host = this.root.querySelector(`[data-axis-list="${field}"]`);
+                const label = field === "rows" ? "행" : "열";
+                host.innerHTML = (question[field] || []).map((value, index) => `<div class="axis-item"><span>${index + 1}</span><input type="text" data-matrix-${field === "rows" ? "row" : "column"}-index="${index}" value="${Common.escapeHtml(this.localizedIndexedLabel(question, field, index))}" aria-label="${index + 1}번 ${label} 제목"><div class="axis-item-actions"><button type="button" data-axis-move="${field}" data-axis-index="${index}" data-axis-direction="-1" aria-label="${index + 1}번 ${label} 위로 이동" ${!sourceEditing || index === 0 ? "disabled" : ""}>↑</button><button type="button" data-axis-move="${field}" data-axis-index="${index}" data-axis-direction="1" aria-label="${index + 1}번 ${label} 아래로 이동" ${!sourceEditing || index === question[field].length - 1 ? "disabled" : ""}>↓</button><button type="button" class="is-delete" data-axis-delete="${field}" data-axis-index="${index}" aria-label="${index + 1}번 ${label} 삭제" ${!sourceEditing || question[field].length <= 1 ? "disabled" : ""}>×</button></div></div>`).join("");
+            });
+            panel.querySelectorAll("[data-axis-add]").forEach((button) => { button.disabled = !sourceEditing; });
+            panel.classList.toggle("is-translation", !sourceEditing);
         },
         closeProperties() { this.root.querySelector(".builder-properties").classList.remove("is-open"); },
         handleInput(event) {
@@ -601,8 +652,8 @@
             if (event.target.matches("[data-prop-unit]")) this.setLocalizedQuestionField(question, "unit", event.target.value);
             if (event.target.matches("[data-prop-min-label]")) this.setLocalizedQuestionField(question, "minLabel", event.target.value);
             if (event.target.matches("[data-prop-max-label]")) this.setLocalizedQuestionField(question, "maxLabel", event.target.value);
-            if (event.target.matches("[data-matrix-row-index]")) this.setLocalizedIndexedLabel(question, "rows", Number(event.target.dataset.matrixRowIndex), event.target.value);
-            if (event.target.matches("[data-matrix-column-index]")) this.setLocalizedIndexedLabel(question, "columns", Number(event.target.dataset.matrixColumnIndex), event.target.value);
+            if (event.target.matches("[data-matrix-row-index]")) this.updateAxisLabel(question, "rows", Number(event.target.dataset.matrixRowIndex), event.target.value, event.target);
+            if (event.target.matches("[data-matrix-column-index]")) this.updateAxisLabel(question, "columns", Number(event.target.dataset.matrixColumnIndex), event.target.value, event.target);
             if (event.target.matches("[data-prop-min]")) {
                 const value = event.target.value === "" ? null : Number(event.target.value);
                 question.min = question.type === "scale" && value !== null ? Math.min(1, Math.max(0, Math.round(value))) : value;
@@ -784,6 +835,75 @@
                 });
             });
         },
+        updateAxisLabel(question, field, index, value, sourceInput) {
+            this.setLocalizedIndexedLabel(question, field, index, value);
+            if (this.editingLocale === this.survey.languages.sourceLocale) this.syncQuestionCompatibility(question);
+            const attribute = field === "rows" ? "data-matrix-row-index" : "data-matrix-column-index";
+            const card = this.root.querySelector(`[data-question-id="${CSS.escape(question.id)}"]`);
+            const candidates = [
+                card?.querySelector(`[${attribute}="${index}"]`),
+                this.activeId === question.id ? this.root.querySelector(`[data-prop-axis-field] [${attribute}="${index}"]`) : null
+            ];
+            candidates.forEach((input) => { if (input && input !== sourceInput) input.value = value; });
+        },
+        canonicalizeAxisTranslations(question, field, excludedIndex = -1) {
+            const items = Array.isArray(question.settings?.[field]) ? question.settings[field] : [];
+            const questionKey = String(question.id);
+            Object.values(this.survey.translations || {}).forEach((bucket) => {
+                if (!bucket || typeof bucket !== "object" || Array.isArray(bucket)) return;
+                Object.values(bucket.sections || {}).forEach((sectionTranslation) => {
+                    const translatedQuestion = sectionTranslation?.questions?.[questionKey];
+                    const current = translatedQuestion?.[field];
+                    if (!current || typeof current !== "object" || Array.isArray(current)) return;
+                    const rebuilt = {};
+                    items.forEach((item, index) => {
+                        if (index === excludedIndex) return;
+                        const value = current[item.id] ?? current[index];
+                        if (value !== undefined) rebuilt[item.id] = value;
+                    });
+                    translatedQuestion[field] = rebuilt;
+                });
+            });
+        },
+        addAxisItem(field) {
+            const question = this.question(this.activeId);
+            if (!question || !["rows", "columns"].includes(field)) return;
+            if (this.editingLocale !== this.survey.languages.sourceLocale) return this.context.toast("행과 열의 구조는 원문 언어에서만 변경할 수 있습니다.", "error");
+            this.syncQuestionCompatibility(question);
+            const label = field === "rows" ? `항목 ${question.rows.length + 1}` : `열 ${question.columns.length + 1}`;
+            question[field].push(label);
+            question.settings[field].push({ id: uid(field === "rows" ? "row" : "col"), label });
+            this.renderQuestions();
+            this.openProperties(question.id);
+            this.scheduleSave();
+        },
+        deleteAxisItem(field, index) {
+            const question = this.question(this.activeId);
+            if (!question || !["rows", "columns"].includes(field) || !Number.isInteger(index)) return;
+            if (this.editingLocale !== this.survey.languages.sourceLocale) return this.context.toast("행과 열의 구조는 원문 언어에서만 변경할 수 있습니다.", "error");
+            this.syncQuestionCompatibility(question);
+            if (question[field].length <= 1 || index < 0 || index >= question[field].length) return this.context.toast(`${field === "rows" ? "행" : "열"}은 한 개 이상 필요합니다.`, "error");
+            this.canonicalizeAxisTranslations(question, field, index);
+            question[field].splice(index, 1);
+            question.settings[field].splice(index, 1);
+            this.renderQuestions();
+            this.openProperties(question.id);
+            this.scheduleSave();
+        },
+        moveAxisItem(field, index, direction) {
+            const question = this.question(this.activeId);
+            if (!question || !["rows", "columns"].includes(field) || ![-1, 1].includes(direction)) return;
+            if (this.editingLocale !== this.survey.languages.sourceLocale) return;
+            this.syncQuestionCompatibility(question);
+            const target = index + direction;
+            if (index < 0 || target < 0 || target >= question[field].length) return;
+            this.canonicalizeAxisTranslations(question, field);
+            [question[field][index], question[field][target]] = [question[field][target], question[field][index]];
+            [question.settings[field][index], question.settings[field][target]] = [question.settings[field][target], question.settings[field][index]];
+            this.renderQuestions();
+            this.openProperties(question.id);
+            this.scheduleSave();
+        },
         deleteQuestion(id) {
             const location = this.questionLocation(id);
             if (!location) return;
@@ -927,16 +1047,36 @@
             }
         },
         preview() {
-            const questions = this.survey.questions.slice(0, 6);
+            const questions = this.survey.questions;
             const skin = window.SURVEYONE_CONFIG.skinPresets.find((item) => item.code === this.survey.skin?.preset) || window.SURVEYONE_CONFIG.skinPresets[0];
             const questionMarkup = questions.map((question, index) => {
                 const title = this.localizedQuestionField(question, "title");
-                const answer = optionTypes.has(question.type)
-                    ? (question.options || []).map((option) => `<label><input type="${question.type === "multiple" ? "checkbox" : "radio"}" disabled> ${Common.escapeHtml(this.localizedOptionLabel(question, option))}</label>`).join("")
-                    : `<div class="answer-placeholder">${question.type === "long_text" ? "긴 답변" : "응답 입력"}</div>`;
+                const answer = this.previewAnswerMarkup(question);
                 return `<div class="builder-preview-question"><strong>${index + 1}. ${Common.escapeHtml(title)} ${question.required ? '<span class="text-danger">*</span>' : ""}</strong>${answer}</div>`;
             }).join("");
             this.context.openModal(`<p class="eyebrow">RESPONDENT PREVIEW · ${Common.escapeHtml(this.localeLabel(this.editingLocale))}</p><h2>모바일 응답 미리보기</h2><div class="builder-preview" style="--survey-primary:${skin.primary}"><div class="builder-preview-cover"><h3>${Common.escapeHtml(this.localizedSurveyField("title"))}</h3><p>${Common.escapeHtml(this.localizedSurveyField("description") || "설문에 참여해 주세요.")}</p></div>${questionMarkup || '<div class="builder-preview-question">문항을 추가하면 여기에 표시됩니다.</div>'}</div>`, { wide: false });
+        },
+        previewAnswerMarkup(question) {
+            if (optionTypes.has(question.type)) return (question.options || []).map((option) => `<label><input type="${question.type === "multiple" ? "checkbox" : "radio"}" disabled> ${Common.escapeHtml(this.localizedOptionLabel(question, option))}</label>`).join("");
+            if (question.type === "short_text") return '<input class="builder-preview-input" type="text" placeholder="짧은 답변" disabled>';
+            if (question.type === "long_text") return '<textarea class="builder-preview-input" rows="3" placeholder="긴 답변" disabled></textarea>';
+            if (["number", "slider"].includes(question.type)) return `<input class="builder-preview-input" type="text" placeholder="${question.min ?? 0} — ${question.max ?? 100} ${Common.escapeHtml(this.localizedQuestionField(question, "unit"))}" disabled>`;
+            if (question.type === "date") return '<input class="builder-preview-input" type="text" placeholder="연도-월-일" disabled>';
+            if (question.type === "scale") return this.answerMarkup(question);
+            if (choiceMatrixTypes.has(question.type)) return this.previewAxisTableMarkup(question, question.type === "matrix_multiple" ? "checkbox" : "radio");
+            if (question.type === "table") return this.previewAxisTableMarkup(question, "text");
+            if (question.type === "repeat_table") return this.previewRepeatTableMarkup(question);
+            if (question.type === "notice") return `<p class="builder-preview-notice">${Common.escapeHtml(this.localizedQuestionField(question, "description") || "안내 내용")}</p>`;
+            return '<div class="answer-placeholder">응답 입력</div>';
+        },
+        previewAxisTableMarkup(question, cellType) {
+            const columns = (question.columns || []).map((column, index) => this.localizedIndexedLabel(question, "columns", index));
+            const rows = (question.rows || []).map((row, index) => this.localizedIndexedLabel(question, "rows", index));
+            return `<div class="builder-respondent-table"><table><thead><tr><th scope="col">항목</th>${columns.map((column) => `<th scope="col">${Common.escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr><th scope="row">${Common.escapeHtml(row)}</th>${columns.map(() => `<td><input type="${cellType}" ${cellType === "text" ? 'placeholder="입력"' : ""} disabled></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+        },
+        previewRepeatTableMarkup(question) {
+            const columns = (question.columns || []).map((column, index) => this.localizedIndexedLabel(question, "columns", index));
+            return `<div class="builder-preview-repeat"><div class="builder-preview-repeat-row" style="--columns:${Math.max(1, columns.length)}">${columns.map((column) => `<strong>${Common.escapeHtml(column)}</strong>`).join("")}<span></span></div><div class="builder-preview-repeat-row" style="--columns:${Math.max(1, columns.length)}">${columns.map((column) => `<input type="text" placeholder="${Common.escapeHtml(column)}" disabled>`).join("")}<button type="button" disabled>×</button></div><button type="button" class="repeat-table-add-preview" disabled>＋ 행 추가</button></div>`;
         },
         async prepareDistribution() {
             if (!this.survey.questions.some((question) => question.type !== "notice")) return this.context.toast("배포하려면 응답 가능한 문항을 한 개 이상 추가하세요.", "error");

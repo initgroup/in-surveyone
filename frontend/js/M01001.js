@@ -91,7 +91,7 @@
             if (button) button.disabled = !available;
             if (status) status.textContent = available
                 ? "현재 발급할 수 있습니다. 유효기간과 이용 한도는 발급 화면에서 확인하세요."
-                : `현재 발급할 수 없습니다. ${database?.reason || "Oracle 연결 상태를 확인해 주세요."}`;
+                : `현재 발급할 수 없습니다. ${database?.reason || "서비스 저장소 연결 상태를 확인해 주세요."}`;
         },
 
         renderMetrics(summary) {

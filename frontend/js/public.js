@@ -206,7 +206,7 @@
     }
 
     function localizedIndexedLabel(question, field, index) {
-        const stableKey = String(question.settings?.[field]?.[index]?.id ?? index);
+        const stableKey = axisItemId(question, field, index);
         const current = translatedQuestion(question)?.[field];
         const fallback = translatedQuestion(question, state.languages.defaultLocale)?.[field];
         return localizedTranslation(
@@ -214,6 +214,10 @@
             fallback?.[stableKey] ?? fallback?.[index],
             question[field]?.[index]
         );
+    }
+
+    function axisItemId(question, field, index) {
+        return String(question.settings?.[field]?.[index]?.id ?? index);
     }
 
     function renderLanguageSelector() {
@@ -423,7 +427,7 @@
         const multiple = question.type === "matrix_multiple";
         const columns = (question.columns || []).map((column, index) => localizedIndexedLabel(question, "columns", index));
         const rows = (question.rows || []).map((row, index) => localizedIndexedLabel(question, "rows", index));
-        return `<div class="public-matrix" role="group" ${aria}><table><caption class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</caption><thead><tr><th scope="col">항목</th>${columns.map((column) => `<th scope="col">${Common.escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row, rowIndex) => `<tr><th scope="row">${Common.escapeHtml(row)}</th>${columns.map((column, columnIndex) => `<td><input type="${multiple ? "checkbox" : "radio"}" name="${Common.escapeHtml(name)}_${rowIndex}${multiple ? `_${columnIndex}` : ""}" value="${columnIndex}" aria-label="${Common.escapeHtml(row)} - ${Common.escapeHtml(column)}" aria-describedby="${aria.match(/aria-describedby="([^"]*)"/)?.[1] || ""}"></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+        return `<div class="public-matrix" role="group" ${aria}><table><caption class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</caption><thead><tr><th scope="col">항목</th>${columns.map((column) => `<th scope="col">${Common.escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row, rowIndex) => `<tr data-matrix-row-id="${Common.escapeHtml(axisItemId(question, "rows", rowIndex))}"><th scope="row">${Common.escapeHtml(row)}</th>${columns.map((column, columnIndex) => `<td><input type="${multiple ? "checkbox" : "radio"}" name="${Common.escapeHtml(name)}_${rowIndex}${multiple ? `_${columnIndex}` : ""}" value="${Common.escapeHtml(axisItemId(question, "columns", columnIndex))}" aria-label="${Common.escapeHtml(row)} - ${Common.escapeHtml(column)}" aria-describedby="${aria.match(/aria-describedby="([^"]*)"/)?.[1] || ""}"></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
     }
 
     function repeatTableMarkup(question, name, aria) {
@@ -507,7 +511,8 @@
                         ? `input[name="${CSS.escape(rowName)}"]:checked`
                         : `input[name^="${CSS.escape(`${rowName}_`)}"]:checked`;
                     const checked = [...card.querySelectorAll(selector)].map((input) => input.value);
-                    if (checked.length) value[rowIndex] = currentQuestion.type === "matrix_single" ? checked[0] : checked;
+                    const rowId = axisItemId(currentQuestion, "rows", rowIndex);
+                    if (checked.length) value[rowId] = currentQuestion.type === "matrix_single" ? checked[0] : checked;
                 });
             } else if (["table", "repeat_table"].includes(currentQuestion.type)) {
                 value = [...card.querySelectorAll("[data-repeat-row]")].map((row) => [...row.querySelectorAll("input")].map((input) => input.value));
@@ -575,13 +580,20 @@
                     });
                 });
             } else if (currentQuestion.type.startsWith("matrix_") && typeof value === "object") {
-                Object.entries(value).forEach(([rowIndex, selected]) => {
+                Object.entries(value).forEach(([rowKey, selected]) => {
+                    const stableRowIndex = (currentQuestion.rows || []).findIndex((row, index) => axisItemId(currentQuestion, "rows", index) === String(rowKey));
+                    const rowIndex = stableRowIndex >= 0 ? stableRowIndex : Number(rowKey);
+                    if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= (currentQuestion.rows || []).length) return;
                     const selectedValues = Array.isArray(selected) ? selected : [selected];
-                    selectedValues.forEach((columnIndex) => {
+                    selectedValues.forEach((columnKey) => {
+                        const stableColumnIndex = (currentQuestion.columns || []).findIndex((column, index) => axisItemId(currentQuestion, "columns", index) === String(columnKey));
+                        const columnIndex = stableColumnIndex >= 0 ? stableColumnIndex : Number(columnKey);
+                        if (!Number.isInteger(columnIndex) || columnIndex < 0 || columnIndex >= (currentQuestion.columns || []).length) return;
+                        const columnId = axisItemId(currentQuestion, "columns", columnIndex);
                         const rowName = `${name}_${rowIndex}`;
                         const selector = currentQuestion.type === "matrix_single"
-                            ? `input[name="${CSS.escape(rowName)}"][value="${CSS.escape(String(columnIndex))}"]`
-                            : `input[name^="${CSS.escape(`${rowName}_`)}"][value="${CSS.escape(String(columnIndex))}"]`;
+                            ? `input[name="${CSS.escape(rowName)}"][value="${CSS.escape(columnId)}"]`
+                            : `input[name^="${CSS.escape(`${rowName}_`)}"][value="${CSS.escape(columnId)}"]`;
                         const input = card.querySelector(selector);
                         if (input) input.checked = true;
                     });

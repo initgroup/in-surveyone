@@ -165,6 +165,16 @@ def test_question_top_level_and_settings_are_canonical_and_equal() -> None:
             [SurveySection(title="Section", questions=[incomplete_table])]
         )
 
+    repeat_table = Question(
+        id="repeat-table",
+        type=QuestionType.REPEAT_TABLE,
+        title="Respondent-added rows",
+        columns=["Name", "Value"],
+    )
+    validate_publish_ready_sections(
+        [SurveySection(title="Section", questions=[repeat_table])]
+    )
+
 
 @pytest.mark.parametrize(
     ("field_name", "value"),

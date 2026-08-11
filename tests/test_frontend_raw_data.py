@@ -43,8 +43,8 @@ def test_frontend_assets_are_versioned_and_not_cached_in_local_or_test_mode() ->
         encoding="utf-8"
     )
 
-    assert 'assetVersion: "20260811.3"' in config
-    assert index.count("?v=20260811.3") >= 6
+    assert 'assetVersion: "20260811.5"' in config
+    assert index.count("?v=20260811.5") >= 6
     assert "function versionedAsset(src)" in app_script
     assert 'url.searchParams.set("v", runtimeAssetVersion)' in app_script
     assert "link.href = absoluteHref" in app_script

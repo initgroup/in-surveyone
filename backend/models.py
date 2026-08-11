@@ -475,11 +475,7 @@ def validate_publish_ready_sections(sections: list[SurveySection]) -> None:
                     )
                 if any(not option.label.strip() for option in question.options):
                     raise ValueError("Every answer option requires a label.")
-            if question.type in {
-                QuestionType.MATRIX,
-                QuestionType.TABLE,
-                QuestionType.REPEAT_TABLE,
-            }:
+            if question.type in {QuestionType.MATRIX, QuestionType.TABLE}:
                 if not question.settings.rows or not question.settings.columns:
                     raise ValueError(
                         f"{question.type.value} questions require rows and columns."
@@ -489,6 +485,11 @@ def validate_publish_ready_sections(sections: list[SurveySection]) -> None:
                     for item in question.settings.rows + question.settings.columns
                 ):
                     raise ValueError("Every row and column requires a label.")
+            if question.type == QuestionType.REPEAT_TABLE:
+                if not question.settings.columns:
+                    raise ValueError("repeat_table questions require columns.")
+                if any(not item.label.strip() for item in question.settings.columns):
+                    raise ValueError("Every repeat-table column requires a label.")
             if question.type == QuestionType.SCALE:
                 if question.min is None or question.max is None:
                     raise ValueError("scale questions require min and max values.")

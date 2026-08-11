@@ -251,7 +251,7 @@ class OracleStore(MemoryStore):
                 raise ServiceUnavailableError(
                     "사용 가능한 게스트 로그인 아이디를 발급할 수 없습니다."
                 )
-            tenant_name = f"DB 게스트 체험공간 {login_id.upper()}"
+            tenant_name = f"게스트 체험공간 {login_id.upper()}"
             self.crud.execute(
                 connection,
                 "AUTH_TENANT_INSERT",
@@ -270,7 +270,7 @@ class OracleStore(MemoryStore):
                     "tenantId": tenant_id,
                     "loginId": login_id,
                     "passwordHash": hash_password(initial_password),
-                    "userName": display_name.strip() or "DB 게스트",
+                    "userName": display_name.strip() or "게스트",
                     "email": None,
                     "roleCode": UserRole.GUEST.value,
                     "guestYn": "Y",
@@ -306,7 +306,7 @@ class OracleStore(MemoryStore):
                 id=user_id,
                 tenant_id=tenant_id,
                 login_id=login_id,
-                name=display_name.strip() or "DB 게스트",
+                name=display_name.strip() or "게스트",
                 email=None,
                 organization_name=tenant_name,
                 password_hash=None,

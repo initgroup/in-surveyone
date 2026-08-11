@@ -45,7 +45,7 @@
 
             <div class="builder-mode-panel" data-mode-panel="questions">
                 <div class="question-canvas-list" data-question-list></div>
-                <button class="canvas-add-button" type="button" data-canvas-add>${"＋"} 문항을 추가하세요</button>
+                <button class="canvas-add-button" type="button" data-canvas-add>＋ 문항을 추가하세요</button>
             </div>
 
             <div class="builder-mode-panel" data-mode-panel="logic" hidden>
@@ -105,6 +105,20 @@
                         <label class="form-field">최솟값 문구<input type="text" data-prop-min-label placeholder="예: 매우 불만족"></label>
                         <label class="form-field">최댓값 문구<input type="text" data-prop-max-label placeholder="예: 매우 만족"></label>
                     </div>
+                    <section class="axis-settings" data-prop-axis-field hidden>
+                        <div class="axis-settings-heading">
+                            <div><strong>표 구조</strong><small data-axis-settings-help>세로 행과 가로 열을 구성합니다.</small></div>
+                            <span data-axis-structure-summary></span>
+                        </div>
+                        <div class="axis-setting-group" data-axis-row-group>
+                            <div class="axis-setting-title"><span><strong>세로 항목</strong><small>표의 각 행 왼쪽에 표시됩니다.</small></span><button type="button" data-axis-add="rows">＋ 행 추가</button></div>
+                            <div class="axis-item-list" data-axis-list="rows"></div>
+                        </div>
+                        <div class="axis-setting-group">
+                            <div class="axis-setting-title"><span><strong>가로 항목</strong><small>표의 열 제목으로 표시됩니다.</small></span><button type="button" data-axis-add="columns">＋ 열 추가</button></div>
+                            <div class="axis-item-list" data-axis-list="columns"></div>
+                        </div>
+                    </section>
                     <label class="form-field">응답 검증<select data-prop-validation><option value="none">사용 안 함</option><option value="email">이메일 형식</option><option value="phone">전화번호 형식</option><option value="minLength">최소 글자 수</option><option value="regex">정규식 패턴</option></select></label>
                     <label class="form-field">표시 조건<select data-prop-display-rule><option value="always">항상 표시</option><option value="conditional">이전 응답 조건에 따라</option></select></label>
                 </div>

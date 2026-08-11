@@ -126,7 +126,8 @@ def test_unavailable_database_guest_is_explained_and_disabled() -> None:
     css_source = (PROJECT_ROOT / "frontend" / "css" / "app.css").read_text(encoding="utf-8")
 
     assert "button.disabled = !available" in app_source
-    assert "DB 게스트 계정을 현재 발급할 수 없습니다." in app_source
+    assert "게스트 계정을 현재 발급할 수 없습니다." in app_source
+    assert "DB 게스트" not in index_source
     assert "data-guest-issue-card" in index_source
     assert "data-guest-start disabled" in index_source
     assert ".guest-account-card.is-disabled" in css_source
@@ -157,6 +158,25 @@ def test_dashboard_offers_database_guest_and_member_choices_to_visitors() -> Non
     assert "data-visitor-database-card" in page_source
     assert 'this.context.openAuth("guest")' in page_script
     assert "configureDatabaseGuestEntry" in page_script
+    assert "게스트(손님) 체험" in page_source
+    assert "DB 게스트" not in page_source
+
+
+def test_page_context_is_integrated_into_top_header_and_auth_tabs_share_height() -> None:
+    index_source = (PROJECT_ROOT / "frontend" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    css_source = (PROJECT_ROOT / "frontend" / "css" / "app.css").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'class="header-page-context"' in index_source
+    assert 'class="header-page-actions"' in index_source
+    assert 'class="page-context-bar"' not in index_source
+    assert ".auth-panel" in css_source
+    assert "height: 390px" in css_source
+    assert "scrollbar-width: thin" in css_source
+    assert "*::-webkit-scrollbar-thumb" in css_source
 
 
 def test_auth_dialog_busy_state_is_reset_before_reopening_and_after_success() -> None:

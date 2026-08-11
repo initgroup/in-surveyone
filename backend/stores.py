@@ -188,7 +188,7 @@ def guest_capabilities(
     }
     database = GuestModeCapability(
         mode=GuestMode.DATABASE,
-        title="DB 게스트",
+        title="게스트(손님)",
         available=database_configured,
         reason=(
             f"Oracle에 {selected.guest_project_ttl_hours}시간 접근 가능한 설문 제작·배포·응답 체험 공간입니다. "

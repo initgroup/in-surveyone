@@ -19,7 +19,7 @@
 .slug-field input { border: 0; border-radius: 0; }
 .skin-save-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 14px 16px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
 .skin-save-row span { color: var(--muted); font-size: 10px; }
-.skin-preview-column { position: sticky; top: calc(var(--header-height) + 90px); }
+.skin-preview-column { position: sticky; top: calc(var(--header-height) + 18px); }
 .preview-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .preview-toolbar > div:first-child { display: grid; }
 .device-stage { display: grid; place-items: center; min-height: 660px; padding: 26px; overflow: hidden; background: linear-gradient(145deg,#dfe7f1,#f7f9fc); border: 1px solid #ced8e6; border-radius: 19px; }
