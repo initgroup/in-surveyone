@@ -222,12 +222,35 @@
         dom.languageWrap.hidden = state.languages.enabled.length < 2;
     }
 
+    function cloneSerializable(value) {
+        if (typeof structuredClone === "function") return structuredClone(value);
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    function languageStateSnapshot() {
+        return cloneSerializable({
+            survey: state.survey,
+            sections: state.sections,
+            questions: state.questions,
+            answers: state.answers,
+            languages: state.languages,
+            translations: state.translations,
+            locale: state.locale,
+            requestedLocale: state.requestedLocale,
+            idempotencyKey: state.idempotencyKey
+        });
+    }
+
+    function restoreLanguageState(snapshot) {
+        Object.entries(snapshot).forEach(([key, value]) => { state[key] = value; });
+    }
+
     async function changeLanguage(event) {
         const locale = event.target.value;
         if (!state.languages.enabled.includes(locale) || locale === state.locale) return;
-        state.idempotencyKey = null;
         collectAnswers();
-        const previousLocale = state.locale;
+        const previousState = languageStateSnapshot();
+        const previousUrl = `${location.pathname}${location.search}${location.hash}`;
         const url = new URL(location.href);
         url.searchParams.set("lang", locale);
         history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
@@ -237,15 +260,30 @@
             state.survey = payload.survey || payload;
             normalizeSurvey();
             render();
-        } catch {
-            state.locale = previousLocale;
-            url.searchParams.set("lang", previousLocale);
-            history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-            render();
-            dom.saveState.textContent = "언어를 불러오지 못했습니다. 다시 시도해 주세요.";
+            state.idempotencyKey = null;
+        } catch (error) {
+            restoreLanguageState(previousState);
+            history.replaceState(null, "", previousUrl);
+            try {
+                render();
+                dom.saveState.textContent = `언어를 바꾸지 못했습니다. ${error?.message || "다시 시도해 주세요."}`;
+            } catch {
+                showState("!", "설문 언어를 바꾸지 못했습니다.", "페이지를 새로 고침한 뒤 다시 시도해 주세요.");
+            }
         } finally {
             dom.language.disabled = false;
             dom.language.focus({ preventScroll: true });
+        }
+    }
+
+    function formatExperienceExpiry(value) {
+        if (!value) return "운영 정책에 따른 만료 시각";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "확인되지 않은 만료 시각";
+        try {
+            return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
+        } catch {
+            return "확인되지 않은 만료 시각";
         }
     }
 
@@ -261,7 +299,7 @@
         const expiresAt = state.survey.experienceExpiresAt || state.survey.experience_expires_at;
         dom.demoBanner.hidden = !guestDemo;
         if (guestDemo) {
-            const expires = expiresAt ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(expiresAt)) : "운영 정책에 따른 만료 시각";
+            const expires = formatExperienceExpiry(expiresAt);
             dom.demoBanner.textContent = `체험용 설문 · ${expires}까지만 접근할 수 있습니다. 실제 개인정보를 입력하지 마세요.`;
         }
         const answerableQuestions = state.questions.filter((item) => item.type !== "notice");

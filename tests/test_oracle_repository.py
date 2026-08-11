@@ -3,16 +3,26 @@ from __future__ import annotations
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import timedelta
 import json
 import re
 from threading import Lock
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from backend.config import PROJECT_ROOT, get_settings
-from backend.errors import ConflictError, DomainValidationError, NotFoundError
+from backend.errors import (
+    AuthenticationError,
+    ConflictError,
+    DomainValidationError,
+    NotFoundError,
+    ServiceUnavailableError,
+)
 from backend.models import (
     GuestMode,
+    LoginRequest,
     PublicSurvey,
     Question,
     QuestionType,
@@ -25,8 +35,8 @@ from backend.models import (
     SurveyTranslation,
     SurveyUpdateRequest,
 )
-from backend.oracle_store import OracleStore, _json_load, utcnow
-from backend.security import session_token_hash
+from backend.oracle_store import OracleStore, _json_load, _public_snapshot, utcnow
+from backend.security import verify_password
 from backend.sql_loader import sql_loader
 
 
@@ -60,6 +70,7 @@ class RecordingCrud:
         self.template_reads = 0
         self.seed_rows: list[dict[str, Any]] = []
         self.events: list[str] = []
+        self.guest_login_sequence = 0
 
     def execute(self, connection, sql_id, params=None):
         self.events.append(f"execute:{sql_id}")
@@ -90,30 +101,35 @@ class RecordingCrud:
         return []
 
     def fetch_one(self, connection, sql_id, params=None):
+        if sql_id == "AUTH_GUEST_LOGIN_NEXT":
+            self.guest_login_sequence += 1
+            return {"login_sequence_value": self.guest_login_sequence}
         return None
 
 
-def test_database_guest_is_persisted_and_session_token_is_hashed() -> None:
+def test_database_guest_is_provisioned_without_a_session_or_plaintext_storage() -> None:
     pool = FakePool()
     crud = RecordingCrud()
     settings = get_settings()
     store = OracleStore(settings=settings, pool=pool, crud=crud)
 
-    token, session = store.create_guest("DB tester", GuestMode.DATABASE)
+    provisioned = store.create_guest("DB tester", GuestMode.DATABASE)
 
-    assert session.user.guest_mode == GuestMode.DATABASE
+    assert provisioned.user.guest_mode == GuestMode.DATABASE
+    assert provisioned.guest_credential.login_id == "quest001"
+    assert provisioned.guest_credential.expires_at == provisioned.expires_at
     assert pool.commits == 1
     statements = {sql_id: params for sql_id, params in crud.executes}
     assert statements["AUTH_TENANT_INSERT"]["tenantTypeCode"] == "DB_GUEST"
     assert statements["AUTH_USER_INSERT"]["guestModeCode"] == "DB"
-    assert (
-        statements["AUTH_SESSION_INSERT"]["expiresAt"]
-        == statements["AUTH_TENANT_INSERT"]["expiresAt"]
-        == session.expires_at
+    assert statements["AUTH_USER_INSERT"]["loginId"] == "quest001"
+    assert verify_password(
+        provisioned.guest_credential.initial_password,
+        statements["AUTH_USER_INSERT"]["passwordHash"],
     )
-    persisted_hash = statements["AUTH_SESSION_INSERT"]["sessionTokenHash"]
-    assert persisted_hash == session_token_hash(token, settings.session_secret)
-    assert token != persisted_hash
+    assert provisioned.guest_credential.initial_password not in str(statements)
+    assert statements["AUTH_TENANT_INSERT"]["expiresAt"] == provisioned.expires_at
+    assert "AUTH_SESSION_INSERT" not in statements
     capability_batch = next(rows for sql_id, rows in crud.batches if sql_id == "AUTH_GUEST_CAP_INSERT")
     assert {row["capabilityCode"] for row in capability_batch} >= {
         "SURVEY_CREATE",
@@ -136,6 +152,207 @@ def test_database_guest_is_persisted_and_session_token_is_hashed() -> None:
         == settings.db_guest_max_questions
     )
     assert limits_by_code["RESPONSE_COLLECT"] == settings.db_guest_max_responses
+
+
+def test_database_guest_can_relogin_without_revealing_password_again() -> None:
+    provisioning_crud = RecordingCrud()
+    store = OracleStore(
+        settings=get_settings(), pool=FakePool(), crud=provisioning_crud
+    )
+    provisioned = store.create_guest("Guest", GuestMode.DATABASE)
+    user_insert = next(
+        params
+        for sql_id, params in provisioning_crud.executes
+        if sql_id == "AUTH_USER_INSERT"
+    )
+    tenant_insert = next(
+        params
+        for sql_id, params in provisioning_crud.executes
+        if sql_id == "AUTH_TENANT_INSERT"
+    )
+
+    class LoginCrud(RecordingCrud):
+        def fetch_one(self, connection, sql_id, params=None):
+            if sql_id == "AUTH_USER_BY_LOGIN":
+                return {
+                    "user_id": user_insert["userId"],
+                    "tenant_id": user_insert["tenantId"],
+                    "login_id": user_insert["loginId"],
+                    "password_hash": user_insert["passwordHash"],
+                    "user_name": user_insert["userName"],
+                    "email": None,
+                    "role_code": "GUEST",
+                    "guest_yn": "Y",
+                    "guest_mode_code": "DB",
+                    "created_at": utcnow(),
+                    "tenant_name": tenant_insert["tenantName"],
+                    "tenant_expires_at": tenant_insert["expiresAt"],
+                }
+            return super().fetch_one(connection, sql_id, params)
+
+    login_crud = LoginCrud()
+    login_store = OracleStore(
+        settings=get_settings(), pool=FakePool(), crud=login_crud
+    )
+    _, relogged = login_store.login(
+        LoginRequest(
+            loginId=provisioned.guest_credential.login_id,
+            password=provisioned.guest_credential.initial_password,
+        )
+    )
+
+    assert relogged.user.is_guest is True
+    assert relogged.user.login_id == provisioned.guest_credential.login_id
+    assert relogged.expires_at <= tenant_insert["expiresAt"]
+    remaining = (relogged.expires_at - utcnow()).total_seconds()
+    assert get_settings().session_ttl_seconds - 5 <= remaining
+    assert remaining <= get_settings().session_ttl_seconds
+    assert "guestCredential" not in relogged.model_dump(by_alias=True)
+
+
+def test_session_lookup_validates_database_row_with_application_clock() -> None:
+    now = utcnow()
+    session_row = {
+        "session_token_hash": "a" * 64,
+        "user_id": "user-session",
+        "expires_at": now + timedelta(hours=1),
+        "revoked_at": None,
+        "tenant_id": "tenant-session",
+        "login_id": "quest999",
+        "user_name": "Guest",
+        "email": None,
+        "role_code": "GUEST",
+        "guest_yn": "Y",
+        "guest_mode_code": "DB",
+        "user_use_yn": "Y",
+        "created_at": now,
+        "tenant_name": "Guest workspace",
+        "tenant_status_code": "ACTIVE",
+        "tenant_expires_at": now + timedelta(hours=2),
+    }
+
+    class SessionCrud(RecordingCrud):
+        def fetch_one(self, connection, sql_id, params=None):
+            if sql_id == "AUTH_SESSION_SELECT":
+                return dict(session_row)
+            return super().fetch_one(connection, sql_id, params)
+
+    store = OracleStore(
+        settings=get_settings(), pool=FakePool(), crud=SessionCrud()
+    )
+
+    assert store.auth_session("opaque-token").user.login_id == "quest999"
+
+    session_row["expires_at"] = now - timedelta(seconds=1)
+    with pytest.raises(AuthenticationError, match="만료"):
+        store.auth_session("opaque-token")
+
+
+def test_session_sql_does_not_hide_state_before_domain_validation() -> None:
+    statement = sql_loader.get("AUTH_SESSION_SELECT").upper()
+
+    assert "S.REVOKED_AT" in statement
+    assert "U.USE_YN AS USER_USE_YN" in statement
+    assert "T.STATUS_CODE AS TENANT_STATUS_CODE" in statement
+    where_clause = statement.split(" WHERE ", 1)[1]
+    assert "S.SESSION_TOKEN_HASH = :SESSIONTOKENHASH" in where_clause
+    assert "SYSTIMESTAMP" not in where_clause
+    assert "S.EXPIRES_AT >" not in where_clause
+
+
+def test_guest_sequence_skips_inactive_existing_login_ids() -> None:
+    class CollisionCrud(RecordingCrud):
+        checked: list[str]
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.checked = []
+
+        def fetch_one(self, connection, sql_id, params=None):
+            if sql_id == "AUTH_LOGIN_ID_EXISTS":
+                self.checked.append(params["loginId"])
+                return {"login_id_exists": 1} if params["loginId"] == "quest001" else None
+            return super().fetch_one(connection, sql_id, params)
+
+    crud = CollisionCrud()
+    provisioned = OracleStore(
+        settings=get_settings(), pool=FakePool(), crud=crud
+    ).create_guest("Guest", GuestMode.DATABASE)
+
+    assert provisioned.guest_credential.login_id == "quest002"
+    assert crud.checked == ["quest001", "quest002"]
+    checked = [
+        params["loginId"]
+        for sql_id, params in crud.executes
+        if sql_id == "AUTH_USER_INSERT"
+    ]
+    assert checked == ["quest002"]
+
+
+def test_guest_login_format_does_not_truncate_sequence_values_above_999() -> None:
+    crud = RecordingCrud()
+    crud.guest_login_sequence = 999
+    provisioned = OracleStore(
+        settings=get_settings(), pool=FakePool(), crud=crud
+    ).create_guest("Guest", GuestMode.DATABASE)
+
+    assert provisioned.guest_credential.login_id == "quest1000"
+
+
+def test_quest001_cannot_read_quest010_owned_survey() -> None:
+    class OwnershipCrud(RecordingCrud):
+        last_params: dict[str, Any] | None = None
+
+        def fetch_one(self, connection, sql_id, params=None):
+            if sql_id == "SURVEY_DETAIL_BY_OWNER":
+                self.last_params = dict(params or {})
+                # The fixture survey belongs to another isolated guest owner.
+                if self.last_params == {
+                    "surveyId": "survey-quest010",
+                    "tenantId": "tenant-quest010",
+                    "ownerUserId": "user-quest010",
+                }:
+                    return {"survey_id": "survey-quest010"}
+                return None
+            return super().fetch_one(connection, sql_id, params)
+
+    crud = OwnershipCrud()
+    store = OracleStore(settings=get_settings(), pool=FakePool(), crud=crud)
+    quest001 = SimpleNamespace(
+        tenant_id="tenant-quest001",
+        id="user-quest001",
+        login_id="quest001",
+    )
+
+    try:
+        store.get_survey(quest001, "survey-quest010")
+    except NotFoundError:
+        pass
+    else:  # pragma: no cover - protects the tenant/owner boundary.
+        raise AssertionError("quest001 read quest010's survey")
+
+    assert crud.last_params == {
+        "surveyId": "survey-quest010",
+        "tenantId": "tenant-quest001",
+        "ownerUserId": "user-quest001",
+    }
+
+
+def test_every_owner_list_or_mutation_sql_binds_tenant_and_user() -> None:
+    for sql_id in (
+        "SURVEY_LIST_BY_OWNER",
+        "SURVEY_DETAIL_BY_OWNER",
+        "SURVEY_DETAIL_FOR_UPDATE",
+        "SURVEY_UPDATE_BY_OWNER",
+        "SURVEY_MARK_PUBLISHED_BY_OWNER",
+        "RESPONSE_LIST_BY_OWNER",
+        "RESPONSE_ANSWER_LIST_BY_OWNER",
+        "RESPONSE_REPORT_LIST",
+        "RESPONSE_TOTAL_BY_OWNER",
+    ):
+        statement = sql_loader.get(sql_id).upper()
+        assert ":TENANTID" in statement, sql_id
+        assert ":OWNERUSERID" in statement, sql_id
 
 
 def test_empty_oracle_template_catalog_is_idempotently_seeded() -> None:
@@ -191,6 +408,32 @@ def test_oracle_native_json_value_is_not_reparsed_as_python_repr() -> None:
     }
 
     assert _json_load(native_value, {}) is native_value
+
+
+def test_oracle_native_json_scalar_answers_are_preserved() -> None:
+    assert _json_load("plain answer", None) == "plain answer"
+    assert _json_load(True, None) is True
+    assert _json_load(42, None) == 42
+    assert _json_load(3.5, None) == 3.5
+
+
+def test_public_snapshot_accepts_oracle_native_json_object() -> None:
+    snapshot = PublicSurvey(
+        survey_id="survey-native-json",
+        slug="native-json",
+        version=1,
+        title="Native Oracle JSON",
+        category="test",
+        sections=[],
+        settings=SurveySettings(),
+        theme=SurveyTheme(),
+        published_at=utcnow(),
+    )
+
+    restored = _public_snapshot(snapshot.model_dump(by_alias=True, mode="json"))
+
+    assert restored.survey_id == snapshot.survey_id
+    assert restored.slug == snapshot.slug
 
 
 def test_i18n_rows_use_ddl_allowlist_and_skip_blank_oracle_text() -> None:
@@ -260,7 +503,82 @@ def test_new_bcp47_languages_are_merged_before_survey_language_rows() -> None:
     survey_language_rows = next(
         rows for sql_id, rows in crud.batches if sql_id == "SURVEY_LANG_INSERT"
     )
-    assert [row["langCode"] for row in survey_language_rows] == ["fr", "en-US", "ar"]
+    assert [row["langCode"] for row in survey_language_rows] == ["ar", "en-US", "fr"]
+
+
+def test_language_catalog_sync_does_not_update_shared_existing_rows() -> None:
+    language_merge = sql_loader.get("LANGUAGE_MERGE").upper()
+
+    assert "WHEN MATCHED THEN" not in language_merge
+    assert "WHEN NOT MATCHED THEN INSERT" in language_merge
+
+
+def test_survey_update_retries_after_oracle_parallel_dml_deadlock() -> None:
+    class OracleErrorInfo:
+        code = 12860
+
+    class FakeDatabaseError(Exception):
+        pass
+
+    class RetryStore(OracleStore):
+        def __init__(self) -> None:
+            super().__init__(
+                settings=get_settings(), pool=FakePool(), crud=RecordingCrud()
+            )
+            self.attempts = 0
+
+        def _update_survey_transaction(
+            self, connection, user, survey_id, request
+        ) -> None:
+            self.attempts += 1
+            if self.attempts == 1:
+                raise FakeDatabaseError(OracleErrorInfo())
+
+        def get_survey(self, user, survey_id):
+            return "saved"
+
+    store = RetryStore()
+    result = store.update_survey(
+        SimpleNamespace(tenant_id="tenant-1", id="user-1"),
+        "survey-1",
+        SurveyUpdateRequest(title="Retried"),
+    )
+
+    assert result == "saved"
+    assert store.attempts == 2
+    assert store.pool.rollbacks == 1
+    assert store.pool.commits == 1
+
+
+def test_repeated_oracle_parallel_dml_deadlock_becomes_safe_503() -> None:
+    class OracleErrorInfo:
+        code = 12860
+
+    class FakeDatabaseError(Exception):
+        pass
+
+    class FailingStore(OracleStore):
+        def _update_survey_transaction(
+            self, connection, user, survey_id, request
+        ) -> None:
+            raise FakeDatabaseError(OracleErrorInfo())
+
+    pool = FakePool()
+    store = FailingStore(
+        settings=get_settings(), pool=pool, crud=RecordingCrud()
+    )
+
+    try:
+        store.update_survey(
+            SimpleNamespace(tenant_id="tenant-1", id="user-1"),
+            "survey-1",
+            SurveyUpdateRequest(title="Still locked"),
+        )
+    except ServiceUnavailableError as exc:
+        assert "동시에 저장 요청" in exc.detail
+    else:  # pragma: no cover - protects the API error boundary.
+        raise AssertionError("Repeated deadlock escaped as an unhandled exception")
+    assert pool.rollbacks == 2
 
 
 def test_readiness_query_matches_all_twenty_ddl_tables() -> None:
@@ -283,12 +601,14 @@ def test_readiness_query_matches_all_twenty_ddl_tables() -> None:
             critical_columns: int = 9,
             critical_constraints: int = 6,
             valid_functions: int = 2,
+            guest_sequences: int = 1,
         ) -> None:
             super().__init__()
             self.count = count
             self.critical_columns = critical_columns
             self.critical_constraints = critical_constraints
             self.valid_functions = valid_functions
+            self.guest_sequences = guest_sequences
 
         def fetch_one(self, connection, sql_id, params=None):
             assert sql_id == "AUTH_SCHEMA_READY"
@@ -297,6 +617,7 @@ def test_readiness_query_matches_all_twenty_ddl_tables() -> None:
                 "critical_column_count": self.critical_columns,
                 "critical_constraint_count": self.critical_constraints,
                 "valid_function_count": self.valid_functions,
+                "guest_sequence_count": self.guest_sequences,
             }
 
     ready = OracleStore(
@@ -315,11 +636,19 @@ def test_readiness_query_matches_all_twenty_ddl_tables() -> None:
         pool=FakePool(),
         crud=ReadinessCrud(20, valid_functions=1),
     ).readiness()
+    missing_sequence = OracleStore(
+        settings=get_settings(),
+        pool=FakePool(),
+        crud=ReadinessCrud(20, guest_sequences=0),
+    ).readiness()
     assert ready == (True, None)
     assert incomplete[0] is False
     assert "incomplete" in str(incomplete[1]).lower()
     assert malformed[0] is False
     assert invalid_function[0] is False
+    assert missing_sequence[0] is False
+    assert "guest_sequence_count=0/1" in str(missing_sequence[1])
+    assert "SURVEYONE_SYSTEM_ALT.sql" in str(missing_sequence[1])
 
 
 def test_response_answer_sql_reuses_the_deterministic_owner_page() -> None:
@@ -502,7 +831,10 @@ def test_one_response_submission_is_serialized_before_duplicate_recheck() -> Non
     first_duplicate = crud.events.index("fetch:RESPONSE_DUPLICATE_COUNT")
     first_insert = crud.events.index("execute:RESPONSE_INSERT")
     assert first_lock < first_duplicate < first_insert
-    assert "FOR UPDATE" in sql_loader.get("RESPONSE_SURVEY_LOCK").upper()
+    lock_sql = sql_loader.get("RESPONSE_SURVEY_LOCK").upper()
+    duplicate_sql = sql_loader.get("RESPONSE_DUPLICATE_COUNT").upper()
+    assert "FOR UPDATE OF S.ACTIVE_VERSION_NO" in lock_sql
+    assert "SURVEY_VERSION_NO" not in duplicate_sql
 
     try:
         store.submit_response(snapshot.slug, SubmitResponseRequest(answers=[]))

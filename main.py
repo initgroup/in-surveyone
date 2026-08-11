@@ -31,9 +31,41 @@ INDEX_FILE = FRONTEND_DIR / "index.html"
 PUBLIC_SURVEY_FILE = FRONTEND_DIR / "public.html"
 
 
+def _set_frontend_cache_policy(request: Request, response: Response) -> None:
+    if request.method.upper() not in {"GET", "HEAD"}:
+        return
+    path = request.url.path.lower()
+    frontend_asset = path.startswith("/frontend/") and path.endswith(
+        (".html", ".css", ".js", ".json")
+    )
+    spa_document = path in {"/", "/app"} or path.startswith("/s/")
+    if not frontend_asset and not spa_document:
+        return
+    if settings.environment in {"development", "dev", "local", "test"}:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    else:
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+
+
+def _is_oracle_driver_error(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if type(current).__module__.split(".", 1)[0] == "oracledb":
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if configured_db_mode == "oracle":
+    memory_test_fixture = settings.environment == "test" and configured_db_mode == "memory"
+    if not memory_test_fixture:
+        if configured_db_mode != "oracle":
+            raise RuntimeError("Runtime storage must use Oracle.")
         # Oracle mode is explicit: connection/configuration failures abort
         # startup and are never replaced with an in-process repository.
         get_oracle_pool().ping()
@@ -99,9 +131,12 @@ async def protect_browser_writes(request: Request, call_next):
                 content={"detail": "요청 출처가 허용되지 않았습니다."},
             )
     try:
-        return await call_next(request)
-    except RuntimeError:
-        if settings.db_mode != "oracle":
+        response = await call_next(request)
+        _set_frontend_cache_policy(request, response)
+        return response
+    except Exception as exc:
+        repository_failure = isinstance(exc, RuntimeError) or _is_oracle_driver_error(exc)
+        if settings.db_mode != "oracle" or not repository_failure:
             raise
         logger.exception("Oracle repository request failed.")
         return JSONResponse(
@@ -130,6 +165,17 @@ def health() -> dict[str, object]:
         "service": settings.app_name,
         "database": database_status(),
         "time": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/runtime-config")
+def runtime_config() -> dict[str, object]:
+    return {
+        "status": "success",
+        "data": {
+            "publicBaseUrl": settings.base_url,
+            "environment": settings.environment,
+        },
     }
 
 

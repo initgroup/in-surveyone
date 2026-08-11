@@ -7,7 +7,7 @@
     <meta name="description" content="기관을 위한 설문 제작, 배포, 수집, 분석 통합 플랫폼 IN-SURVEYONE">
     <title>IN-SURVEYONE</title>
     <link rel="icon" href="/frontend/assets/images/surveyone-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/frontend/css/app.css">
+    <link rel="stylesheet" href="/frontend/css/app.css?v=20260811.3">
 </head>
 <body>
     <a class="skip-link" href="#pageHost">본문 바로가기</a>
@@ -23,7 +23,7 @@
             <div class="header-context">
                 <button class="workspace-chip" type="button" title="회원사 작업공간">
                     <span class="workspace-mark" aria-hidden="true">IN</span>
-                    <span><small>작업공간</small><strong data-tenant-name>게스트 체험관</strong></span>
+                    <span><small>작업공간</small><strong data-tenant-name>IN-SURVEYONE</strong></span>
                     <span aria-hidden="true">⌄</span>
                 </button>
             </div>
@@ -32,8 +32,8 @@
                     <span aria-hidden="true">?</span><span class="header-help-label">작성 도움말</span>
                 </button>
                 <button class="user-button" type="button" data-user-button aria-haspopup="menu" aria-expanded="false">
-                    <span class="user-avatar" data-user-avatar>G</span>
-                    <span class="user-copy"><strong data-user-name>Guest</strong><small data-user-role>체험 계정</small></span>
+                    <span class="user-avatar" data-user-avatar>방</span>
+                    <span class="user-copy"><strong data-user-name>방문자</strong><small data-user-role>둘러보기</small></span>
                     <span aria-hidden="true">⌄</span>
                 </button>
                 <div class="user-menu" data-user-menu role="menu" hidden>
@@ -47,9 +47,9 @@
         <aside class="app-sidebar" data-sidebar aria-label="주 메뉴">
             <nav class="app-navigation" data-navigation></nav>
             <div class="sidebar-upgrade" data-guest-upgrade>
-                <span class="eyebrow">GUEST MODE</span>
-                <strong>설문 흐름을 먼저 체험하세요</strong>
-                <p>게스트 프로젝트는 최대 2개이며 발송 연동과 영구 보관은 제한됩니다.</p>
+                <span class="eyebrow">START WHEN READY</span>
+                <strong>둘러본 뒤 편하게 시작하세요</strong>
+                <p>메인에서 DB 게스트 계정을 발급하거나 기관 회원 작업공간을 시작할 수 있습니다.</p>
                 <button class="button button-light button-small" type="button" data-auth-action="signup">무료로 시작하기</button>
             </div>
             <p class="sidebar-copyright">© inIT. All rights reserved.</p>
@@ -83,46 +83,47 @@
         <div class="auth-brand-mark"><img src="/frontend/assets/images/surveyone-mark.svg" alt=""></div>
         <p class="eyebrow">ONE-STOP SURVEY WORKSPACE</p>
         <h2 id="authTitle" data-auth-title>IN-SURVEYONE 시작하기</h2>
-        <p class="auth-intro" data-auth-intro>회원가입 전에도 샘플 설문을 만들고 모바일 응답 흐름을 체험할 수 있습니다.</p>
+        <p class="auth-intro" data-auth-intro>만료형 DB 게스트 계정을 발급받아 제품 흐름을 체험할 수 있습니다.</p>
         <div class="auth-mode-tabs" role="tablist">
-            <button type="button" role="tab" aria-selected="true" data-auth-tab="guest">게스트 체험</button>
+            <button type="button" role="tab" aria-selected="true" data-auth-tab="guest">DB 게스트</button>
             <button type="button" role="tab" aria-selected="false" data-auth-tab="login">로그인</button>
             <button type="button" role="tab" aria-selected="false" data-auth-tab="signup">회원가입</button>
         </div>
         <section class="auth-panel" data-auth-panel="guest">
-            <fieldset class="guest-mode-picker" data-guest-mode-picker aria-describedby="guestModeGuide guestCapabilityStatus">
-                <legend>체험 데이터 저장 방식</legend>
-                <p id="guestModeGuide">사용 목적에 맞는 모드를 선택하세요. 실제 연락처와 민감정보는 입력하지 마세요.</p>
-                <label class="guest-mode-card" data-guest-mode-card="local">
-                    <input type="radio" name="guestMode" value="local" checked>
-                    <span class="guest-mode-copy"><strong>로컬 체험</strong><small>빠르게 기능 흐름 확인</small></span>
-                    <span class="guest-mode-badge">임시 저장</span>
+            <div class="guest-account-request" data-guest-request-view>
+                <article class="guest-account-card is-disabled" data-guest-issue-card aria-describedby="guestCapabilityStatus">
+                    <span class="guest-account-kicker">ORACLE GUEST ACCOUNT</span>
+                    <div class="guest-account-heading"><strong>DB 게스트 계정 발급</strong><span>만료형 계정</span></div>
+                    <p>별도 가입 없이 <strong>quest 계정</strong>을 발급받아 설문 제작부터 배포·응답·분석까지 체험합니다.</p>
                     <ul>
-                        <li>서버 메모리와 현재 프로세스 수명 동안만 유지</li>
-                        <li>프로젝트·문항·응답 수와 원자료 내보내기 제한</li>
-                        <li>실제 외부 발송 및 맞춤 보고서 영구 저장 불가</li>
+                        <li>설문과 응답은 계정 유효기간 동안 Oracle에 저장됩니다.</li>
+                        <li>각 계정은 독립된 tenant로 발급되어 다른 게스트와 완전히 분리됩니다.</li>
+                        <li>초기 비밀번호는 발급 직후 이 화면에서 한 번만 표시됩니다.</li>
+                        <li>유효기간이 지나면 계정과 체험 데이터에 접근할 수 없습니다.</li>
                     </ul>
-                    <span class="guest-mode-reason" data-guest-mode-reason="local"></span>
-                </label>
-                <label class="guest-mode-card is-disabled" data-guest-mode-card="database">
-                    <input type="radio" name="guestMode" value="database" disabled>
-                    <span class="guest-mode-copy"><strong>DB 저장 체험</strong><small>Oracle 기반 전체 제품 흐름</small></span>
-                    <span class="guest-mode-badge">만료형 DB</span>
-                    <ul>
-                        <li>Oracle에 설문·배포·응답을 만료 전까지 저장</li>
-                        <li>전체 문항 유형·다국어·분석 흐름 체험</li>
-                        <li>맞춤 보고서 레이아웃은 현재 브라우저 Beta 저장</li>
-                        <li>외부 발송은 화면 체험만 제공하며 실제 전송하지 않음</li>
-                    </ul>
-                    <span class="guest-mode-reason" data-guest-mode-reason="database">사용 가능 여부를 확인하고 있습니다.</span>
-                </label>
-            </fieldset>
-            <p class="guest-capability-status" id="guestCapabilityStatus" data-guest-capability-status role="status">게스트 모드 제공 상태를 확인하고 있습니다.</p>
-            <button class="button button-primary button-block" type="button" data-guest-start>선택한 모드로 시작</button>
-            <small>DB 저장 체험도 운영 회원 계정이나 영구 보관 서비스가 아니며, 실제 연락처와 민감정보를 입력하면 안 됩니다.</small>
+                    <span class="guest-account-reason" data-guest-account-reason>사용 가능 여부를 확인하고 있습니다.</span>
+                </article>
+                <p class="guest-capability-status" id="guestCapabilityStatus" data-guest-capability-status role="status">DB 게스트 계정 발급 상태를 확인하고 있습니다.</p>
+                <button class="button button-primary button-block" type="button" data-guest-start disabled>DB 게스트 계정 발급</button>
+                <small>실제 연락처나 민감정보를 입력하지 마세요. 외부 메시지 발송은 제공자 설정에 따라 제한됩니다.</small>
+            </div>
+            <section class="guest-credential-result" data-guest-credentials hidden aria-labelledby="guestCredentialTitle">
+                <span class="guest-credential-success" aria-hidden="true">✓</span>
+                <h3 id="guestCredentialTitle" tabindex="-1" data-guest-credential-title>DB 게스트 계정이 발급되었습니다</h3>
+                <p><strong>초기 비밀번호는 이 화면을 닫으면 다시 표시되지 않습니다.</strong> 지금 안전한 곳에 복사해 주세요.</p>
+                <dl class="guest-credential-list">
+                    <div><dt>아이디</dt><dd><code data-guest-login-id></code><button class="button button-small" type="button" data-copy-guest-credential="loginId">복사</button></dd></div>
+                    <div><dt>초기 비밀번호</dt><dd><code data-guest-initial-password></code><button class="button button-small" type="button" data-copy-guest-credential="initialPassword">복사</button></dd></div>
+                    <div><dt>유효기간</dt><dd><span data-guest-expires-at></span></dd></div>
+                </dl>
+                <button class="button button-secondary button-block" type="button" data-copy-guest-credential="all">자격정보 모두 복사</button>
+                <div class="guest-credential-actions">
+                    <button class="button button-primary" type="button" data-guest-login>로그인 화면으로</button>
+                </div>
+            </section>
         </section>
         <form class="auth-panel" data-auth-panel="login" hidden data-login-form>
-            <label>아이디<input type="text" name="loginId" autocomplete="username" required placeholder="가입한 아이디"></label>
+            <label>아이디<input type="text" name="loginId" autocomplete="username" required placeholder="회원 또는 quest 계정 아이디"></label>
             <label>비밀번호<input type="password" name="password" autocomplete="current-password" required minlength="8" placeholder="8자 이상"></label>
             <button class="button button-primary button-block" type="submit">로그인</button>
         </form>
@@ -147,10 +148,10 @@
 
     <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="true"></div>
 
-    <script src="/frontend/config/app.config.js"></script>
-    <script src="/frontend/config/menu.config.js"></script>
-    <script src="/frontend/config/help.config.js"></script>
-    <script src="/frontend/js/common.js"></script>
-    <script src="/frontend/js/app.js"></script>
+    <script src="/frontend/config/app.config.js?v=20260811.3"></script>
+    <script src="/frontend/config/menu.config.js?v=20260811.3"></script>
+    <script src="/frontend/config/help.config.js?v=20260811.3"></script>
+    <script src="/frontend/js/common.js?v=20260811.3"></script>
+    <script src="/frontend/js/app.js?v=20260811.3"></script>
 </body>
 </html>

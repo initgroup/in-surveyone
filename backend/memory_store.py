@@ -4,7 +4,6 @@ import hashlib
 import json
 import math
 import re
-import secrets
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass
@@ -25,6 +24,8 @@ from backend.models import (
     AuthSessionView,
     DashboardView,
     GuestMode,
+    GuestCredentialView,
+    GuestProvisionView,
     LoginRequest,
     PublicSurvey,
     PublishRequest,
@@ -53,9 +54,12 @@ from backend.models import (
     UserRole,
     UserView,
     _normalize_locale,
+    validate_translation_references,
+    validate_publish_ready_sections,
 )
 from backend.security import (
     hash_password,
+    new_initial_password,
     new_session_token,
     session_token_hash,
     validate_idempotency_key,
@@ -64,6 +68,18 @@ from backend.security import (
 
 
 REPORT_TIMEZONE = timezone(timedelta(hours=9), name="Asia/Seoul")
+
+
+def report_cutoff_exclusive(cutoff_date: date | None) -> datetime | None:
+    if cutoff_date is None:
+        return None
+    if cutoff_date == date.max:
+        raise DomainValidationError("cutoffDate must be earlier than 9999-12-31.")
+    return datetime.combine(
+        cutoff_date + timedelta(days=1),
+        datetime.min.time(),
+        tzinfo=REPORT_TIMEZONE,
+    ).astimezone(timezone.utc)
 
 
 def utcnow() -> datetime:
@@ -196,6 +212,7 @@ class MemoryStore:
         self._idempotency_receipts: dict[
             tuple[str, str, str], tuple[str, ResponseReceipt]
         ] = {}
+        self._guest_login_sequence = 0
         self._seed()
 
     @staticmethod
@@ -298,39 +315,47 @@ class MemoryStore:
     def create_guest(
         self,
         display_name: str,
-        mode: GuestMode = GuestMode.LOCAL,
-    ) -> tuple[str, AuthSessionView]:
-        if mode != GuestMode.LOCAL:
-            raise DomainValidationError("The in-process store only supports local guests.")
+        mode: GuestMode = GuestMode.DATABASE,
+    ) -> GuestProvisionView:
+        if mode != GuestMode.DATABASE:
+            raise DomainValidationError("Only database guest mode is supported.")
         with self._lock:
             now = utcnow()
             expires_at = now + timedelta(hours=self.settings.guest_project_ttl_hours)
-            suffix = secrets.token_hex(4)
+            self._guest_login_sequence += 1
+            login_id = f"quest{self._guest_login_sequence:03d}"
+            initial_password = new_initial_password()
             tenant = TenantRecord(
                 id=new_id("tenant"),
-                name=f"게스트 체험공간 {suffix.upper()}",
+                name=f"게스트 체험공간 {login_id.upper()}",
                 created_at=now,
                 expires_at=expires_at,
             )
             user = UserRecord(
                 id=new_id("user"),
                 tenant_id=tenant.id,
-                login_id=f"guest-{suffix}",
+                login_id=login_id,
                 name=display_name.strip() or "게스트",
                 email=None,
                 organization_name=tenant.name,
-                password_hash=None,
+                password_hash=hash_password(initial_password),
                 role=UserRole.GUEST,
                 is_guest=True,
-                guest_mode=GuestMode.LOCAL,
+                guest_mode=mode,
                 created_at=now,
                 tenant_expires_at=expires_at,
             )
             self._tenants[tenant.id] = tenant
             self._users[user.id] = user
-            return self._create_session_locked(
-                user,
+            self._users_by_login[login_id] = user.id
+            return GuestProvisionView(
+                user=self._user_view(user),
                 expires_at=expires_at,
+                guest_credential=GuestCredentialView(
+                    login_id=login_id,
+                    initial_password=initial_password,
+                    expires_at=expires_at,
+                ),
             )
 
     def signup(self, request: SignupRequest) -> tuple[str, AuthSessionView]:
@@ -369,11 +394,21 @@ class MemoryStore:
         with self._lock:
             user_id = self._users_by_login.get(self._normalize_login(request.login_id))
             user = self._users.get(user_id or "")
-            if user is None or user.is_guest or not verify_password(
+            if (
+                user is None
+                or (
+                    user.tenant_expires_at is not None
+                    and user.tenant_expires_at <= utcnow()
+                )
+                or not verify_password(
                 request.password, user.password_hash
+                )
             ):
                 raise AuthenticationError("아이디 또는 비밀번호가 올바르지 않습니다.")
-            return self._create_session_locked(user)
+            return self._create_session_locked(
+                user,
+                expires_at=user.tenant_expires_at if user.is_guest else None,
+            )
 
     def _create_session_locked(
         self,
@@ -382,8 +417,13 @@ class MemoryStore:
         expires_at: datetime | None = None,
     ) -> tuple[str, AuthSessionView]:
         now = utcnow()
-        expires_at = expires_at or now + timedelta(
+        session_expires_at = now + timedelta(
             seconds=self.settings.session_ttl_seconds
+        )
+        expires_at = (
+            min(expires_at, session_expires_at)
+            if expires_at is not None
+            else session_expires_at
         )
         raw_token = new_session_token()
         token_hash = session_token_hash(raw_token, self.settings.session_secret)
@@ -428,14 +468,14 @@ class MemoryStore:
 
     def create_survey(self, user: UserRecord, request: SurveyCreateRequest) -> SurveyDetail:
         with self._lock:
-            if user.guest_mode == GuestMode.LOCAL:
+            if user.is_guest:
                 owned_count = sum(
                     survey.tenant_id == user.tenant_id and survey.owner_id == user.id
                     for survey in self._surveys.values()
                 )
-                if owned_count >= self.settings.local_guest_max_projects:
+                if owned_count >= self.settings.db_guest_max_projects:
                     raise DomainValidationError(
-                        "Local guest project limit has been reached."
+                        "Database guest project limit has been reached."
                     )
             template = None
             template_code = request.template_code or request.template_id
@@ -462,11 +502,11 @@ class MemoryStore:
                 else [SurveySection(title="설문 문항", questions=[])]
             )
             self._validate_global_question_ids(sections)
-            if user.guest_mode == GuestMode.LOCAL and sum(
+            if user.is_guest and sum(
                 len(section.questions) for section in sections
-            ) > self.settings.local_guest_max_questions:
+            ) > self.settings.db_guest_max_questions:
                 raise DomainValidationError(
-                    "Local guest question limit has been exceeded."
+                    "Database guest question limit has been exceeded."
                 )
 
             now = utcnow()
@@ -553,6 +593,7 @@ class MemoryStore:
                 updated_at=now,
                 published_at=None,
             )
+            self._validate_translation_targets(survey.sections, survey.translations)
             self._surveys[survey.id] = survey
             self._responses[survey.id] = []
             return self._detail_locked(survey)
@@ -724,6 +765,21 @@ class MemoryStore:
             survey = self._owned_survey_locked(user, survey_id)
             self._validate_source_locale_promotion(survey, request)
             updates = request.model_fields_set
+            proposed_sections = (
+                [SurveySection(title="설문 문항", questions=request.questions)]
+                if "questions" in updates and request.questions is not None
+                else request.sections
+                if "sections" in updates and request.sections is not None
+                else survey.sections
+            )
+            proposed_translations = (
+                request.translations
+                if "translations" in updates and request.translations is not None
+                else survey.translations
+            )
+            self._validate_translation_targets(
+                proposed_sections, proposed_translations
+            )
             if "title" in updates and request.title is not None:
                 survey.title = request.title
             if "description" in updates:
@@ -785,11 +841,11 @@ class MemoryStore:
                 raise DomainValidationError(
                     "translations contain a locale not listed in supportedLocales."
                 )
-            if user.guest_mode == GuestMode.LOCAL and sum(
+            if user.is_guest and sum(
                 len(section.questions) for section in survey.sections
-            ) > self.settings.local_guest_max_questions:
+            ) > self.settings.db_guest_max_questions:
                 raise DomainValidationError(
-                    "Local guest question limit has been exceeded."
+                    "Database guest question limit has been exceeded."
                 )
             survey.revision += 1
             survey.updated_at = utcnow()
@@ -810,48 +866,26 @@ class MemoryStore:
         survey: SurveyRecord,
         request: PublishRequest,
     ) -> PublishResult:
-        answerable_questions = [
-            question
-            for section in survey.sections
-            for question in section.questions
-            if question.type != QuestionType.TEXT
-        ]
-        if not answerable_questions:
-            raise DomainValidationError("배포하려면 응답 가능한 문항이 하나 이상 필요합니다.")
-
-        local_prefix = "local-guest-"
-        owner = self._users.get(survey.owner_id)
-        is_local_guest = owner is not None and owner.guest_mode == GuestMode.LOCAL
-        requested_slug = request.slug
-        if is_local_guest and requested_slug and not requested_slug.startswith(local_prefix):
-            requested_slug = f"{local_prefix}{requested_slug}"
-        if not is_local_guest and requested_slug and requested_slug.startswith(local_prefix):
+        if not survey.title.strip():
             raise DomainValidationError(
-                "The local-guest- URL namespace is reserved for local guest surveys."
+                "The survey requires a title before publishing."
             )
+        try:
+            validate_publish_ready_sections(survey.sections)
+        except ValueError as exc:
+            raise DomainValidationError(str(exc)) from exc
+
+        owner = self._users.get(survey.owner_id)
+        is_guest_demo = owner is not None and owner.is_guest
+        requested_slug = request.slug
 
         if survey.slug:
-            if is_local_guest and not survey.slug.startswith(local_prefix):
-                # Local data is process-scoped, so an in-process legacy route can
-                # be migrated safely without a durable redirect dependency.
-                self._slug_routes.pop(survey.slug, None)
-                survey.slug = self._unique_slug_locked(
-                    f"{local_prefix}{survey.slug}", survey.id
-                )
             if requested_slug and requested_slug != survey.slug:
                 raise ConflictError("배포된 설문의 URL 식별자는 변경할 수 없습니다.")
             slug = survey.slug
         else:
             slug_base = requested_slug or survey.title
-            if is_local_guest and not slug_base.startswith(local_prefix):
-                slug_base = f"{local_prefix}{slug_base}"
             slug = self._unique_slug_locked(slug_base, survey.id)
-        if is_local_guest and not slug.startswith(local_prefix):
-            slug = self._unique_slug_locked(f"{local_prefix}{slug}", survey.id)
-        elif not is_local_guest and slug.startswith(local_prefix):
-            slug = self._unique_slug_locked(
-                f"persistent-{survey.id.split('_')[-1][:12]}", survey.id
-            )
 
         now = utcnow()
         version = len(survey.versions) + 1
@@ -875,10 +909,10 @@ class MemoryStore:
             },
             languages=survey.languages.model_copy(deep=True),
             published_at=now,
-            guest_demo=is_local_guest,
+            guest_demo=is_guest_demo,
             experience_expires_at=(
                 self._tenants[survey.tenant_id].expires_at
-                if is_local_guest
+                if is_guest_demo
                 else None
             ),
         )
@@ -962,13 +996,12 @@ class MemoryStore:
                 raise ConflictError("아직 응답 기간이 시작되지 않았습니다.")
             if public_survey.settings.closes_at and now > public_survey.settings.closes_at:
                 raise ConflictError("설문 응답 기간이 종료되었습니다.")
-            if len(self._responses.get(survey.id, [])) >= self.settings.local_guest_max_responses and any(
-                user.tenant_id == survey.tenant_id
-                and user.guest_mode == GuestMode.LOCAL
+            if len(self._responses.get(survey.id, [])) >= self.settings.db_guest_max_responses and any(
+                user.tenant_id == survey.tenant_id and user.is_guest
                 for user in self._users.values()
             ):
                 raise ConflictError(
-                    "Local guest response limit has been reached."
+                    "Database guest response limit has been reached."
                 )
             if public_survey.settings.one_response_per_respondent and request.respondent_key:
                 if any(
@@ -1045,11 +1078,8 @@ class MemoryStore:
                 if latest_version and record.survey_version == latest_version.version
             ]
             if cutoff_date is not None:
-                cutoff_exclusive = datetime.combine(
-                    cutoff_date + timedelta(days=1),
-                    datetime.min.time(),
-                    tzinfo=REPORT_TIMEZONE,
-                ).astimezone(timezone.utc)
+                cutoff_exclusive = report_cutoff_exclusive(cutoff_date)
+                assert cutoff_exclusive is not None
                 records = [
                     record
                     for record in records
@@ -1183,6 +1213,15 @@ class MemoryStore:
         ]
         if len(identifiers) != len(set(identifiers)):
             raise DomainValidationError("설문 전체에서 문항 ID는 중복될 수 없습니다.")
+
+    @staticmethod
+    def _validate_translation_targets(
+        sections: list[SurveySection], translations: dict[str, SurveyTranslation]
+    ) -> None:
+        try:
+            validate_translation_references(translations, sections)
+        except ValueError as exc:
+            raise DomainValidationError(str(exc)) from exc
 
     def _unique_slug_locked(self, value: str, survey_id: str) -> str:
         normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()

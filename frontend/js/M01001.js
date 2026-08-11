@@ -8,27 +8,61 @@
         async init(context) {
             this.context = context;
             this.root = context.root;
-            this.root.querySelector("[data-greeting]").textContent = `${context.user?.name || "담당자"}님, 안녕하세요.`;
+            this.isVisitor = !context.user;
+            this.root.querySelector("[data-greeting]").textContent = this.isVisitor
+                ? "IN-SURVEYONE에 오신 것을 환영합니다."
+                : `${context.user.name || "담당자"}님, 안녕하세요.`;
+            this.root.querySelector("[data-visitor-start]").hidden = !this.isVisitor;
             this.bind();
             await this.load();
         },
 
         bind() {
             this.onClick = (event) => {
-                if (event.target.closest("[data-dashboard-create], [data-dashboard-templates]")) this.context.navigate("M02002");
-                if (event.target.closest("[data-dashboard-all]")) this.context.navigate("M02001");
-                if (event.target.closest("[data-dashboard-reports]")) this.context.navigate("M05001");
+                const guestStart = event.target.closest("[data-start-guest]");
+                if (guestStart) this.context.openAuth("guest");
+                const authStart = event.target.closest("[data-start-auth]");
+                if (authStart) this.context.openAuth(authStart.dataset.startAuth);
+                if (event.target.closest("[data-dashboard-create], [data-dashboard-templates]")) this.openWorkspace("M02002");
+                if (event.target.closest("[data-dashboard-all]")) this.openWorkspace("M02001");
+                if (event.target.closest("[data-dashboard-reports]")) this.openWorkspace("M05001");
                 if (event.target.closest("[data-dashboard-refresh]")) this.load();
-                if (event.target.closest("[data-blank-survey]")) this.createBlankSurvey();
+                if (event.target.closest("[data-blank-survey]")) {
+                    if (this.isVisitor) this.context.openAuth("guest"); else this.createBlankSurvey();
+                }
                 const project = event.target.closest("[data-open-survey]");
                 if (project) this.context.navigate("M02003", { surveyId: project.dataset.openSurvey });
                 const template = event.target.closest("[data-template-id]");
-                if (template) this.context.navigate("M02002", { templateId: template.dataset.templateId });
+                if (template) {
+                    if (this.isVisitor) this.context.openAuth("guest");
+                    else this.context.navigate("M02002", { templateId: template.dataset.templateId });
+                }
             };
             this.root.addEventListener("click", this.onClick);
         },
 
+        openWorkspace(route) {
+            if (this.isVisitor) this.context.openAuth("guest");
+            else this.context.navigate(route);
+        },
+
         async load() {
+            if (this.isVisitor) {
+                this.renderMetrics({ drafts: 0, active: 0, responses: 0, closed: 0 });
+                this.renderRecent([]);
+                try {
+                    const [templatesPayload] = await Promise.all([
+                        this.context.api.get("/api/templates"),
+                        this.configureDatabaseGuestEntry()
+                    ]);
+                    const templates = templatesPayload.items || templatesPayload.templates || templatesPayload;
+                    this.renderTemplates(Array.isArray(templates) ? templates.slice(0, 3) : []);
+                } catch (error) {
+                    this.renderTemplates([]);
+                    console.warn("공개 템플릿을 불러오지 못했습니다.", error);
+                }
+                return;
+            }
             try {
                 const [dashboard, templatesPayload] = await Promise.all([
                     this.context.api.get("/api/dashboard"),
@@ -44,6 +78,20 @@
                 this.renderTemplates([]);
                 this.context.toast(error.message, "error");
             }
+        },
+
+        async configureDatabaseGuestEntry() {
+            const capabilities = await this.context.loadGuestCapabilities();
+            const database = capabilities?.modes?.find((mode) => mode.mode === "database");
+            const card = this.root.querySelector("[data-visitor-database-card]");
+            const button = this.root.querySelector("[data-visitor-database-button]");
+            const status = this.root.querySelector("[data-visitor-database-status]");
+            const available = Boolean(database?.available);
+            card?.classList.toggle("is-disabled", !available);
+            if (button) button.disabled = !available;
+            if (status) status.textContent = available
+                ? "현재 발급할 수 있습니다. 유효기간과 이용 한도는 발급 화면에서 확인하세요."
+                : `현재 발급할 수 없습니다. ${database?.reason || "Oracle 연결 상태를 확인해 주세요."}`;
         },
 
         renderMetrics(summary) {
@@ -66,7 +114,11 @@
         renderRecent(items) {
             const host = this.root.querySelector("[data-recent-surveys]");
             if (!items.length) {
-                host.innerHTML = `<div class="dashboard-inline-empty"><span>아직 만든 설문이 없습니다.</span><button class="button button-small button-secondary" data-dashboard-create>첫 설문 만들기</button></div>`;
+                const message = this.isVisitor
+                    ? "현재는 둘러보기 상태입니다. 위에서 시작 방식을 선택하면 내 프로젝트가 여기에 표시됩니다."
+                    : "아직 만든 설문이 없습니다.";
+                const action = this.isVisitor ? "체험 시작하기" : "첫 설문 만들기";
+                host.innerHTML = `<div class="dashboard-inline-empty"><span>${message}</span><button class="button button-small button-secondary" data-dashboard-create>${action}</button></div>`;
                 return;
             }
             host.innerHTML = items.slice(0, 4).map((item) => {
@@ -107,6 +159,7 @@
             this.root?.removeEventListener("click", this.onClick);
             this.root = null;
             this.context = null;
+            this.isVisitor = false;
         }
     };
 })();

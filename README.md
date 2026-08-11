@@ -24,7 +24,7 @@ Copy-Item .env.example .env
 
 ## 현재 MVP 구현 범위
 
-현재 소스는 회원가입·로그인, local/DB guest 체험, 템플릿 기반 프로젝트 생성, 문항/섹션·다국어 편집, 불변 버전 배포, `/s/{slug}` 모바일 응답, 원자료 조회·CSV, 기본형 집계와 맞춤형 보고서 레이아웃 초안까지 한 흐름으로 실행할 수 있습니다.
+현재 소스는 회원가입·로그인, Oracle DB guest 계정 체험, 템플릿 기반 프로젝트 생성, 문항/섹션·다국어 편집, 불변 버전 배포, `/s/{slug}` 모바일 응답, 원자료 조회·CSV, 기본형 집계와 맞춤형 보고서 레이아웃 초안까지 한 흐름으로 실행할 수 있습니다.
 
 - 이메일 화면은 수신자와 본문 작성 흐름의 데모이며 실제 메일을 전송하지 않습니다.
 - 문자·카카오·QR provider는 adapter 연결 전 상태를 화면에 명시합니다.
@@ -36,7 +36,7 @@ Copy-Item .env.example .env
 - Python 3.12, FastAPI, Uvicorn
 - 외부 프런트엔드 프레임워크와 번들러를 필수 조건으로 두지 않는 Vanilla HTML/CSS/JavaScript SPA
 - REST API와 정적 SPA를 동일 FastAPI 애플리케이션에서 제공
-- 기본 `memory` 저장소와 운영용 `oracle` 저장소를 같은 도메인 인터페이스 뒤에 분리
+- runtime은 Oracle 저장소만 사용하며 `memory` 저장소는 자동화 테스트 fixture로만 유지
 - Oracle thin mode 우선, 필요한 환경에서만 Instant Client/Wallet을 별도 설정
 - 반응형 공개 설문, 키보드 접근성, reduced-motion, 모바일 safe area 기본 지원
 - 새 설치용 DDL과 기존 설치 업그레이드용 ALT SQL을 함께 관리
@@ -83,9 +83,9 @@ Tenant(회원사)
 | 01 | `M01001.html` | 대시보드 | 작성·진행·종료 현황, 최근 프로젝트, 빠른 시작 |
 | 02 | `M02001.html` | 설문 프로젝트 | 프로젝트 목록, 상태, 복제, 버전과 권한 |
 | 02 | `M02002.html` | 설문 템플릿 | 분야별 템플릿 탐색과 미리보기 |
-| 02 | `M02003.html` | 설문 제작기 | 문항·섹션 편집, 조건 분기, 미리보기, 저장·확정 |
+| 02 | `M02003.html` | 설문 제작기 | 문항·섹션 편집, 조건 분기, 미리보기, 초안 저장·배포 준비 |
 | 03 | `M03001.html` | 배포·발송 | URL, QR, embed, 수신자와 채널별 발송 이력 |
-| 04 | `M04001.html` | 원자료 응답 | 응답 검색, 상태·품질 확인, CSV/XLSX 다운로드 |
+| 04 | `M04001.html` | 원자료 응답 | 검색형 설문 선택, 섹션별 표시 열, 응답 상세, 복수응답 분석형·원본형 CSV |
 | 05 | `M05001.html` | 기본형 보고서 | 빈도·교차·기술통계와 표준 차트 |
 | 05 | `M05002.html` | 맞춤형 보고서 | 지표·필터·표·차트 배치와 보고서 실행 이력 |
 | 06 | `M06001.html` | 스킨·설정 | 프로젝트별 테마, 로고, 공개 문구, 조직 설정 |
@@ -167,7 +167,7 @@ Oracle에서는 `INIT$SVY_TB_LANGUAGE`가 언어 카탈로그와 LTR/RTL 방향�
 
 ## 저장 모드
 
-`.env`의 `DB_MODE`로 선택합니다. `initgroup-members`와 동일하게 `local`은 로컬 Oracle, `cloud`는 Oracle Cloud를 사용합니다. 테스트와 브라우저 local guest만 내부 memory repository를 사용합니다.
+`.env`의 `DB_MODE`로 Oracle 연결 profile을 선택합니다. `initgroup-members`와 동일하게 `local`은 로컬 Oracle, `cloud`는 Oracle Cloud를 사용합니다. 두 모드 모두 회원·guest·설문·응답을 Oracle에 저장하며 runtime에서 memory repository로 전환하지 않습니다. memory repository는 자동화된 repository 계약 테스트 전용입니다.
 
 | 모드 | 용도 | 특성 |
 |---|---|---|
@@ -193,6 +193,7 @@ Oracle 설정은 공통 `DB_*` 키를 사용합니다. 비밀번호와 Wallet은
 | `INIT_ALLOWED_ORIGINS` | 허용할 실제 HTTPS origin. 여러 개면 쉼표로 구분 |
 | `INIT_SECRET_KEY` | 배포 서비스가 생성한 충분히 긴 무작위 secret |
 | `INIT_COOKIE_SECURE` | `Y` |
+| `INIT_COOKIE_SAMESITE` | 동일 도메인 서비스는 `lax` |
 | `DB_MODE` | `cloud` |
 | `DB_USER_CLD` | Oracle 전용 schema 계정 |
 | `DB_PASSWORD_CLD` | Oracle 비밀번호 secret |
@@ -201,9 +202,20 @@ Oracle 설정은 공통 `DB_*` 키를 사용합니다. 비밀번호와 Wallet은
 | `DB_WALLET_PATH` | 배포 secret files가 위치한 디렉터리. Render는 보통 `/etc/secrets` |
 | `DB_WALLET_PASSWORD` | 해당 Wallet에서 요구할 때만 secret으로 설정 |
 
-`DB_POOL_*`, timeout, rate limit, guest quota와 발송 provider 키는 `.env.example`의 기본값을 검토해 운영량에 맞게 선택적으로 조정합니다.
+로컬 `http://127.0.0.1:8300` 실행에서는 `INIT_COOKIE_SECURE=false`를 사용합니다. Render와 같은 HTTPS 운영 환경에서는 `INIT_COOKIE_SECURE=true`가 필수이며, 애플리케이션은 운영 HTTP 또는 비보안 쿠키 설정을 시작 단계에서 거부합니다.
+
+`SURVEYONE_LOAD_DOTENV=false`는 Render에서 로컬 파일 설정을 읽지 않도록 하는 선택적 방어 설정입니다. `DB_POOL_*`, timeout, rate limit, guest quota와 발송 provider 키는 `.env.example`의 기본값을 검토해 운영량에 맞게 선택적으로 조정합니다.
 
 Wallet 파일(`tnsnames.ora`, `sqlnet.ora`, `cwallet.sso` 및 Wallet이 요구하는 인증 파일)은 Git이 아니라 배포 서비스의 Secret Files로 제공해야 합니다.
+
+### QR 공개 주소
+
+배포 센터의 QR은 임의 미리보기 패턴이 아니라 서버가 `qrcode` 라이브러리로 생성한 표준 SVG입니다. 오류 복원 수준 Q와 4모듈 여백을 적용하며, QR에 들어가는 주소는 `SURVEYONE_BASE_URL + /s/{slug}`입니다.
+
+- Render에서는 `SURVEYONE_BASE_URL=https://in-surveyone.onrender.com`처럼 외부에서 접속 가능한 실제 HTTPS origin을 설정합니다.
+- `127.0.0.1`과 `localhost`는 휴대폰 자기 자신을 가리키므로 휴대폰 QR 시험에 사용할 수 없습니다.
+- 로컬 휴대폰 시험은 `SURVEYONE_HOST=0.0.0.0`, `SURVEYONE_BASE_URL=http://PC-LAN-IP:8300`으로 실행하고 같은 origin을 `INIT_ALLOWED_ORIGINS`에 추가합니다. PC와 휴대폰은 같은 Wi-Fi에 있어야 하며 Windows 방화벽에서 TCP 8300 접근을 허용해야 합니다.
+- Git/Render 빌드는 `requirements.txt`의 `qrcode==8.2`를 설치하므로 별도 CDN이나 외부 QR API가 필요하지 않습니다.
 
 ## DDL/ALT 정책
 
@@ -211,7 +223,7 @@ Wallet 파일(`tnsnames.ora`, `sqlnet.ora`, `cwallet.sso` 및 Wallet이 요구�
 
 - IN-SURVEYONE이 생성하는 모든 Oracle object는 공유 schema의 다른 제품과 충돌하지 않도록 `INIT$SVY_`로 시작합니다.
 - DDL은 빈 스키마에 현재 최종 구조를 생성하는 기준본이며 같은 파일을 다시 실행해도 이미 존재하는 object 때문에 실패하지 않습니다.
-- ALT는 기존 schema를 최종 구조로 올리는 idempotent 이력입니다. ALT가 새로 만드는 테이블의 원문과 컬럼 순서는 DDL 기준본과 같습니다.
+- ALT는 기존 schema를 최종 구조로 올리는 idempotent 이력입니다. ALT가 새로 만드는 테이블의 원문과 컬럼 순서는 DDL 기준본과 같습니다. 테이블 컬럼이 변경되는 migration은 Oracle 26ai에서 기존 데이터를 보존한 채 최종 `USER_TAB_COLUMNS.COLUMN_ID` 순서도 DDL과 일치시키고 불일치 시 성공으로 종료하지 않습니다.
 - 테이블·컬럼·인덱스·제약조건 변경은 같은 작업에서 DDL 최종본과 ALT 증분을 함께 수정합니다.
 - ALT에는 무조건적인 `DROP`, `TRUNCATE`, 데이터 초기화를 넣지 않습니다. 파괴적 변경은 별도 승인·백업·복구 계획이 필요합니다.
 - `SURVEYONE_SYSTEM_DROP.sql`은 `INIT$SVY_` object만 제거하고 `SURVEYONE_SYSTEM_TRUC.sql`은 object를 유지한 채 프로젝트 테이블 데이터만 비웁니다. 둘 다 파괴적 관리 스크립트이므로 백업·대상 schema 확인 후 운영자가 명시적으로 실행해야 하며 애플리케이션이나 검증 스크립트가 자동 실행하지 않습니다. 다른 schema의 FK·의존 객체까지 사전 확인하도록 DBA catalog 읽기 권한이 없으면 안전하게 중단합니다.
@@ -229,7 +241,7 @@ CONNECT surveyone_app@service_name
 @database/SURVEYONE_SYSTEM_DDL.sql
 ```
 
-이미 이전 IN-SURVEYONE schema가 있으면 먼저 검증된 백업을 만든 뒤 DDL 대신 `SURVEYONE_SYSTEM_ALT.sql`을 실행합니다. 실행 후 `USER_OBJECTS`, `USER_TABLES`, `USER_TAB_COLUMNS`, `USER_CONSTRAINTS`에서 `INIT$SVY_` object와 invalid object를 확인하고 애플리케이션 health/API smoke test를 수행합니다. `DROP`과 `TRUC`는 설치·upgrade 순서에 포함되지 않습니다.
+이미 이전 IN-SURVEYONE schema가 있으면 먼저 검증된 백업을 만든 뒤 DDL 대신 `SURVEYONE_SYSTEM_ALT.sql`을 실행합니다. 이번 guest 계정 구조에는 `questNNN` 발급용 `INIT$SVY_SQ_GUEST_LOGIN` sequence가 필요하므로 기존 schema도 ALT를 한 번 실행해야 합니다. 실행 후 `USER_OBJECTS`, `USER_TABLES`, `USER_TAB_COLUMNS`, `USER_CONSTRAINTS`에서 `INIT$SVY_` object와 invalid object를 확인하고 애플리케이션 health/API smoke test를 수행합니다. `DROP`과 `TRUC`는 설치·upgrade 순서에 포함되지 않습니다.
 
 ## 응답과 보고서 재현성
 
@@ -242,20 +254,24 @@ CONNECT surveyone_app@service_name
 
 ## 회원과 guest 체험
 
-운영 목적의 기관 명의 서비스와 장기 보존은 회원가입과 tenant 소속이 필요합니다. 비회원은 시작할 때 다음 체험 방식을 직접 선택합니다.
+운영 목적의 기관 명의 서비스와 장기 보존은 회원가입과 tenant 소속이 필요합니다. 인증 전에도 메인 대시보드를 둘러볼 수 있고, 실제 작업을 시작할 때 Oracle guest 신청, 기존 계정 로그인 또는 회원가입을 선택합니다.
 
-| 선택 | 저장 위치와 수명 | 체험 범위 | 선택 전 안내 |
+| 계정 | 저장 위치와 수명 | 사용 범위 | 안내 |
 |---|---|---|---|
-| 로컬 체험 (`local`) | 서버 프로세스 memory. 재시작·재배포 시 사라질 수 있고 기본 만료 정책 적용 | 샘플 템플릿, 제한된 프로젝트·문항, 편집·모바일 미리보기, 제한된 임시 URL과 요약 보고서 | 가장 빠르고 DB 계정을 만들지 않지만 브라우저를 닫거나 서버가 재시작되면 작업을 잃을 수 있습니다. 외부 발송, 기관 로고, 대량 원자료, 영구 맞춤 보고서는 사용할 수 없습니다. 민감정보를 입력하면 안 됩니다. |
-| DB 저장 체험 (`database`) | Oracle의 격리된 `DB_GUEST` tenant/user. 만료 시각과 capability를 DB에 기록 | 회원용 설문 작성·다국어·배포·응답·원자료·기본 보고서 흐름을 체험. 맞춤 보고서 레이아웃은 현재 브라우저 Beta 저장이며 외부 발송은 adapter 연결 전 화면 체험 | 재접속·서버 재시작에도 만료 전까지 접근할 수 있지만 운영 회원 계정이나 영구 보존이 아닙니다. tenant별 quota·만료·데모 표시가 적용되고 provider secret·전송 adapter·운영 승인 없이는 실제 이메일·문자·카카오 발송을 하지 않습니다. |
+| Oracle guest (`questNNN`) | 신청할 때 Oracle에 독립 `DB_GUEST` tenant/user를 만들고 만료 시각과 capability를 기록 | 회원과 동일한 설문 작성·다국어·임시저장·배포·응답·원자료·기본 보고서 흐름을 유한 quota 안에서 체험 | `quest001` 형태의 아이디와 초기 비밀번호를 한 번만 표시합니다. 복사 후 일반 로그인 화면에서 다시 로그인할 수 있으며, 만료 이후에는 접근할 수 없습니다. 운영 회원이나 영구 보존 계정이 아니므로 민감정보를 입력하면 안 됩니다. |
+| 기관 회원 | Oracle의 기관 tenant/user에 장기 저장 | 승인된 역할과 provider 설정 범위에서 운영 기능 사용 | 회원가입과 기관 정책을 적용하며 guest tenant의 응답·수신자 개인정보를 자동 승계하지 않습니다. |
 
-- DB 저장 체험은 Oracle 모드가 정상이고 관리자가 허용한 경우에만 선택할 수 있습니다. 사용할 수 없을 때 화면은 사유를 표시하고 local을 몰래 DB에 저장하거나 Oracle 실패를 memory로 fallback하지 않습니다.
-- local guest는 어떤 경우에도 Oracle에 tenant, user, session, 설문 또는 응답을 기록하지 않습니다.
+- guest 신청은 Oracle pool과 필수 schema가 정상이고 관리자가 허용한 경우에만 사용할 수 있습니다. Oracle 장애를 memory 저장으로 우회하지 않습니다.
+- guest 아이디는 `INIT$SVY_` sequence로 동시성 안전하게 발급하며 `quest001` 이후에도 최소 3자리 형식을 유지합니다. 실제 Oracle DB 사용자 계정을 생성하는 것이 아니라 애플리케이션 로그인 계정을 생성합니다.
+- 초기 비밀번호는 신청 응답에서 한 번만 보여 주고 hash만 DB에 저장합니다. 인증은 아이디·비밀번호와 불투명 HttpOnly cookie를 사용하며 Windows session, device fingerprint 또는 예측 가능한 아이디만으로 사용자를 판별하지 않습니다.
+- 각 guest는 별도 tenant/user를 가지며 설문·버전·배포·응답·보고서 CRUD는 항상 tenant 소유권을 조건으로 조회합니다. `quest001`은 `quest010`의 object ID를 알아도 조회하거나 변경할 수 없습니다.
 - DB guest는 `INIT$SVY_TB_GUEST_CAP`의 만료·capability 정책으로 회원 tenant와 격리합니다.
 - `INIT$SVY_FN_GUEST_CAN`은 tenant·user·기능 코드와 만료시각을 기준으로 DB guest 권한을 `Y/N`으로 판정합니다.
 - 가입 전환 시 사용자가 확인한 설문 구조만 새 tenant로 복사하며 수신자와 응답 개인정보를 자동 이전하지 않습니다.
 
-기본 체험 보존시간과 local 제한은 각각 `SURVEYONE_GUEST_PROJECT_TTL_HOURS`, `SURVEYONE_LOCAL_GUEST_MAX_PROJECTS`, `SURVEYONE_LOCAL_GUEST_MAX_QUESTIONS`, `SURVEYONE_LOCAL_GUEST_MAX_RESPONSES`로 조정합니다. DB guest에도 기능 종류를 줄이는 대신 자원 남용을 막는 유한 quota를 적용하며 `SURVEYONE_DB_GUEST_MAX_PROJECTS`(기본 10), `SURVEYONE_DB_GUEST_MAX_QUESTIONS`(설문당 기본 300), `SURVEYONE_DB_GUEST_MAX_RESPONSES`(설문당 기본 2,000)로 조정합니다. 실제 값은 선택 화면의 capability 안내에 표시됩니다. guest 세션 cookie와 서버 세션 만료도 표시된 체험 보존시간에 맞추며, 일반 회원 세션은 `INIT_SESSION_TTL_SECONDS`를 따릅니다.
+기본 guest 보존시간은 `SURVEYONE_GUEST_PROJECT_TTL_HOURS`로 조정합니다. 자원 남용을 막는 유한 quota는 `SURVEYONE_DB_GUEST_MAX_PROJECTS`(기본 10), `SURVEYONE_DB_GUEST_MAX_QUESTIONS`(설문당 기본 300), `SURVEYONE_DB_GUEST_MAX_RESPONSES`(설문당 기본 2,000)로 조정합니다. 실제 값은 신청 화면의 capability 안내에 표시됩니다. guest session cookie와 서버 session 만료는 tenant 만료시각을 넘지 않으며, 일반 회원 session은 `INIT_SESSION_TTL_SECONDS`를 따릅니다.
+
+설문 편집기의 `저장`은 현재 미완성 초안을 Oracle에 보관하는 명시적 동작입니다. `배포 준비`는 먼저 저장을 성공시킨 다음 배포 센터로 이동하여 안내문·모바일 미리보기·기간·응답 정책을 점검하는 동작이며, 그 자체로 공개 버전을 생성하지 않습니다. 실제 공개 URL과 불변 버전은 배포 센터에서 사용자가 `배포`를 확정할 때만 생성합니다.
 
 공개 응답 JSON은 의미 데이터 기준 기본 256 KiB(`SURVEYONE_PUBLIC_SUBMIT_MAX_BYTES`), 전송 본문 기준 기본 512 KiB(`SURVEYONE_PUBLIC_BODY_MAX_BYTES`)로 제한합니다. guest·로그인·가입 본문은 각각 `SURVEYONE_GUEST_BODY_MAX_BYTES`, `SURVEYONE_AUTH_BODY_MAX_BYTES`로 JSON 파싱 전에 차단합니다. 서버는 전체 byte 크기뿐 아니라 중첩 깊이, 노드·문자열·컨테이너 수를 검증하고, 재시도는 `Idempotency-Key`로 같은 제출 결과를 재사용합니다.
 
@@ -271,7 +287,7 @@ CONNECT surveyone_app@service_name
 
 ## 단계별 로드맵
 
-1. 기반: 독립 FastAPI/SPA shell, 메뉴, memory repository, tenant/project/version/slug 모델, guest 데모, 반응형 공개 설문.
+1. 기반: 독립 FastAPI/SPA shell, 메뉴, Oracle repository, tenant/project/version/slug 모델, guest 데모, 반응형 공개 설문.
 2. 제작·배포: 템플릿, 전체 문항 renderer, 조건 분기, 자동저장, 버전 확정, URL/QR/embed, 기본 스킨.
 3. 운영: Oracle repository, 회원/역할, 수신자 import, 이메일·문자·카카오 adapter, 발송 상태와 audit.
 4. 분석: 원자료 조회·XLSX/CSV, 기본 보고서, 재현 가능한 custom report builder와 실행 snapshot.

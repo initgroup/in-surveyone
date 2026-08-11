@@ -41,15 +41,44 @@
             credentials: "same-origin"
         });
         const contentType = response.headers.get("content-type") || "";
-        const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+        const rawBody = await response.text();
+        const expectsJson = contentType.toLowerCase().includes("json");
+        let payload = rawBody;
+        if (expectsJson) {
+            if (!rawBody.trim()) {
+                payload = null;
+            } else {
+                try {
+                    payload = JSON.parse(rawBody);
+                } catch (cause) {
+                    const message = response.ok
+                        ? "서버 응답 형식이 올바르지 않습니다. 잠시 후 다시 시도해 주세요."
+                        : `요청을 처리하지 못했습니다. (${response.status})`;
+                    const error = new Error(message, { cause });
+                    error.status = response.status;
+                    error.payload = null;
+                    throw error;
+                }
+            }
+        }
         if (!response.ok) {
             const detail = payload?.detail ?? payload?.message;
             const message = Array.isArray(detail)
                 ? detail.map((item) => item?.msg || item?.message || String(item)).join(" / ")
-                : (typeof detail === "string" ? detail : `요청을 처리하지 못했습니다. (${response.status})`);
+                : (typeof detail === "string"
+                    ? detail
+                    : (typeof detail?.message === "string" ? detail.message : `요청을 처리하지 못했습니다. (${response.status})`));
             const error = new Error(message);
             error.status = response.status;
             error.payload = payload;
+            const endpoint = String(path).split("?", 1)[0];
+            const credentialEndpoints = new Set(["/api/auth/login", "/api/auth/signup", "/api/auth/guest"]);
+            if (response.status === 401 && !credentialEndpoints.has(endpoint)) {
+                error.sessionInvalid = true;
+                window.dispatchEvent(new CustomEvent("surveyone:session-invalid", {
+                    detail: { endpoint, message }
+                }));
+            }
             throw error;
         }
         if (

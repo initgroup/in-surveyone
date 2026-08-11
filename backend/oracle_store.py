@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
-import secrets
 import unicodedata
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -17,15 +17,16 @@ from backend.errors import (
     ConflictError,
     DomainValidationError,
     NotFoundError,
+    ServiceUnavailableError,
 )
 from backend.memory_store import (
-    REPORT_TIMEZONE,
     MemoryStore,
     UserRecord,
     _seed_templates,
     _skin_from_theme,
     apply_public_translation,
     new_id,
+    report_cutoff_exclusive,
     submission_payload_hash,
     utcnow,
 )
@@ -34,6 +35,8 @@ from backend.models import (
     AuthSessionView,
     DashboardView,
     GuestMode,
+    GuestCredentialView,
+    GuestProvisionView,
     LoginRequest,
     PublicSurvey,
     PublishRequest,
@@ -57,9 +60,19 @@ from backend.models import (
     UserRole,
     UserView,
     _normalize_locale,
+    validate_publish_ready_sections,
 )
-from backend.security import hash_password, new_session_token, session_token_hash, verify_password
+from backend.security import (
+    hash_password,
+    new_initial_password,
+    new_session_token,
+    session_token_hash,
+    verify_password,
+)
 from backend.security import validate_idempotency_key
+
+
+logger = logging.getLogger(__name__)
 
 
 def _json_dump(value: Any) -> str:
@@ -71,17 +84,42 @@ def _json_dump(value: Any) -> str:
 def _json_load(value: Any, default: Any) -> Any:
     if value is None or value == "":
         return default
-    if isinstance(value, (dict, list)):
+    if isinstance(value, (dict, list, bool, int, float)):
         return value
     if isinstance(value, (bytes, bytearray, memoryview)):
         value = bytes(value).decode("utf-8")
-    return json.loads(str(value))
+    try:
+        return json.loads(str(value))
+    except json.JSONDecodeError:
+        if default is None and isinstance(value, str):
+            # Oracle native JSON columns return scalar JSON strings without
+            # the quotes present in textual CLOB JSON.
+            return value
+        raise
 
 
 def _as_aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def _oracle_error_code(exc: Exception) -> int | None:
+    if exc.args:
+        code = getattr(exc.args[0], "code", None)
+        if isinstance(code, int):
+            return code
+    match = re.search(r"ORA-(\d{5})", str(exc))
+    return int(match.group(1)) if match else None
+
+
+def _public_snapshot(value: Any) -> PublicSurvey:
+    try:
+        return PublicSurvey.model_validate(_json_load(value, {}))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ServiceUnavailableError(
+            "배포된 설문 데이터 형식을 확인할 수 없습니다. 관리자에게 문의해 주세요."
+        ) from exc
 
 
 class OracleStore(MemoryStore):
@@ -152,8 +190,13 @@ class OracleStore(MemoryStore):
         expires_at: datetime | None = None,
     ) -> tuple[str, AuthSessionView]:
         now = utcnow()
-        expires_at = expires_at or now + timedelta(
+        session_expires_at = now + timedelta(
             seconds=self.settings.session_ttl_seconds
+        )
+        expires_at = (
+            min(expires_at, session_expires_at)
+            if expires_at is not None
+            else session_expires_at
         )
         token = new_session_token()
         self.crud.execute(
@@ -173,17 +216,42 @@ class OracleStore(MemoryStore):
         self,
         display_name: str,
         mode: GuestMode = GuestMode.DATABASE,
-    ) -> tuple[str, AuthSessionView]:
+    ) -> GuestProvisionView:
         if mode != GuestMode.DATABASE:
             raise DomainValidationError("OracleStore only creates database guests.")
         now = utcnow()
         expires_at = now + timedelta(hours=self.settings.guest_project_ttl_hours)
-        suffix = secrets.token_hex(5)
         tenant_id = new_id("tenant")
         user_id = new_id("user")
-        login_id = f"db-guest-{suffix}"
-        tenant_name = f"DB 게스트 체험공간 {suffix.upper()}"
+        initial_password = new_initial_password()
         with self.pool.transaction() as connection:
+            login_id = ""
+            for _ in range(10_000):
+                login_row = self.crud.fetch_one(connection, "AUTH_GUEST_LOGIN_NEXT")
+                raw_sequence_value = (
+                    login_row.get("login_sequence_value") if login_row else None
+                )
+                try:
+                    sequence_value = int(raw_sequence_value)
+                except (TypeError, ValueError, OverflowError):
+                    raise ServiceUnavailableError(
+                        "게스트 로그인 아이디를 발급할 수 없습니다."
+                    )
+                if sequence_value < 1:
+                    raise ServiceUnavailableError(
+                        "Oracle returned an invalid guest login sequence value."
+                    )
+                candidate = f"quest{sequence_value:03d}"
+                if self.crud.fetch_one(
+                    connection, "AUTH_LOGIN_ID_EXISTS", {"loginId": candidate}
+                ) is None:
+                    login_id = candidate
+                    break
+            if not login_id:
+                raise ServiceUnavailableError(
+                    "사용 가능한 게스트 로그인 아이디를 발급할 수 없습니다."
+                )
+            tenant_name = f"DB 게스트 체험공간 {login_id.upper()}"
             self.crud.execute(
                 connection,
                 "AUTH_TENANT_INSERT",
@@ -201,7 +269,7 @@ class OracleStore(MemoryStore):
                     "userId": user_id,
                     "tenantId": tenant_id,
                     "loginId": login_id,
-                    "passwordHash": None,
+                    "passwordHash": hash_password(initial_password),
                     "userName": display_name.strip() or "DB 게스트",
                     "email": None,
                     "roleCode": UserRole.GUEST.value,
@@ -248,12 +316,22 @@ class OracleStore(MemoryStore):
                 created_at=now,
                 tenant_expires_at=expires_at,
             )
-            return self._new_session(connection, user, expires_at=expires_at)
+            return GuestProvisionView(
+                user=self._user_view(user),
+                expires_at=expires_at,
+                guest_credential=GuestCredentialView(
+                    login_id=login_id,
+                    initial_password=initial_password,
+                    expires_at=expires_at,
+                ),
+            )
 
     def signup(self, request: SignupRequest) -> tuple[str, AuthSessionView]:
         login_id = self._normalize_login(request.login_id)
         with self.pool.transaction() as connection:
-            if self.crud.fetch_one(connection, "AUTH_USER_BY_LOGIN", {"loginId": login_id}):
+            if self.crud.fetch_one(
+                connection, "AUTH_LOGIN_ID_EXISTS", {"loginId": login_id}
+            ):
                 raise ConflictError("이미 사용 중인 아이디입니다.")
             tenant_id = new_id("tenant")
             user_id = new_id("user")
@@ -305,12 +383,16 @@ class OracleStore(MemoryStore):
                 "AUTH_USER_BY_LOGIN",
                 {"loginId": self._normalize_login(request.login_id)},
             )
-            if row is None or str(row.get("guest_yn") or "N") == "Y" or not verify_password(
+            if row is None or not verify_password(
                 request.password, str(row.get("password_hash") or "")
             ):
                 raise AuthenticationError("아이디 또는 비밀번호가 올바르지 않습니다.")
             user = self._user_from_row(row)
-            return self._new_session(connection, user)
+            return self._new_session(
+                connection,
+                user,
+                expires_at=user.tenant_expires_at if user.is_guest else None,
+            )
 
     def _session_row(self, raw_token: str | None) -> dict[str, Any]:
         if not raw_token:
@@ -327,6 +409,19 @@ class OracleStore(MemoryStore):
             )
         if row is None:
             raise AuthenticationError("로그인 세션이 유효하지 않거나 만료되었습니다.")
+        now = utcnow()
+        if row.get("revoked_at") is not None:
+            raise AuthenticationError("로그인 세션이 종료되었습니다.")
+        session_expires_at = _as_aware(row.get("expires_at"))
+        if session_expires_at is None or session_expires_at <= now:
+            raise AuthenticationError("로그인 세션이 만료되었습니다.")
+        if str(row.get("user_use_yn") or "N") != "Y":
+            raise AuthenticationError("사용할 수 없는 로그인 계정입니다.")
+        if str(row.get("tenant_status_code") or "") != "ACTIVE":
+            raise AuthenticationError("사용할 수 없는 작업공간입니다.")
+        tenant_expires_at = _as_aware(row.get("tenant_expires_at"))
+        if tenant_expires_at is not None and tenant_expires_at <= now:
+            raise AuthenticationError("게스트 작업공간이 만료되었습니다.")
         return row
 
     def authenticate(self, raw_token: str | None) -> UserRecord:
@@ -533,6 +628,7 @@ class OracleStore(MemoryStore):
             if template
             else {}
         )
+        self._validate_translation_targets(sections, translations)
         settings = request.settings or (template.settings if template else SurveySettings())
         theme = request.theme or (template.theme if template else SurveyTheme())
         skin = dict(request.skin) if request.skin is not None else _skin_from_theme(theme)
@@ -627,73 +723,102 @@ class OracleStore(MemoryStore):
     def update_survey(
         self, user: UserRecord, survey_id: str, request: SurveyUpdateRequest
     ) -> SurveyDetail:
-        with self.pool.transaction() as connection:
-            row = self._survey_row(connection, user, survey_id, lock=True)
-            detail = self._detail_from_row(row)
-            self._validate_source_locale_promotion(detail, request)
-            fields = request.model_fields_set
-            title = request.title if "title" in fields and request.title is not None else detail.title
-            description = request.description if "description" in fields else detail.description
-            category = request.category if "category" in fields and request.category else detail.category
-            if "questions" in fields and request.questions is not None:
-                sections = [SurveySection(title="설문 문항", questions=request.questions)]
-            elif "sections" in fields and request.sections is not None:
-                sections = request.sections
-            else:
-                sections = detail.sections
-            self._validate_global_question_ids(sections)
-            if user.guest_mode == GuestMode.DATABASE and sum(
-                len(section.questions) for section in sections
-            ) > self.settings.db_guest_max_questions:
-                raise DomainValidationError(
-                    "DB guest question limit has been exceeded."
-                )
-            settings = request.settings if "settings" in fields and request.settings else detail.settings
-            theme = request.theme if "theme" in fields and request.theme else detail.theme
-            skin = dict(request.skin) if "skin" in fields and request.skin is not None else detail.skin
-            if "theme" in fields and "skin" not in fields:
-                skin = _skin_from_theme(theme)
-            logic = request.logic_rules if "logic_rules" in fields and request.logic_rules is not None else detail.logic_rules
-            languages = request.languages if "languages" in fields and request.languages else detail.languages
-            if "languages" not in fields and ({"default_locale", "supported_locales"} & fields):
-                enabled = request.supported_locales or detail.supported_locales
-                default = request.default_locale or detail.default_locale
-                languages = SurveyLanguages(
-                    source_locale=detail.languages.source_locale if detail.languages.source_locale in enabled else default,
-                    default_locale=default,
-                    enabled=enabled,
-                )
-            translations = request.translations if "translations" in fields and request.translations is not None else detail.translations
-            unsupported = set(translations) - set(languages.enabled)
-            if unsupported:
-                raise DomainValidationError("번역 언어는 languages.enabled에 포함되어야 합니다.")
-            affected = self.crud.execute(
-                connection,
-                "SURVEY_UPDATE_BY_OWNER",
-                {
-                    "surveyId": survey_id,
-                    "tenantId": user.tenant_id,
-                    "ownerUserId": user.id,
-                    "surveyTitle": title,
-                    "description": description,
-                    "categoryCode": category,
-                    "draftJson": self._draft_json(
-                        sections=sections,
-                        settings=settings,
-                        theme=theme,
-                        skin=skin,
-                        logic_rules=logic,
-                        languages=languages,
-                        translations=translations,
-                    ),
-                },
+        for attempt in range(2):
+            try:
+                with self.pool.transaction() as connection:
+                    self._update_survey_transaction(
+                        connection, user, survey_id, request
+                    )
+                return self.get_survey(user, survey_id)
+            except Exception as exc:
+                error_code = _oracle_error_code(exc)
+                if error_code not in {60, 12860}:
+                    raise
+                if attempt == 0:
+                    logger.warning(
+                        "Retrying serial Oracle survey update after ORA-%05d. survey=%s",
+                        error_code,
+                        survey_id,
+                    )
+                    continue
+                raise ServiceUnavailableError(
+                    "동시에 저장 요청이 발생했습니다. 변경사항은 유지되며 잠시 후 다시 저장해 주세요."
+                ) from exc
+        raise AssertionError("unreachable")
+
+    def _update_survey_transaction(
+        self,
+        connection: Any,
+        user: UserRecord,
+        survey_id: str,
+        request: SurveyUpdateRequest,
+    ) -> None:
+        row = self._survey_row(connection, user, survey_id, lock=True)
+        detail = self._detail_from_row(row)
+        self._validate_source_locale_promotion(detail, request)
+        fields = request.model_fields_set
+        title = request.title if "title" in fields and request.title is not None else detail.title
+        description = request.description if "description" in fields else detail.description
+        category = request.category if "category" in fields and request.category else detail.category
+        if "questions" in fields and request.questions is not None:
+            sections = [SurveySection(title="설문 문항", questions=request.questions)]
+        elif "sections" in fields and request.sections is not None:
+            sections = request.sections
+        else:
+            sections = detail.sections
+        self._validate_global_question_ids(sections)
+        if user.guest_mode == GuestMode.DATABASE and sum(
+            len(section.questions) for section in sections
+        ) > self.settings.db_guest_max_questions:
+            raise DomainValidationError(
+                "DB guest question limit has been exceeded."
             )
-            if affected != 1:
-                raise ConflictError("설문 수정 중 소유권 또는 상태가 변경되었습니다.")
-            self._sync_i18n(
-                connection, user.tenant_id, survey_id, 0, languages, translations
+        settings = request.settings if "settings" in fields and request.settings else detail.settings
+        theme = request.theme if "theme" in fields and request.theme else detail.theme
+        skin = dict(request.skin) if "skin" in fields and request.skin is not None else detail.skin
+        if "theme" in fields and "skin" not in fields:
+            skin = _skin_from_theme(theme)
+        logic = request.logic_rules if "logic_rules" in fields and request.logic_rules is not None else detail.logic_rules
+        languages = request.languages if "languages" in fields and request.languages else detail.languages
+        if "languages" not in fields and ({"default_locale", "supported_locales"} & fields):
+            enabled = request.supported_locales or detail.supported_locales
+            default = request.default_locale or detail.default_locale
+            languages = SurveyLanguages(
+                source_locale=detail.languages.source_locale if detail.languages.source_locale in enabled else default,
+                default_locale=default,
+                enabled=enabled,
             )
-        return self.get_survey(user, survey_id)
+        translations = request.translations if "translations" in fields and request.translations is not None else detail.translations
+        self._validate_translation_targets(sections, translations)
+        unsupported = set(translations) - set(languages.enabled)
+        if unsupported:
+            raise DomainValidationError("번역 언어는 languages.enabled에 포함되어야 합니다.")
+        affected = self.crud.execute(
+            connection,
+            "SURVEY_UPDATE_BY_OWNER",
+            {
+                "surveyId": survey_id,
+                "tenantId": user.tenant_id,
+                "ownerUserId": user.id,
+                "surveyTitle": title,
+                "description": description,
+                "categoryCode": category,
+                "draftJson": self._draft_json(
+                    sections=sections,
+                    settings=settings,
+                    theme=theme,
+                    skin=skin,
+                    logic_rules=logic,
+                    languages=languages,
+                    translations=translations,
+                ),
+            },
+        )
+        if affected != 1:
+            raise ConflictError("설문 수정 중 소유권 또는 상태가 변경되었습니다.")
+        self._sync_i18n(
+            connection, user.tenant_id, survey_id, 0, languages, translations
+        )
 
     @staticmethod
     def _slug_base(value: str, survey_id: str) -> str:
@@ -723,33 +848,20 @@ class OracleStore(MemoryStore):
         with self.pool.transaction() as connection:
             row = self._survey_row(connection, user, survey_id, lock=True)
             detail = self._detail_from_row(row)
-            if not any(
-                question.type.value != "text"
-                for section in detail.sections
-                for question in section.questions
-            ):
-                raise DomainValidationError("배포하려면 응답 가능한 문항이 필요합니다.")
-            existing_slug = str(row["public_slug"]) if row.get("public_slug") else None
-            reserved_prefix = "local-guest-"
-            if existing_slug and existing_slug.startswith(reserved_prefix):
-                raise ConflictError(
-                    "Persistent surveys cannot use the local guest URL namespace."
-                )
-            if request.slug and request.slug.startswith(reserved_prefix):
+            if not detail.title.strip():
                 raise DomainValidationError(
-                    "The local-guest- URL namespace is reserved for local guest surveys."
+                    "The survey requires a title before publishing."
                 )
+            try:
+                validate_publish_ready_sections(detail.sections)
+            except ValueError as exc:
+                raise DomainValidationError(str(exc)) from exc
+            existing_slug = str(row["public_slug"]) if row.get("public_slug") else None
             if existing_slug and request.slug and request.slug != existing_slug:
                 raise ConflictError("배포된 설문의 URL 식별자는 변경할 수 없습니다.")
             slug = existing_slug or self._unique_slug(
                 connection, request.slug or detail.title, survey_id
             )
-            if slug.startswith(reserved_prefix):
-                slug = self._unique_slug(
-                    connection,
-                    f"persistent-{survey_id.split('_')[-1][:12]}",
-                    survey_id,
-                )
             version_row = self.crud.fetch_one(
                 connection,
                 "SURVEY_VERSION_NEXT",
@@ -853,7 +965,7 @@ class OracleStore(MemoryStore):
 
     @staticmethod
     def _public_from_row(row: dict[str, Any]) -> PublicSurvey:
-        public = PublicSurvey.model_validate_json(row["snapshot_json"])
+        public = _public_snapshot(row["snapshot_json"])
         is_guest = str(row.get("tenant_type_code") or "MEMBER").upper() == "DB_GUEST"
         public.guest_demo = is_guest
         public.experience_expires_at = (
@@ -951,7 +1063,6 @@ class OracleStore(MemoryStore):
                     {
                         "tenantId": tenant_id,
                         "surveyId": public.survey_id,
-                        "surveyVersionNo": public.version,
                         "respondentKeyHash": respondent_hash,
                     },
                 )
@@ -1075,7 +1186,7 @@ class OracleStore(MemoryStore):
                 "versionNo": detail.published_version,
             },
         )
-        return PublicSurvey.model_validate_json(row["snapshot_json"]) if row else None
+        return _public_snapshot(row["snapshot_json"]) if row else None
 
     def report(
         self,
@@ -1092,15 +1203,7 @@ class OracleStore(MemoryStore):
             row = self._survey_row(connection, user, survey_id)
             detail = self._detail_from_row(row)
             snapshot = self._published_snapshot(connection, user, detail)
-            cutoff = (
-                datetime.combine(
-                    cutoff_date + timedelta(days=1),
-                    datetime.min.time(),
-                    tzinfo=REPORT_TIMEZONE,
-                ).astimezone(timezone.utc)
-                if cutoff_date
-                else None
-            )
+            cutoff = report_cutoff_exclusive(cutoff_date)
             rows = (
                 self.crud.fetch_all(
                     connection,
@@ -1239,6 +1342,7 @@ class OracleStore(MemoryStore):
         languages: SurveyLanguages,
         translations: dict[str, SurveyTranslation],
     ) -> None:
+        enabled_locales = sorted(set(languages.enabled), key=str.casefold)
         self.crud.executemany(
             connection,
             "LANGUAGE_MERGE",
@@ -1263,7 +1367,7 @@ class OracleStore(MemoryStore):
                         else "LTR"
                     ),
                 }
-                for locale in languages.enabled
+                for locale in enabled_locales
             ],
         )
         if version == 0:
@@ -1282,7 +1386,7 @@ class OracleStore(MemoryStore):
                         "langCode": locale,
                         "defaultYn": "Y" if locale == languages.default_locale else "N",
                     }
-                    for locale in languages.enabled
+                    for locale in enabled_locales
                 ],
             )
         self.crud.execute(
@@ -1330,15 +1434,23 @@ class OracleStore(MemoryStore):
                 "critical_column_count": 9,
                 "critical_constraint_count": 6,
                 "valid_function_count": 2,
+                "guest_sequence_count": 1,
             }
             actual = {
                 key: int(row.get(key) or 0) if row else 0 for key in expected
             }
             if actual != expected:
+                mismatches = ", ".join(
+                    f"{key}={actual[key]}/{expected_value}"
+                    for key, expected_value in expected.items()
+                    if actual[key] != expected_value
+                )
                 return (
                     False,
                     "Oracle schema is incomplete or incompatible. "
-                    "Run SURVEYONE_SYSTEM_DDL.sql or SURVEYONE_SYSTEM_ALT.sql.",
+                    f"Mismatched readiness checks: {mismatches}. "
+                    "Run SURVEYONE_SYSTEM_DDL.sql for a new schema or "
+                    "SURVEYONE_SYSTEM_ALT.sql for an existing schema.",
                 )
             return True, None
         except Exception as exc:

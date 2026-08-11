@@ -1,6 +1,26 @@
 (function () {
     "use strict";
     const PAGE_NAME = "M04001";
+    const META_COLUMNS = 4;
+    const DEFAULT_COLUMN_COUNT = 8;
+    const MULTIPLE_TYPES = new Set(["multiple", "multiple_choice", "checkbox", "checkboxes"]);
+    const MATRIX_TYPES = new Set(["matrix", "matrix_single", "matrix_multiple"]);
+    const NON_ANSWER_TYPES = new Set(["notice", "text"]);
+
+    function text(value) { return String(value ?? "").trim(); }
+    function normalizedType(question) { return text(question?.type).toLowerCase(); }
+    function hasValue(value) {
+        if (value === null || value === undefined || value === "") return false;
+        if (Array.isArray(value)) return value.some(hasValue);
+        if (typeof value === "object") return Object.values(value).some(hasValue);
+        return true;
+    }
+    function safeJson(value) {
+        try { return JSON.stringify(value); } catch { return String(value ?? ""); }
+    }
+    function safeFilename(value) {
+        return text(value || "survey").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").slice(0, 90) || "survey";
+    }
 
     window.Pages = window.Pages || {};
     window.Pages[PAGE_NAME] = {
@@ -9,69 +29,211 @@
             this.root = context.root;
             this.surveys = [];
             this.responses = [];
+            this.questionEntries = [];
             this.questions = [];
             this.visibleColumns = new Set();
+            this.selectedSurveyId = "";
+            this.page = 1;
+            this.pageSize = 50;
             this.bind();
             await this.loadSurveys();
         },
         bind() {
-            this.onChange = async (event) => {
-                if (event.target.matches("[data-response-survey]")) await this.loadResponses(event.target.value);
-                if (event.target.matches("[data-response-state], [data-response-from], [data-response-to]")) this.renderTable();
+            this.onChange = (event) => {
+                if (event.target.matches("[data-response-state], [data-response-from], [data-response-to]")) {
+                    this.page = 1;
+                    this.renderTable();
+                }
+                if (event.target.matches("[data-response-page-size]")) {
+                    this.pageSize = Number(event.target.value) || 50;
+                    this.page = 1;
+                    this.renderTable();
+                }
             };
-            this.onInput = Common.debounce((event) => { if (event.target.matches("[data-response-search]")) this.renderTable(); }, 170);
+            this.onInput = Common.debounce((event) => {
+                if (!this.root) return;
+                if (event.target.matches("[data-response-search]")) {
+                    this.page = 1;
+                    this.renderTable();
+                }
+                if (event.target.matches("[data-response-survey-search]")) this.openSurveyOptions();
+            }, 120);
+            this.onFocus = (event) => {
+                if (event.target.matches("[data-response-survey-search]")) {
+                    event.target.select();
+                    this.openSurveyOptions("");
+                }
+            };
+            this.onKeydown = (event) => {
+                if (!event.target.matches("[data-response-survey-search]")) return;
+                if (event.key === "Escape") { this.closeSurveyOptions(); event.target.select(); }
+                if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    this.openSurveyOptions();
+                    this.root.querySelector("[data-survey-option]")?.focus();
+                }
+                if (event.key === "Enter") {
+                    const first = this.root.querySelector("[data-survey-option]");
+                    if (first) { event.preventDefault(); first.click(); }
+                }
+            };
             this.onClick = (event) => {
-                if (event.target.closest("[data-export-responses]")) this.exportCsv();
+                const surveyOption = event.target.closest("[data-survey-option]");
+                if (surveyOption) this.selectSurvey(surveyOption.dataset.surveyOption);
+                else if (event.target.closest("[data-survey-toggle]")) {
+                    const panel = this.root.querySelector("[data-response-survey-options]");
+                    if (panel.hidden) {
+                        const input = this.root.querySelector("[data-response-survey-search]");
+                        input.focus();
+                        input.select();
+                        this.openSurveyOptions("");
+                    } else this.closeSurveyOptions();
+                } else if (!event.target.closest("[data-survey-finder]")) this.closeSurveyOptions();
+
+                const preset = event.target.closest("[data-column-preset]");
+                if (preset) this.applyColumnPreset(preset.dataset.columnPreset);
+                if (event.target.closest("[data-export-responses]")) this.showExportOptions();
                 if (event.target.closest("[data-response-reset]")) this.resetFilters();
                 if (event.target.closest("[data-toggle-columns]")) this.showColumns();
                 if (event.target.closest("[data-privacy-guide]")) this.showPrivacyGuide();
+                const detail = event.target.closest("[data-response-detail]");
+                if (detail) this.showResponseDetail(detail.dataset.responseDetail);
+                const pageButton = event.target.closest("[data-page-delta]");
+                if (pageButton && !pageButton.disabled) {
+                    this.page += Number(pageButton.dataset.pageDelta);
+                    this.renderTable();
+                    this.root.querySelector("[data-response-state-host]")?.scrollTo({ top: 0 });
+                }
             };
             this.root.addEventListener("change", this.onChange);
             this.root.addEventListener("input", this.onInput);
+            this.root.addEventListener("focusin", this.onFocus);
+            this.root.addEventListener("keydown", this.onKeydown);
             this.root.addEventListener("click", this.onClick);
         },
         async loadSurveys() {
             try {
                 const payload = await this.context.api.get("/api/surveys");
-                this.surveys = payload.items || payload.surveys || payload || [];
-                const select = this.root.querySelector("[data-response-survey]");
-                select.innerHTML = `<option value="">설문을 선택하세요</option>${this.surveys.map((item) => `<option value="${Common.escapeHtml(item.id)}">${Common.escapeHtml(item.title)}</option>`).join("")}`;
+                const items = payload?.items || payload?.surveys || payload || [];
+                if (!Array.isArray(items)) throw new Error("설문 목록 형식이 올바르지 않습니다.");
+                this.surveys = items;
+                this.renderSurveyOptions("");
                 const requested = window.SurveyOneApp.queryParams().get("surveyId");
-                if (requested && this.surveys.some((item) => String(item.id) === requested)) { select.value = requested; await this.loadResponses(requested); }
-            } catch (error) { this.renderError(error.message); }
+                if (requested && this.surveys.some((item) => String(item.id) === requested)) await this.selectSurvey(requested);
+            } catch (error) {
+                this.renderError(error.message);
+                this.root.querySelector("[data-survey-finder-hint]").textContent = "설문 목록을 불러오지 못했습니다.";
+            }
+        },
+        surveyStatus(item) {
+            const status = text(item?.status).toLowerCase();
+            if (["published", "active", "open"].includes(status)) return "배포 중";
+            if (["closed", "ended"].includes(status)) return "종료";
+            return "작성 중";
+        },
+        renderSurveyOptions(query) {
+            const panel = this.root.querySelector("[data-response-survey-options]");
+            const keyword = text(query).toLowerCase();
+            const matched = this.surveys.filter((item) => {
+                const source = [item.title, item.category, item.templateName, item.status, this.surveyStatus(item)].map(text).join(" ").toLowerCase();
+                return !keyword || source.includes(keyword);
+            });
+            const limited = matched.slice(0, 60);
+            panel.innerHTML = limited.length ? limited.map((item) => {
+                const id = String(item.id);
+                const meta = [text(item.category || item.templateName), this.surveyStatus(item)].filter(Boolean).join(" · ");
+                return `<button type="button" role="option" aria-selected="${id === this.selectedSurveyId}" data-survey-option="${Common.escapeHtml(id)}"><span>${Common.escapeHtml(item.title || "제목 없는 설문")}</span><small>${Common.escapeHtml(meta || "설문 프로젝트")}</small></button>`;
+            }).join("") : `<div class="survey-option-empty">검색 결과가 없습니다.</div>`;
+            this.root.querySelector("[data-survey-finder-hint]").textContent = `${Common.formatNumber(matched.length)}개 설문${matched.length > limited.length ? ` 중 ${limited.length}개 표시` : ""}`;
+        },
+        openSurveyOptions(queryOverride) {
+            const input = this.root.querySelector("[data-response-survey-search]");
+            const panel = this.root.querySelector("[data-response-survey-options]");
+            this.renderSurveyOptions(queryOverride === undefined ? input.value : queryOverride);
+            panel.hidden = false;
+            input.setAttribute("aria-expanded", "true");
+            this.root.querySelector("[data-survey-toggle]").setAttribute("aria-expanded", "true");
+        },
+        closeSurveyOptions() {
+            if (!this.root) return;
+            const panel = this.root.querySelector("[data-response-survey-options]");
+            panel.hidden = true;
+            this.root.querySelector("[data-response-survey-search]").setAttribute("aria-expanded", "false");
+            this.root.querySelector("[data-survey-toggle]").setAttribute("aria-expanded", "false");
+        },
+        async selectSurvey(id) {
+            const survey = this.surveys.find((item) => String(item.id) === String(id));
+            if (!survey) return;
+            this.selectedSurveyId = String(id);
+            this.root.querySelector("[data-response-survey]").value = this.selectedSurveyId;
+            this.root.querySelector("[data-response-survey-search]").value = survey.title || "제목 없는 설문";
+            this.closeSurveyOptions();
+            const route = window.location.hash.split("?")[0] || "#/M04001";
+            window.history.replaceState(null, "", `${route}?surveyId=${encodeURIComponent(this.selectedSurveyId)}`);
+            await this.loadResponses(this.selectedSurveyId);
+        },
+        buildQuestionEntries(survey) {
+            const sections = Array.isArray(survey?.sections) && survey.sections.length
+                ? survey.sections
+                : [{ id: "all", title: "전체 문항", questions: Common.questionsOf(survey) }];
+            let number = 0;
+            return sections.flatMap((section, sectionIndex) => (Array.isArray(section.questions) ? section.questions : [])
+                .filter((question) => !NON_ANSWER_TYPES.has(normalizedType(question)))
+                .map((question) => ({
+                    question,
+                    id: String(question.id),
+                    number: ++number,
+                    sectionId: String(section.id || `section-${sectionIndex + 1}`),
+                    sectionTitle: section.title || `섹션 ${sectionIndex + 1}`
+                })));
+        },
+        essentialEntries() {
+            const required = this.questionEntries.filter((entry) => entry.question.required);
+            const optional = this.questionEntries.filter((entry) => !entry.question.required);
+            return [...required, ...optional].slice(0, DEFAULT_COLUMN_COUNT);
         },
         async loadResponses(id) {
-            if (!id) { this.responses = []; this.questions = []; this.setEnabled(false); this.renderEmpty(); return; }
+            if (!id) { this.responses = []; this.questionEntries = []; this.questions = []; this.setEnabled(false); this.renderEmpty(); return; }
             this.renderLoading();
             try {
                 const [surveyPayload, responsePayload] = await Promise.all([
                     this.context.api.get(`/api/surveys/${encodeURIComponent(id)}`),
                     this.fetchAllResponses(id)
                 ]);
-                const survey = surveyPayload.survey || surveyPayload;
+                const survey = surveyPayload?.survey || surveyPayload;
                 this.currentSurvey = survey;
-                this.questions = Common.questionsOf(survey).filter((item) => !["notice", "text"].includes(item.type));
-                this.responses = responsePayload.items || responsePayload.responses || responsePayload || [];
-                this.visibleColumns = new Set(this.questions.slice(0, 8).map((item) => String(item.id)));
-                this.root.querySelector("[data-response-title]").textContent = survey.title;
+                this.questionEntries = this.buildQuestionEntries(survey);
+                this.questions = this.questionEntries.map((entry) => entry.question);
+                this.responses = responsePayload?.items || responsePayload?.responses || responsePayload || [];
+                if (!Array.isArray(this.responses)) throw new Error("응답 목록 형식이 올바르지 않습니다.");
+                this.visibleColumns = new Set(this.essentialEntries().map((entry) => entry.id));
+                this.page = 1;
+                this.root.querySelector("[data-response-title]").textContent = survey.title || "제목 없는 설문";
                 this.setEnabled(true);
-                this.renderMetrics(responsePayload.summary || {});
+                this.renderMetrics(responsePayload?.summary || {});
                 this.renderTable();
-            } catch (error) { this.responses = []; this.renderError(error.message); }
+            } catch (error) {
+                this.responses = [];
+                this.currentSurvey = null;
+                this.setEnabled(false);
+                this.renderError(error.message);
+            }
         },
         async fetchAllResponses(id) {
             const pageSize = 200;
             const responses = [];
             for (let offset = 0; ; offset += pageSize) {
                 const payload = await this.context.api.get(`/api/surveys/${encodeURIComponent(id)}/responses?offset=${offset}&limit=${pageSize}`);
-                const page = payload.items || payload.responses || payload || [];
+                const page = payload?.items || payload?.responses || payload || [];
                 if (!Array.isArray(page)) throw new Error("응답 목록 형식이 올바르지 않습니다.");
                 responses.push(...page);
                 if (page.length < pageSize) break;
             }
             return responses;
         },
-        setEnabled(enabled) { this.root.querySelectorAll("[data-response-search], [data-response-state], [data-response-from], [data-response-to], [data-response-reset], [data-export-responses], [data-toggle-columns]").forEach((element) => { element.disabled = !enabled; }); },
+        setEnabled(enabled) {
+            this.root.querySelectorAll("[data-response-search], [data-response-state], [data-response-from], [data-response-to], [data-response-reset], [data-export-responses], [data-toggle-columns], [data-column-preset]").forEach((element) => { element.disabled = !enabled; });
+        },
         renderMetrics(summary = {}) {
             const total = summary.total ?? this.responses.length;
             const complete = summary.complete ?? this.responses.filter((item) => item.status !== "partial" && item.completed !== false).length;
@@ -83,9 +245,12 @@
                 ["완료율", rate, "%", "시작 대비 완료"],
                 ["평균 소요", seconds ? Math.max(1, Math.round(seconds / 60)) : 0, "분", "완료 응답 기준"]
             ];
-            this.root.querySelector("[data-response-metrics]").innerHTML = metrics.map((item, index) => `<article class="card metric-card"><span class="metric-label">${Common.icon(["database","check","chart","time"][index],17)} ${item[0]}</span><strong class="metric-value">${item[1]}<small>${item[2]}</small></strong><span class="metric-trend">${item[3]}</span></article>`).join("");
+            this.root.querySelector("[data-response-metrics]").innerHTML = metrics.map((item, index) => `<article class="card metric-card"><span class="metric-label">${Common.icon(["database", "check", "chart", "time"][index], 17)} ${item[0]}</span><strong class="metric-value">${item[1]}<small>${item[2]}</small></strong><span class="metric-trend">${item[3]}</span></article>`).join("");
         },
-        averageDuration() { const values = this.responses.map((item) => Number(item.durationSeconds || 0)).filter(Boolean); return values.length ? values.reduce((a,b) => a+b,0) / values.length : 0; },
+        averageDuration() {
+            const values = this.responses.map((item) => Number(item.durationSeconds || 0)).filter(Boolean);
+            return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+        },
         filtered() {
             const query = this.root.querySelector("[data-response-search]").value.trim().toLowerCase();
             const state = this.root.querySelector("[data-response-state]").value;
@@ -93,34 +258,305 @@
             const to = this.root.querySelector("[data-response-to]").value;
             return this.responses.filter((item) => {
                 const complete = item.status !== "partial" && item.completed !== false;
-                const serialized = JSON.stringify(item).toLowerCase();
-                const date = (item.submittedAt || item.createdAt || "").slice(0,10);
-                return (!query || serialized.includes(query)) && (state === "all" || (state === "complete") === complete) && (!from || date >= from) && (!to || date <= to);
+                const serialized = safeJson(item).toLowerCase();
+                const date = (item.submittedAt || item.createdAt || "").slice(0, 10);
+                return (!query || serialized.includes(query))
+                    && (state === "all" || (state === "complete") === complete)
+                    && (!from || date >= from)
+                    && (!to || date <= to);
             });
         },
-        answerValue(response, question) {
-            const answers = response.answers || {};
-            let value;
-            if (Array.isArray(answers)) value = answers.find((item) => String(item.questionId) === String(question.id))?.value;
-            else value = answers[question.id] ?? answers[String(question.id)];
-            if (Array.isArray(value)) return value.join(" | ");
-            if (value && typeof value === "object") return JSON.stringify(value);
-            return value ?? "";
+        rawAnswer(response, question) {
+            const answers = response?.answers || {};
+            if (Array.isArray(answers)) return answers.find((item) => String(item.questionId) === String(question.id))?.value;
+            return answers[question.id] ?? answers[String(question.id)];
+        },
+        axisItems(question, axis) {
+            const settingsItems = question?.settings?.[axis];
+            const source = Array.isArray(settingsItems) && settingsItems.length ? settingsItems : question?.[axis];
+            return (Array.isArray(source) ? source : []).map((item, index) => typeof item === "object"
+                ? { id: String(item.id ?? index), label: text(item.label ?? item.title ?? item.id ?? index + 1) }
+                : { id: String(index), label: text(item) || String(index + 1) });
+        },
+        optionItems(question) {
+            return (Array.isArray(question?.options) ? question.options : []).map((item, index) => typeof item === "object"
+                ? { id: String(item.id ?? index), label: text(item.label ?? item.title ?? item.id ?? index + 1) }
+                : { id: String(index), label: text(item) || String(index + 1) });
+        },
+        itemLabel(items, value) {
+            const token = String(value ?? "");
+            const exact = items.find((item) => item.id === token);
+            if (exact) return exact.label;
+            const index = Number(token);
+            if (Number.isInteger(index) && index >= 0 && items[index]) return items[index].label;
+            return token;
+        },
+        isMatrixMultiple(question) {
+            const type = normalizedType(question);
+            return type === "matrix_multiple" || (type === "matrix" && text(question?.settings?.selectionMode).toLowerCase() === "multiple");
+        },
+        answerPresentation(response, question) {
+            const value = this.rawAnswer(response, question);
+            if (!hasValue(value)) return { kind: "empty", text: "-", values: [] };
+            const type = normalizedType(question);
+            if (MULTIPLE_TYPES.has(type)) {
+                const options = this.optionItems(question);
+                const values = (Array.isArray(value) ? value : [value]).map((item) => this.itemLabel(options, item));
+                return { kind: "chips", text: values.join(" | "), values };
+            }
+            if (["single", "single_choice", "dropdown"].includes(type)) {
+                const label = this.itemLabel(this.optionItems(question), value);
+                return { kind: "text", text: label, values: [label] };
+            }
+            if (MATRIX_TYPES.has(type) && value && typeof value === "object" && !Array.isArray(value)) {
+                const rows = this.axisItems(question, "rows");
+                const columns = this.axisItems(question, "columns");
+                const lines = Object.entries(value).map(([row, selected]) => {
+                    const rowLabel = this.itemLabel(rows, row);
+                    const labels = (Array.isArray(selected) ? selected : [selected]).map((item) => this.itemLabel(columns, item));
+                    return `${rowLabel}: ${labels.join(", ")}`;
+                });
+                return { kind: "lines", text: lines.join(" | "), values: lines };
+            }
+            if (["table", "repeat_table"].includes(type) && Array.isArray(value)) {
+                const rows = this.axisItems(question, "rows");
+                const columns = this.axisItems(question, "columns");
+                const lines = value.map((row, rowIndex) => {
+                    const rowValues = Array.isArray(row) ? row : Object.values(row || {});
+                    const cells = rowValues.map((cell, columnIndex) => `${columns[columnIndex]?.label || `${columnIndex + 1}열`}=${text(cell) || "-"}`);
+                    return `${rows[rowIndex]?.label || `${rowIndex + 1}행`}: ${cells.join(" · ")}`;
+                }).filter(Boolean);
+                return { kind: "lines", text: lines.join(" | "), values: lines };
+            }
+            if (value && typeof value === "object") {
+                const lines = Object.entries(value).map(([key, item]) => `${key}: ${Array.isArray(item) ? item.join(", ") : text(item)}`);
+                return { kind: "lines", text: lines.join(" | "), values: lines };
+            }
+            return { kind: "text", text: String(value), values: [String(value)] };
+        },
+        presentationMarkup(presentation, compact = false) {
+            if (presentation.kind === "empty") return `<span class="answer-empty">-</span>`;
+            if (presentation.kind === "chips") {
+                const limit = compact ? 3 : presentation.values.length;
+                const rest = presentation.values.length - limit;
+                return `<span class="answer-chips">${presentation.values.slice(0, limit).map((value) => `<span>${Common.escapeHtml(value)}</span>`).join("")}${rest > 0 ? `<em>+${rest}</em>` : ""}</span>`;
+            }
+            if (presentation.kind === "lines") {
+                const limit = compact ? 2 : presentation.values.length;
+                const rest = presentation.values.length - limit;
+                return `<span class="answer-lines">${presentation.values.slice(0, limit).map((value) => `<span>${Common.escapeHtml(value)}</span>`).join("")}${rest > 0 ? `<em>외 ${rest}개</em>` : ""}</span>`;
+            }
+            return `<span class="answer-text">${Common.escapeHtml(presentation.text)}</span>`;
+        },
+        visibleEntries() { return this.questionEntries.filter((entry) => this.visibleColumns.has(entry.id)); },
+        typeLabel(question) {
+            const labels = {
+                single: "단일선택", single_choice: "단일선택", multiple: "복수응답", multiple_choice: "복수응답",
+                dropdown: "목록선택", short_text: "단답형", long_text: "장문형", number: "숫자", scale: "척도",
+                slider: "슬라이더", matrix: "매트릭스", matrix_single: "단일 매트릭스", matrix_multiple: "복수 매트릭스",
+                table: "표", repeat_table: "반복표", date: "날짜"
+            };
+            return labels[normalizedType(question)] || normalizedType(question) || "문항";
         },
         renderTable() {
             const items = this.filtered();
-            const questions = this.questions.filter((item) => this.visibleColumns.has(String(item.id)));
-            this.root.querySelector("[data-response-count]").textContent = `총 ${Common.formatNumber(items.length)}건`;
-            if (!items.length) { this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="response-empty"><span>0</span><strong>표시할 응답이 없습니다.</strong><p>응답이 수집되면 이곳에서 실시간으로 조회할 수 있습니다.</p></div>`; return; }
-            this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="data-table-wrap"><table class="data-table response-table"><thead><tr><th>응답 ID</th><th>상태</th><th>제출 시각</th><th>소요 시간</th>${questions.map((question, index) => `<th title="${Common.escapeHtml(question.title)}">Q${index + 1}. ${Common.escapeHtml(question.title)}</th>`).join("")}</tr></thead><tbody>${items.map((item) => `<tr><td class="response-id">${Common.escapeHtml(item.id || item.responseId)}</td><td><span class="status-badge ${item.status === "partial" || item.completed === false ? "status-paused" : "status-published"}">${item.status === "partial" || item.completed === false ? "미완료" : "완료"}</span></td><td>${Common.formatDate(item.submittedAt || item.createdAt, { hour: "2-digit", minute: "2-digit" })}</td><td>${item.durationSeconds ? `${Math.max(1,Math.round(item.durationSeconds/60))}분` : "-"}</td>${questions.map((question) => `<td class="answer-cell" title="${Common.escapeHtml(this.answerValue(item,question))}">${Common.escapeHtml(this.answerValue(item,question) || "-")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+            const entries = this.visibleEntries();
+            const totalPages = Math.max(1, Math.ceil(items.length / this.pageSize));
+            this.page = Math.min(Math.max(1, this.page), totalPages);
+            const start = (this.page - 1) * this.pageSize;
+            const pageItems = items.slice(start, start + this.pageSize);
+            this.root.querySelector("[data-response-count]").textContent = `총 ${Common.formatNumber(items.length)}건 · ${Common.formatNumber(this.questionEntries.length)}개 문항`;
+            this.root.querySelector("[data-column-summary]").textContent = `전체 ${this.questionEntries.length}개 문항 중 ${entries.length}개 표시 · 고정 메타 열 ${META_COLUMNS}개`;
+            this.renderPagination(items.length, totalPages, start, pageItems.length);
+            if (!items.length) {
+                this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="response-empty"><span>0</span><strong>표시할 응답이 없습니다.</strong><p>검색어나 기간 조건을 바꾸거나 초기화해 보세요.</p></div>`;
+                return;
+            }
+            if (!entries.length) {
+                this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="response-empty"><span>＋</span><strong>표시할 문항 열을 선택하세요.</strong><p>열 설정에서 섹션별 문항을 고르거나 핵심 열 프리셋을 사용할 수 있습니다.</p></div>`;
+                return;
+            }
+            const header = entries.map((entry) => `<th class="question-column" title="${Common.escapeHtml(entry.question.title)}"><span>Q${entry.number}</span><strong>${Common.escapeHtml(entry.question.title || "제목 없는 문항")}</strong><small>${Common.escapeHtml(entry.sectionTitle)} · ${Common.escapeHtml(this.typeLabel(entry.question))}</small></th>`).join("");
+            const rows = pageItems.map((item) => {
+                const id = String(item.id || item.responseId || "");
+                const complete = item.status !== "partial" && item.completed !== false;
+                const answers = entries.map((entry) => {
+                    const presentation = this.answerPresentation(item, entry.question);
+                    return `<td class="answer-cell" title="${Common.escapeHtml(presentation.text)}">${this.presentationMarkup(presentation, true)}</td>`;
+                }).join("");
+                return `<tr><td class="response-id"><button type="button" data-response-detail="${Common.escapeHtml(id)}">${Common.escapeHtml(id)}</button></td><td><span class="status-badge ${complete ? "status-published" : "status-paused"}">${complete ? "완료" : "미완료"}</span></td><td>${Common.formatDate(item.submittedAt || item.createdAt, { hour: "2-digit", minute: "2-digit" })}</td><td>${item.durationSeconds ? `${Math.max(1, Math.round(item.durationSeconds / 60))}분` : "-"}</td>${answers}</tr>`;
+            }).join("");
+            const mobileCards = pageItems.map((item) => this.mobileResponseCard(item, entries)).join("");
+            this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="data-table-wrap response-table-wrap"><table class="data-table response-table"><thead><tr><th>응답 ID</th><th>상태</th><th>제출 시각</th><th>소요</th>${header}</tr></thead><tbody>${rows}</tbody></table></div><div class="response-mobile-list">${mobileCards}</div>`;
         },
-        renderLoading() { this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="page-loading"><span class="spinner"></span><strong>응답 데이터를 불러오는 중</strong></div>`; },
-        renderEmpty() { this.root.querySelector("[data-response-title]").textContent = "설문을 선택하세요"; this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="response-empty"><span>≡</span><strong>설문을 선택하면 응답이 표시됩니다.</strong><p>개인정보가 포함된 열은 권한과 다운로드 사유를 확인한 뒤 제공합니다.</p></div>`; this.root.querySelector("[data-response-count]").textContent = "총 0건"; },
-        renderError(message) { this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="response-empty"><span>!</span><strong>응답을 불러오지 못했습니다.</strong><p>${Common.escapeHtml(message)}</p></div>`; this.context.toast(message,"error"); },
-        resetFilters() { this.root.querySelector("[data-response-search]").value = ""; this.root.querySelector("[data-response-state]").value = "all"; this.root.querySelector("[data-response-from]").value = ""; this.root.querySelector("[data-response-to]").value = ""; this.renderTable(); },
-        exportCsv() { const questions = this.questions.filter((item) => this.visibleColumns.has(String(item.id))); const rows = [["응답ID","상태","제출시각","소요시간(초)",...questions.map((item) => item.title)], ...this.filtered().map((item) => [item.id || item.responseId, item.status || (item.completed === false ? "partial" : "complete"), item.submittedAt || item.createdAt, item.durationSeconds || "", ...questions.map((question) => this.answerValue(item, question))])]; Common.downloadCsv(`${this.currentSurvey?.title || "survey"}_responses.csv`, rows); this.context.toast("현재 필터 기준으로 CSV를 만들었습니다.","success"); },
-        showColumns() { const dialog = this.context.openModal(`<p class="eyebrow">VISIBLE COLUMNS</p><h2>표시할 문항 열</h2><div class="column-picker">${this.questions.map((question) => `<label><input type="checkbox" value="${Common.escapeHtml(question.id)}" ${this.visibleColumns.has(String(question.id)) ? "checked" : ""}> <span>${Common.escapeHtml(question.title)}</span></label>`).join("")}</div><button class="button button-primary button-block" data-apply-columns>적용</button>`); dialog.querySelector("[data-apply-columns]").addEventListener("click", () => { this.visibleColumns = new Set([...dialog.querySelectorAll('.column-picker input:checked')].map((input) => String(input.value))); dialog.close(); this.renderTable(); }); },
-        showPrivacyGuide() { this.context.openModal(`<p class="eyebrow">DATA GOVERNANCE</p><h2>응답 데이터 처리 원칙</h2><ol class="help-steps"><li><strong>최소 권한</strong><span>회원사와 프로젝트 권한을 서버에서 매 요청마다 확인합니다.</span></li><li><strong>목적 제한</strong><span>설문 고지 목적을 벗어난 재사용과 불필요한 결합을 금지합니다.</span></li><li><strong>감사 기록</strong><span>원자료 조회·다운로드 사유와 사용자를 남깁니다.</span></li><li><strong>보유기간</strong><span>만료 정책에 따라 익명화하거나 안전하게 파기합니다.</span></li></ol>`); },
-        destroy() { this.root?.removeEventListener("change",this.onChange); this.root?.removeEventListener("input",this.onInput); this.root?.removeEventListener("click",this.onClick); this.root=null; }
+        mobileResponseCard(item, entries) {
+            const id = String(item.id || item.responseId || "");
+            const complete = item.status !== "partial" && item.completed !== false;
+            return `<article class="response-mobile-card"><header><button type="button" data-response-detail="${Common.escapeHtml(id)}">${Common.escapeHtml(id)}</button><span class="status-badge ${complete ? "status-published" : "status-paused"}">${complete ? "완료" : "미완료"}</span></header><p>${Common.formatDate(item.submittedAt || item.createdAt, { hour: "2-digit", minute: "2-digit" })}</p><dl>${entries.slice(0, 3).map((entry) => `<div><dt>Q${entry.number}. ${Common.escapeHtml(entry.question.title)}</dt><dd>${this.presentationMarkup(this.answerPresentation(item, entry.question), true)}</dd></div>`).join("")}</dl><button class="button button-small" type="button" data-response-detail="${Common.escapeHtml(id)}">전체 응답 보기</button></article>`;
+        },
+        renderPagination(total, totalPages, start, length) {
+            const host = this.root.querySelector("[data-response-pagination]");
+            if (!total) { host.innerHTML = ""; return; }
+            host.innerHTML = `<span>${Common.formatNumber(start + 1)}–${Common.formatNumber(start + length)} / ${Common.formatNumber(total)}</span><label>페이지당 <select data-response-page-size><option value="25" ${this.pageSize === 25 ? "selected" : ""}>25</option><option value="50" ${this.pageSize === 50 ? "selected" : ""}>50</option><option value="100" ${this.pageSize === 100 ? "selected" : ""}>100</option></select></label><button type="button" data-page-delta="-1" aria-label="이전 페이지" ${this.page <= 1 ? "disabled" : ""}>‹</button><strong>${this.page}/${totalPages}</strong><button type="button" data-page-delta="1" aria-label="다음 페이지" ${this.page >= totalPages ? "disabled" : ""}>›</button>`;
+        },
+        renderLoading() {
+            this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="page-loading"><span class="spinner"></span><strong>응답 데이터를 불러오는 중</strong><p>문항과 응답 수에 따라 잠시 걸릴 수 있습니다.</p></div>`;
+        },
+        renderEmpty() {
+            this.root.querySelector("[data-response-title]").textContent = "설문을 선택하세요";
+            this.root.querySelector("[data-column-summary]").textContent = "표시 문항을 선택하면 요약이 표시됩니다.";
+            this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="response-empty"><span>≡</span><strong>설문을 선택하면 응답이 표시됩니다.</strong><p>검색형 설문 선택기에서 분석할 프로젝트를 찾아보세요.</p></div>`;
+            this.root.querySelector("[data-response-count]").textContent = "총 0건";
+            this.root.querySelector("[data-response-pagination]").innerHTML = "";
+        },
+        renderError(message) {
+            this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="response-empty"><span>!</span><strong>응답을 불러오지 못했습니다.</strong><p>${Common.escapeHtml(message)}</p></div>`;
+            this.context.toast(message, "error");
+        },
+        resetFilters() {
+            this.root.querySelector("[data-response-search]").value = "";
+            this.root.querySelector("[data-response-state]").value = "all";
+            this.root.querySelector("[data-response-from]").value = "";
+            this.root.querySelector("[data-response-to]").value = "";
+            this.page = 1;
+            this.renderTable();
+        },
+        applyColumnPreset(mode) {
+            if (mode === "all") this.visibleColumns = new Set(this.questionEntries.map((entry) => entry.id));
+            else this.visibleColumns = new Set(this.essentialEntries().map((entry) => entry.id));
+            this.page = 1;
+            this.renderTable();
+            this.context.toast(mode === "all" ? "전체 문항 열을 표시합니다." : "필수 문항 우선 핵심 열을 표시합니다.", "success");
+        },
+        showColumns() {
+            const groups = [];
+            this.questionEntries.forEach((entry) => {
+                let group = groups.find((item) => item.id === entry.sectionId);
+                if (!group) { group = { id: entry.sectionId, title: entry.sectionTitle, entries: [] }; groups.push(group); }
+                group.entries.push(entry);
+            });
+            const dialog = this.context.openModal(`<div class="column-dialog"><p class="eyebrow">VISIBLE COLUMNS</p><h2>표시할 문항 열</h2><p class="column-dialog-intro">섹션별로 필요한 문항만 선택합니다. 많은 열을 선택해도 표 안에서 가로 스크롤됩니다.</p><div class="column-dialog-tools"><input type="search" placeholder="문항명·번호 검색" aria-label="표시 열 검색" data-column-search><button class="button button-small" type="button" data-column-dialog-preset="essential">핵심</button><button class="button button-small" type="button" data-column-dialog-preset="all">전체</button><button class="button button-small" type="button" data-column-dialog-preset="none">해제</button></div><p class="column-dialog-count" aria-live="polite" data-column-dialog-count></p><div class="column-picker">${groups.map((group) => `<section><header><strong>${Common.escapeHtml(group.title)}</strong><span>${group.entries.length}문항</span></header>${group.entries.map((entry) => `<label data-column-choice data-search-text="${Common.escapeHtml(`q${entry.number} ${entry.question.title} ${group.title}`.toLowerCase())}"><input type="checkbox" value="${Common.escapeHtml(entry.id)}" ${this.visibleColumns.has(entry.id) ? "checked" : ""}><span><b>Q${entry.number}</b> ${Common.escapeHtml(entry.question.title || "제목 없는 문항")}<small>${Common.escapeHtml(this.typeLabel(entry.question))}${entry.question.required ? " · 필수" : ""}</small></span></label>`).join("")}</section>`).join("")}</div><button class="button button-primary button-block" type="button" data-apply-columns>선택한 열 적용</button></div>`, { wide: true, label: "표시할 문항 열 설정", initialFocus: "[data-column-search]" });
+            const update = () => {
+                const checked = dialog.querySelectorAll("[data-column-choice] input:checked").length;
+                dialog.querySelector("[data-column-dialog-count]").textContent = `${this.questionEntries.length}개 문항 중 ${checked}개 선택`;
+            };
+            dialog.querySelector("[data-column-search]").addEventListener("input", (event) => {
+                const query = event.target.value.trim().toLowerCase();
+                dialog.querySelectorAll("[data-column-choice]").forEach((label) => { label.hidden = Boolean(query) && !label.dataset.searchText.includes(query); });
+                dialog.querySelectorAll(".column-picker section").forEach((section) => { section.hidden = !section.querySelector("[data-column-choice]:not([hidden])"); });
+            });
+            dialog.querySelector(".column-picker").addEventListener("change", update);
+            dialog.querySelector("[data-column-dialog-preset='essential']").addEventListener("click", () => {
+                const ids = new Set(this.essentialEntries().map((entry) => entry.id));
+                dialog.querySelectorAll("[data-column-choice] input").forEach((input) => { input.checked = ids.has(String(input.value)); });
+                update();
+            });
+            dialog.querySelector("[data-column-dialog-preset='all']").addEventListener("click", () => { dialog.querySelectorAll("[data-column-choice] input").forEach((input) => { input.checked = true; }); update(); });
+            dialog.querySelector("[data-column-dialog-preset='none']").addEventListener("click", () => { dialog.querySelectorAll("[data-column-choice] input").forEach((input) => { input.checked = false; }); update(); });
+            dialog.querySelector("[data-apply-columns]").addEventListener("click", () => {
+                this.visibleColumns = new Set([...dialog.querySelectorAll("[data-column-choice] input:checked")].map((input) => String(input.value)));
+                dialog.close();
+                this.page = 1;
+                this.renderTable();
+            });
+            update();
+        },
+        showResponseDetail(responseId) {
+            const response = this.responses.find((item) => String(item.id || item.responseId) === String(responseId));
+            if (!response) return;
+            const groups = [];
+            this.questionEntries.forEach((entry) => {
+                let group = groups.find((item) => item.id === entry.sectionId);
+                if (!group) { group = { id: entry.sectionId, title: entry.sectionTitle, entries: [] }; groups.push(group); }
+                group.entries.push(entry);
+            });
+            const complete = response.status !== "partial" && response.completed !== false;
+            this.context.openModal(`<div class="response-detail"><p class="eyebrow">RESPONSE DETAIL</p><h2>응답 상세</h2><dl class="response-detail-meta"><div><dt>응답 ID</dt><dd>${Common.escapeHtml(responseId)}</dd></div><div><dt>상태</dt><dd>${complete ? "완료" : "미완료"}</dd></div><div><dt>제출 시각</dt><dd>${Common.escapeHtml(Common.formatDate(response.submittedAt || response.createdAt, { hour: "2-digit", minute: "2-digit" }))}</dd></div><div><dt>소요 시간</dt><dd>${response.durationSeconds ? `${Common.formatNumber(response.durationSeconds)}초` : "-"}</dd></div></dl><div class="response-detail-sections">${groups.map((group) => `<section><header><span>SECTION</span><h3>${Common.escapeHtml(group.title)}</h3></header><dl>${group.entries.map((entry) => `<div><dt><b>Q${entry.number}</b><span>${Common.escapeHtml(entry.question.title || "제목 없는 문항")}</span><small>${Common.escapeHtml(this.typeLabel(entry.question))}</small></dt><dd>${this.presentationMarkup(this.answerPresentation(response, entry.question))}</dd></div>`).join("")}</dl></section>`).join("")}</div></div>`, { wide: true, label: "응답 상세" });
+        },
+        csvMetadata(response) {
+            const complete = response.status !== "partial" && response.completed !== false;
+            return [response.id || response.responseId, complete ? "완료" : "미완료", response.submittedAt || response.createdAt || "", response.durationSeconds || ""];
+        },
+        analysisDescriptors(entries) {
+            return entries.flatMap((entry) => {
+                const question = entry.question;
+                const prefix = `Q${entry.number}. ${question.title || "제목 없는 문항"}`;
+                const type = normalizedType(question);
+                if (MULTIPLE_TYPES.has(type) && this.optionItems(question).length) {
+                    return this.optionItems(question).map((option) => ({
+                        label: `${prefix} [${option.label}]`,
+                        value: (response) => {
+                            const raw = this.rawAnswer(response, question);
+                            return (Array.isArray(raw) ? raw : [raw]).map(String).includes(option.id) ? 1 : 0;
+                        }
+                    }));
+                }
+                if (MATRIX_TYPES.has(type) && this.axisItems(question, "rows").length) {
+                    const rows = this.axisItems(question, "rows");
+                    const columns = this.axisItems(question, "columns");
+                    if (this.isMatrixMultiple(question)) return rows.flatMap((row, rowIndex) => columns.map((column, columnIndex) => ({
+                        label: `${prefix} [${row.label} / ${column.label}]`,
+                        value: (response) => {
+                            const raw = this.rawAnswer(response, question) || {};
+                            const selected = raw[row.id] ?? raw[String(rowIndex)] ?? [];
+                            const values = (Array.isArray(selected) ? selected : [selected]).map(String);
+                            return values.includes(column.id) || values.includes(String(columnIndex)) ? 1 : 0;
+                        }
+                    })));
+                    return rows.map((row, rowIndex) => ({
+                        label: `${prefix} [${row.label}]`,
+                        value: (response) => {
+                            const raw = this.rawAnswer(response, question) || {};
+                            return this.itemLabel(columns, raw[row.id] ?? raw[String(rowIndex)] ?? "");
+                        }
+                    }));
+                }
+                return [{ label: prefix, value: (response) => this.answerPresentation(response, question).text.replaceAll(" | ", "\n") }];
+            });
+        },
+        exportCsv(mode) {
+            const entries = mode === "visible" ? this.visibleEntries() : this.questionEntries;
+            const items = this.filtered();
+            const baseHeader = ["응답ID", "상태", "제출시각", "소요시간(초)"];
+            let rows;
+            let suffix;
+            if (mode === "analysis") {
+                const descriptors = this.analysisDescriptors(entries);
+                rows = [baseHeader.concat(descriptors.map((item) => item.label)), ...items.map((response) => this.csvMetadata(response).concat(descriptors.map((item) => item.value(response))))];
+                suffix = "analysis";
+            } else if (mode === "raw") {
+                rows = [baseHeader.concat(entries.map((entry) => `Q${entry.number}. ${entry.question.title}`)), ...items.map((response) => this.csvMetadata(response).concat(entries.map((entry) => {
+                    const raw = this.rawAnswer(response, entry.question);
+                    return raw && typeof raw === "object" ? safeJson(raw) : (raw ?? "");
+                })))];
+                suffix = "raw";
+            } else {
+                rows = [baseHeader.concat(entries.map((entry) => `Q${entry.number}. ${entry.question.title}`)), ...items.map((response) => this.csvMetadata(response).concat(entries.map((entry) => this.answerPresentation(response, entry.question).text.replaceAll(" | ", "\n"))))];
+                suffix = "view";
+            }
+            Common.downloadCsv(`${safeFilename(this.currentSurvey?.title)}_responses_${suffix}.csv`, rows);
+            this.context.toast(`${Common.formatNumber(items.length)}건의 CSV를 만들었습니다.`, "success");
+        },
+        showExportOptions() {
+            const dialog = this.context.openModal(`<div class="export-dialog"><p class="eyebrow">CSV EXPORT</p><h2>내보내기 형식 선택</h2><p>현재 검색·상태·기간 필터가 세 형식에 동일하게 적용됩니다.</p><div class="export-options"><button type="button" data-export-mode="visible"><strong>현재 보기형</strong><span>화면에서 선택한 문항만 내보냅니다. 복수응답은 보기명으로 한 셀에 정리합니다.</span></button><button type="button" data-export-mode="analysis"><strong>분석형 · 권장</strong><span>전체 문항을 내보내고 복수응답과 복수 매트릭스를 보기별 1/0 열로 분리합니다.</span></button><button type="button" data-export-mode="raw"><strong>원본형</strong><span>전체 문항의 제출값을 보존합니다. 표·매트릭스 값은 JSON으로 제공합니다.</span></button></div><p class="export-count">대상 응답 ${Common.formatNumber(this.filtered().length)}건 · 전체 문항 ${Common.formatNumber(this.questionEntries.length)}개</p></div>`, { label: "CSV 내보내기 형식 선택" });
+            dialog.querySelector(".export-options").addEventListener("click", (event) => {
+                const button = event.target.closest("[data-export-mode]");
+                if (!button) return;
+                const mode = button.dataset.exportMode;
+                dialog.close();
+                this.exportCsv(mode);
+            });
+        },
+        showPrivacyGuide() {
+            this.context.openModal(`<p class="eyebrow">DATA GOVERNANCE</p><h2>응답 데이터 처리 원칙</h2><ol class="help-steps"><li><strong>최소 권한</strong><span>회원사와 프로젝트 권한을 서버에서 매 요청마다 확인합니다.</span></li><li><strong>최소 표시</strong><span>화면에는 업무에 필요한 문항만 선택해 표시합니다.</span></li><li><strong>분석 목적 구분</strong><span>분석형은 복수응답을 1/0 열로 변환하고 원본형은 제출 구조를 보존합니다.</span></li><li><strong>보유기간</strong><span>만료 정책에 따라 익명화하거나 안전하게 파기합니다.</span></li></ol>`);
+        },
+        destroy() {
+            this.root?.removeEventListener("change", this.onChange);
+            this.root?.removeEventListener("input", this.onInput);
+            this.root?.removeEventListener("focusin", this.onFocus);
+            this.root?.removeEventListener("keydown", this.onKeydown);
+            this.root?.removeEventListener("click", this.onClick);
+            this.root = null;
+        }
     };
 })();

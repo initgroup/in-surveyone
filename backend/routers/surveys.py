@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Literal
+from urllib.parse import urljoin
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 
+from backend.config import get_settings
 from backend.dependencies import current_store, current_user
+from backend.errors import ConflictError
 from backend.memory_store import UserRecord
 from backend.models import (
     ApiResponse,
@@ -20,6 +24,7 @@ from backend.models import (
     SurveyUpdateRequest,
 )
 from backend.stores import SurveyStore
+from backend.qr_code import create_qr_svg
 
 
 router = APIRouter()
@@ -50,6 +55,29 @@ def get_survey(
     store: SurveyStore = Depends(current_store),
 ) -> ApiResponse[SurveyDetail]:
     return ApiResponse(data=store.get_survey(user, survey_id))
+
+
+@router.get("/{survey_id}/qr.svg", response_class=Response)
+def survey_qr_code(
+    survey_id: str,
+    user: UserRecord = Depends(current_user),
+    store: SurveyStore = Depends(current_store),
+) -> Response:
+    survey = store.get_survey(user, survey_id)
+    if not survey.public_url:
+        raise ConflictError("설문을 배포한 후 QR 코드를 생성할 수 있습니다.")
+    target = urljoin(f"{get_settings().base_url}/", survey.public_url)
+    return Response(
+        content=create_qr_svg(target),
+        media_type="image/svg+xml",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Content-Disposition": f'inline; filename="survey-{survey_id}-qr.svg"',
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+            "X-Content-Type-Options": "nosniff",
+            "X-QR-Target": target,
+        },
+    )
 
 
 @router.put("/{survey_id}", response_model=ApiResponse[SurveyDetail])

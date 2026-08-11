@@ -18,9 +18,10 @@
                 <select data-edit-locale aria-describedby="builderLanguageStatus"></select>
             </label>
             <span class="builder-language-status" id="builderLanguageStatus" data-language-status aria-live="polite"></span>
-            <span class="builder-save-label" data-builder-save-label>저장됨</span>
+            <span class="builder-save-label" data-builder-save-label role="status" aria-live="polite">저장됨</span>
+            <button class="button button-small" type="button" data-builder-save>저장</button>
             <button class="button button-small" type="button" data-builder-preview>미리보기</button>
-            <button class="button button-small button-primary" type="button" data-builder-publish>배포 준비</button>
+            <button class="button button-small button-primary" type="button" data-builder-distribute>배포 준비</button>
         </div>
     </header>
 
@@ -118,8 +119,9 @@
 
     <div class="builder-mobile-actions">
         <button class="button" type="button" data-mobile-tools>＋ 문항</button>
+        <button class="button" type="button" data-builder-save>저장</button>
         <button class="button" type="button" data-builder-preview>미리보기</button>
-        <button class="button button-primary" type="button" data-builder-publish>배포</button>
+        <button class="button button-primary" type="button" data-builder-distribute>배포 준비</button>
     </div>
 </section>
 

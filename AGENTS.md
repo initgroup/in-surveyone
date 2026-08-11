@@ -92,19 +92,21 @@
 
 ## guest 정책
 
-- `local` guest는 memory에만 존재하며 Oracle을 읽거나 쓰지 않습니다. 프로젝트·문항·응답 수, 외부 발송, 기관 브랜딩, 대량 export와 영구 보고서를 제한합니다.
-- `database` guest는 Oracle에 만료되는 `DB_GUEST` tenant/user/session으로 저장하고 회원용 기능을 체험할 수 있게 하되 운영 회원과 namespace, quota, 만료와 capability를 분리합니다.
-- DB guest 선택은 Oracle mode가 정상일 때만 제공합니다. 연결 실패를 local guest로 조용히 fallback하거나 local guest 데이터를 DB에 저장하지 않습니다.
-- guest 선택 화면은 저장 위치, 보존 수명, 재시작 영향, 기능 제한, provider 설정 조건과 개인정보 주의를 선택 전에 자세히 설명합니다.
+- runtime guest는 Oracle에 만료되는 `DB_GUEST` tenant/user/session으로만 저장합니다. 브라우저 또는 서버 memory에 guest 업무 데이터를 저장하거나 Oracle 장애를 memory로 fallback하지 않습니다.
+- guest 신청마다 `quest001`처럼 최소 3자리 일련번호의 애플리케이션 로그인 아이디를 Oracle sequence로 발급합니다. 각 guest는 별도의 tenant와 user를 가지며 모든 업무 SQL은 tenant와 user 소유권을 함께 검증합니다.
+- 초기 비밀번호 평문은 신청 응답에서 한 번만 표시하고 DB에는 강한 password hash만 저장합니다. 비밀번호를 브라우저 storage, 로그, URL, telemetry에 기록하지 않습니다.
+- guest 재로그인은 아이디·비밀번호와 만료되지 않은 tenant를 검증해 일반 회원과 동일한 불투명 HttpOnly session cookie를 발급합니다. PC·모바일 식별자나 Windows local session은 인증 근거로 신뢰하지 않습니다.
+- guest 신청은 Oracle pool과 schema가 정상일 때만 제공합니다. 사용할 수 없으면 이유를 명시하고 신청을 차단합니다.
+- 메인 대시보드는 인증 없이 둘러볼 수 있으며, guest 신청·로그인·회원가입은 사용자가 작업을 시작할 때 선택합니다.
 - DB guest가 모든 화면 흐름을 사용할 수 있어도 disabled provider를 우회해 실제 이메일·문자·카카오를 전송하지 않습니다.
-- 두 guest 모두 운영 기관을 사칭하는 공개 서비스가 아니며 만료와 데모 표시를 적용합니다.
+- guest는 운영 기관을 사칭하는 공개 서비스가 아니며 만료와 데모 표시, 유한 quota를 적용합니다.
 - guest 화면에는 데모와 민감정보 입력 금지를 명확히 표시합니다.
 - 가입 전환은 사용자가 확인한 설문 구조만 새 tenant로 복사하며 수신자와 응답 개인정보를 자동 이전하지 않습니다.
 
 ## 저장소 모드와 Oracle
 
 - `initgroup-members`와 동일한 `DB_MODE=local|cloud`, `DB_*` Oracle profile을 기본 계약으로 사용합니다.
-- memory repository는 자동 테스트와 명시적인 local guest 전용입니다.
+- `local`과 `cloud` 모두 Oracle runtime입니다. memory repository는 자동화된 repository 계약 테스트에서만 사용하고 실제 guest/member 요청에는 사용하지 않습니다.
 - 개발 환경의 세션 secret은 `INIT_SECRET_KEY`가 없을 때만 `runtime/.session-secret`에 무작위로 최초 생성합니다. 운영 환경은 Environment Group에 `INIT_SECRET_KEY`를 반드시 명시합니다.
 - oracle 설정 오류나 연결 실패를 memory로 fallback하지 않습니다.
 - Oracle thin mode를 우선하고 thick client/Wallet은 환경설정으로만 주입합니다.
@@ -117,6 +119,7 @@
 - 같은 basename의 `*_ALT.sql`은 기존 schema용 idempotent 증분 이력입니다.
 - 이 프로젝트가 생성하는 모든 영속 Oracle object 이름은 공유 schema 충돌 방지를 위해 `INIT$SVY_`로 시작하며 Oracle identifier 길이 제한을 지킵니다.
 - DDL과 ALT는 재실행 가능해야 하며 ALT의 최종 테이블 원문과 컬럼 순서는 DDL과 일치해야 합니다.
+- Oracle 26ai upgrade에서 컬럼을 추가하거나 순서를 바꾸면 ALT가 기존 데이터를 보존하면서 최종 `USER_TAB_COLUMNS.COLUMN_ID` 순서를 DDL과 같게 조정하고 실행 후 불일치를 검증해야 합니다.
 - schema 변경은 DDL 최종본과 ALT 변경을 같은 작업에서 함께 반영합니다.
 - ALT의 무조건적인 `DROP`, `TRUNCATE`, destructive data rewrite는 금지합니다. 불가피하면 사용자 승인, 백업, 영향 분석과 복구 절차를 별도 문서화합니다.
 - `SURVEYONE_SYSTEM_DROP.sql`과 `SURVEYONE_SYSTEM_TRUC.sql`은 사용자가 명시적으로 요청한 별도 파괴 스크립트입니다. 자동 실행·테스트하지 않고 `INIT$SVY_` 범위 밖 object를 절대 대상으로 삼지 않습니다. 다른 schema의 FK·의존 객체를 DBA catalog에서 확인할 수 없으면 실행을 중단합니다.

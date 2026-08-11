@@ -9,14 +9,13 @@ from backend.errors import AuthenticationError, ServiceUnavailableError
 from backend.models import GuestCapabilitiesView, GuestMode
 from backend.stores import (
     guest_capabilities,
-    memory_store,
-    oracle_store,
     primary_store,
     resolve_authenticated_store,
 )
 from backend.models import (
     ApiResponse,
     AuthSessionView,
+    GuestProvisionView,
     GuestSessionRequest,
     LoginRequest,
     SignupRequest,
@@ -52,30 +51,25 @@ def _set_session_cookie(
     )
 
 
-@router.post("/guest", response_model=ApiResponse[AuthSessionView], status_code=201)
+@router.post("/guest", response_model=ApiResponse[GuestProvisionView], status_code=201)
 def start_guest_session(
     response: Response,
     payload: GuestSessionRequest | None = None,
-) -> ApiResponse[AuthSessionView]:
+) -> ApiResponse[GuestProvisionView]:
     request_payload = payload or GuestSessionRequest()
-    if request_payload.mode == GuestMode.LOCAL:
-        store = memory_store
-    else:
-        capabilities = guest_capabilities(GuestMode.DATABASE)
-        database = next(
-            item for item in capabilities.modes if item.mode == GuestMode.DATABASE
+    capabilities = guest_capabilities(GuestMode.DATABASE)
+    database = capabilities.modes[0]
+    if not database.available:
+        raise ServiceUnavailableError(
+            database.reason or "Database guest mode is unavailable."
         )
-        if not database.available:
-            raise ServiceUnavailableError(
-                database.reason or "Database guest mode is unavailable."
-            )
-        store = oracle_store()
-    token, session = store.create_guest(
+    store = primary_store()
+    provisioned = store.create_guest(
         request_payload.display_name,
         request_payload.mode,
     )
-    _set_session_cookie(response, token, session)
-    return ApiResponse(data=session)
+    response.headers["Cache-Control"] = "no-store"
+    return ApiResponse(data=provisioned)
 
 
 @router.post("/signup", response_model=ApiResponse[AuthSessionView], status_code=201)
@@ -130,16 +124,5 @@ def me(request: Request) -> ApiResponse[AuthSessionView]:
     response_model=ApiResponse[GuestCapabilitiesView],
 )
 def capabilities(
-    request: Request,
-    mode: GuestMode = GuestMode.LOCAL,
 ) -> ApiResponse[GuestCapabilitiesView]:
-    token = request.cookies.get(get_settings().session_cookie_name)
-    if token:
-        try:
-            _, user = resolve_authenticated_store(token)
-        except AuthenticationError:
-            pass
-        else:
-            if user.guest_mode is not None:
-                mode = user.guest_mode
-    return ApiResponse(data=guest_capabilities(mode))
+    return ApiResponse(data=guest_capabilities(GuestMode.DATABASE))

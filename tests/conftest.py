@@ -7,4 +7,4 @@ import os
 os.environ["SURVEYONE_LOAD_DOTENV"] = "false"
 os.environ["SURVEYONE_DB_MODE"] = "memory"
 os.environ["DB_MODE"] = "memory"
-os.environ["SURVEYONE_ENV"] = "development"
+os.environ["SURVEYONE_ENV"] = "test"

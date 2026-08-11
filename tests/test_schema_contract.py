@@ -56,6 +56,155 @@ def _normalize_sql(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+def _find_matching_parenthesis(source: str, opening_index: int) -> int:
+    depth = 0
+    in_string = False
+    index = opening_index
+    while index < len(source):
+        character = source[index]
+        if in_string:
+            if character == "'":
+                if index + 1 < len(source) and source[index + 1] == "'":
+                    index += 2
+                    continue
+                in_string = False
+            index += 1
+            continue
+        if character == "'":
+            in_string = True
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    raise AssertionError("unbalanced SQL parentheses")
+
+
+def _split_top_level(value: str) -> list[str]:
+    parts: list[str] = []
+    start = 0
+    depth = 0
+    in_string = False
+    index = 0
+    while index < len(value):
+        character = value[index]
+        if in_string:
+            if character == "'":
+                if index + 1 < len(value) and value[index + 1] == "'":
+                    index += 2
+                    continue
+                in_string = False
+            index += 1
+            continue
+        if character == "'":
+            in_string = True
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        elif character == "," and depth == 0:
+            parts.append(value[start:index].strip())
+            start = index + 1
+        index += 1
+    parts.append(value[start:].strip())
+    return parts
+
+
+def _literal_call_arguments(source: str, call_name: str) -> list[list[str]]:
+    calls: list[list[str]] = []
+    pattern = re.compile(rf"(?m)^\s*{re.escape(call_name)}\s*\(")
+    for match in pattern.finditer(source):
+        opening_index = source.find("(", match.start())
+        closing_index = _find_matching_parenthesis(source, opening_index)
+        calls.append(_split_top_level(source[opening_index + 1 : closing_index]))
+    return calls
+
+
+def _decode_sql_literal_expression(expression: str) -> str:
+    literal_pattern = re.compile(r"'((?:''|[^'])*)'")
+    parts: list[str] = []
+    last_end = 0
+    for match in literal_pattern.finditer(expression):
+        separator = expression[last_end : match.start()]
+        assert not re.sub(r"\s+|\|\|", "", separator), expression
+        parts.append(match.group(1).replace("''", "'"))
+        last_end = match.end()
+    assert parts, expression
+    assert not re.sub(r"\s+|\|\|", "", expression[last_end:]), expression
+    return "".join(parts)
+
+
+def _executed_call_definitions(
+    source: str,
+    call_name: str,
+    definition_argument: int,
+) -> dict[str, str]:
+    definitions: dict[str, str] = {}
+    for arguments in _literal_call_arguments(source, call_name):
+        assert len(arguments) > definition_argument
+        name = _decode_sql_literal_expression(arguments[0])
+        assert name not in definitions, f"duplicate {call_name} declaration: {name}"
+        definitions[name] = _normalize_sql(
+            _decode_sql_literal_expression(arguments[definition_argument])
+        )
+    return definitions
+
+
+def _function_definitions(source: str) -> dict[str, str]:
+    pattern = re.compile(
+        r'(?ms)^(CREATE OR REPLACE FUNCTION "([A-Z0-9$_]+)".*?)(?=^/\s*$)',
+    )
+    definitions: dict[str, str] = {}
+    for match in pattern.finditer(source):
+        name = match.group(2)
+        assert name not in definitions, f"duplicate function declaration: {name}"
+        definitions[name] = _normalize_sql(match.group(1))
+    return definitions
+
+
+def _normalize_constraint_definition(value: str) -> str:
+    normalized = _normalize_sql(value)
+    normalized = re.sub(r"\(\s+", "(", normalized)
+    normalized = re.sub(r"\s+\)", ")", normalized)
+    return re.sub(r"\s+ENABLE$", "", normalized, flags=re.IGNORECASE)
+
+
+def _table_constraint_definitions(source: str) -> dict[tuple[str, str], str]:
+    definitions: dict[tuple[str, str], str] = {}
+    for table_name, create_table in _table_definitions(source).items():
+        opening_index = create_table.find("(")
+        assert opening_index >= 0
+        closing_index = _find_matching_parenthesis(create_table, opening_index)
+        for item in _split_top_level(create_table[opening_index + 1 : closing_index]):
+            match = re.match(
+                r'^CONSTRAINT\s+"([A-Z0-9$_]+)"\s+(.*)$',
+                item,
+                re.DOTALL,
+            )
+            if match is None:
+                continue
+            key = (table_name, match.group(1))
+            assert key not in definitions, f"duplicate table constraint: {key}"
+            definitions[key] = _normalize_constraint_definition(match.group(2))
+    return definitions
+
+
+def _constraint_call_definitions(source: str) -> dict[tuple[str, str], str]:
+    definitions: dict[tuple[str, str], str] = {}
+    for arguments in _literal_call_arguments(source, "ADD_CONSTRAINT_IF_MISSING"):
+        assert len(arguments) == 3
+        table_name = _decode_sql_literal_expression(arguments[0])
+        constraint_name = _decode_sql_literal_expression(arguments[1])
+        key = (table_name, constraint_name)
+        assert key not in definitions, f"duplicate constraint upgrade: {key}"
+        definitions[key] = _normalize_constraint_definition(
+            _decode_sql_literal_expression(arguments[2])
+        )
+    return definitions
+
+
 def test_ddl_and_alt_have_identical_final_table_definitions() -> None:
     ddl_tables = _table_definitions(_read(DDL_PATH))
     alt_tables = _table_definitions(_read(ALT_PATH))
@@ -66,11 +215,68 @@ def test_ddl_and_alt_have_identical_final_table_definitions() -> None:
         assert _normalize_sql(ddl_tables[table_name]) == _normalize_sql(alt_tables[table_name])
 
 
+def test_ddl_and_alt_have_identical_executed_index_and_sequence_definitions() -> None:
+    ddl = _read(DDL_PATH)
+    alt = _read(ALT_PATH)
+
+    object_name_patterns = {
+        "CREATE_INDEX_IF_MISSING": re.compile(
+            r'^CREATE (?:UNIQUE )?INDEX "([A-Z0-9$_]+)"',
+        ),
+        "CREATE_SEQUENCE_IF_MISSING": re.compile(
+            r'^CREATE SEQUENCE "([A-Z0-9$_]+)"',
+        ),
+    }
+    for call_name, object_name_pattern in object_name_patterns.items():
+        ddl_definitions = _executed_call_definitions(ddl, call_name, 1)
+        alt_definitions = _executed_call_definitions(alt, call_name, 1)
+        assert ddl_definitions
+        assert set(ddl_definitions) == set(alt_definitions)
+        assert ddl_definitions == alt_definitions
+        for name, definition in ddl_definitions.items():
+            match = object_name_pattern.match(definition)
+            assert match is not None, (call_name, name)
+            assert match.group(1) == name
+            assert name.startswith(PREFIX)
+            assert len(name.encode("ascii")) <= 30
+
+
+def test_ddl_and_alt_have_identical_function_definitions() -> None:
+    ddl_definitions = _function_definitions(_read(DDL_PATH))
+    alt_definitions = _function_definitions(_read(ALT_PATH))
+
+    assert ddl_definitions
+    assert set(ddl_definitions) == set(alt_definitions)
+    assert ddl_definitions == alt_definitions
+
+
+def test_alt_constraint_upgrades_match_final_ddl_definitions() -> None:
+    ddl = _read(DDL_PATH)
+    alt = _read(ALT_PATH)
+    final_definitions = _table_constraint_definitions(ddl)
+    deferred_ddl_definitions = _constraint_call_definitions(ddl)
+    for key, definition in deferred_ddl_definitions.items():
+        assert key not in final_definitions
+        final_definitions[key] = definition
+
+    alt_upgrade_definitions = _constraint_call_definitions(alt)
+    assert alt_upgrade_definitions
+    assert set(deferred_ddl_definitions) <= set(alt_upgrade_definitions)
+    assert set(alt_upgrade_definitions) <= set(final_definitions)
+    for (table_name, constraint_name), definition in alt_upgrade_definitions.items():
+        assert table_name in EXPECTED_TABLES
+        assert constraint_name.startswith(PREFIX)
+        assert len(constraint_name.encode("ascii")) <= 30
+        key = (table_name, constraint_name)
+        assert definition == final_definitions[key], key
+
+
 def test_all_declared_oracle_identifiers_use_project_prefix_and_fit_30_bytes() -> None:
     ddl = _read(DDL_PATH)
     patterns = (
         r'CREATE TABLE "([A-Z0-9$_]+)"',
         r'CREATE (?:UNIQUE )?INDEX "([A-Z0-9$_]+)"',
+        r'CREATE SEQUENCE "([A-Z0-9$_]+)"',
         r'CONSTRAINT "([A-Z0-9$_]+)"',
         r'CREATE OR REPLACE FUNCTION "([A-Z0-9$_]+)"',
     )
@@ -88,6 +294,7 @@ def test_all_declared_oracle_identifiers_use_project_prefix_and_fit_30_bytes() -
     assert len(set(re.findall(r'CREATE (?:UNIQUE )?INDEX "(INIT\$SVY_[A-Z0-9_]+)"', ddl))) == 20
     assert len(set(re.findall(r'CONSTRAINT "(INIT\$SVY_[A-Z0-9_]+)"', ddl))) == 123
     assert len(re.findall(r'CREATE OR REPLACE FUNCTION "INIT\$SVY_', ddl)) == 2
+    assert ddl.count('CREATE SEQUENCE "INIT$SVY_SQ_GUEST_LOGIN"') == 1
 
 
 def test_install_and_upgrade_scripts_are_idempotent_and_non_destructive() -> None:
@@ -104,6 +311,8 @@ def test_install_and_upgrade_scripts_are_idempotent_and_non_destructive() -> Non
     assert "CREATE_TABLE_IF_MISSING" in alt
     assert "CREATE_INDEX_IF_MISSING" in ddl
     assert "CREATE_INDEX_IF_MISSING" in alt
+    assert "CREATE_SEQUENCE_IF_MISSING" in ddl
+    assert "CREATE_SEQUENCE_IF_MISSING" in alt
     assert "ADD_COLUMN_IF_MISSING" in alt
     assert "SVY$_TB_" in alt
     assert "RENAME TO" in alt
@@ -112,6 +321,43 @@ def test_install_and_upgrade_scripts_are_idempotent_and_non_destructive() -> Non
     assert alt.count('CREATE OR REPLACE FUNCTION "INIT$SVY_FN_') == 2
     for source in (ddl, alt):
         assert "WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK" in source
+
+
+def test_guest_login_sequence_has_identical_rerunnable_definition() -> None:
+    ddl = _read(DDL_PATH)
+    alt = _read(ALT_PATH)
+    definition = (
+        'CREATE SEQUENCE "INIT$SVY_SQ_GUEST_LOGIN" '
+        "START WITH 1 INCREMENT BY 1 CACHE 20 NOCYCLE"
+    )
+
+    for source in (ddl, alt):
+        assert "CREATE_SEQUENCE_IF_MISSING" in source
+        assert source.count(definition) == 1
+    assert "GUEST_SEQUENCE_COUNT" in _read(DATABASE / "auth.sql")
+
+
+def test_guest_login_collision_check_includes_inactive_and_expired_users() -> None:
+    auth_sql = _read(DATABASE / "auth.sql")
+    statement = auth_sql.split("-- [AUTH_LOGIN_ID_EXISTS]", 1)[1].split(
+        "-- [AUTH_USER_BY_LOGIN]", 1
+    )[0]
+
+    assert 'FROM "INIT$SVY_TB_USER"' in statement
+    assert "LOWER(LOGIN_ID) = LOWER(:loginId)" in statement
+    assert "USE_YN" not in statement
+    assert "STATUS_CODE" not in statement
+    assert "EXPIRES_AT" not in statement
+
+
+def test_guest_sequence_nextval_is_selected_only_at_the_outermost_level() -> None:
+    auth_sql = _read(DATABASE / "auth.sql")
+    statement = auth_sql.split("-- [AUTH_GUEST_LOGIN_NEXT]", 1)[1].split(
+        "-- [AUTH_LOGIN_ID_EXISTS]", 1
+    )[0]
+
+    assert '"INIT$SVY_SQ_GUEST_LOGIN".NEXTVAL AS LOGIN_SEQUENCE_VALUE' in statement
+    assert "FROM (" not in statement.upper()
 
 
 def test_i18n_resource_id_is_wide_enough_and_upgrade_only_widens() -> None:
@@ -179,6 +425,9 @@ def test_guest_language_help_and_destructive_utility_contracts() -> None:
     assert "DBA_DEPENDENCIES" in drop_sql
     assert "catalog-read privilege" in drop_sql
     assert "WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK" in drop_sql
+    assert "'SEQUENCE'" in drop_sql
+    assert "INIT$SVY_SQ_GUEST_LOGIN" in ddl
+    assert "INIT$SVY_SQ_GUEST_LOGIN" in alt
 
     assert "DESTRUCTIVE OPERATION" in truc_sql
     assert "TRUNCATE TABLE" in truc_sql

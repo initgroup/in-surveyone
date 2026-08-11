@@ -1,14 +1,33 @@
 (function () {
     "use strict";
 
+    const configuredAssetVersion = String(window.SURVEYONE_CONFIG?.assetVersion || "1");
+    const localDevelopmentHost = ["127.0.0.1", "localhost"].includes(window.location?.hostname || "");
+    const runtimeAssetVersion = localDevelopmentHost
+        ? `${configuredAssetVersion}-${Date.now()}`
+        : configuredAssetVersion;
+
+    function versionedAsset(src) {
+        const url = new URL(src, document.baseURI);
+        if (url.origin === window.location.origin && url.pathname.startsWith("/frontend/")) {
+            url.searchParams.set("v", runtimeAssetVersion);
+        }
+        return url.href;
+    }
+
     const state = {
         user: null,
         route: null,
         currentPage: null,
         loadedScripts: new Set(),
         activeStyle: null,
+        routeGeneration: 0,
+        routeController: null,
+        routeTask: null,
         guestCapabilities: null,
         guestCapabilitiesPromise: null,
+        issuedGuest: null,
+        sessionInvalidHandling: false,
         modalReturnFocus: null
     };
 
@@ -20,14 +39,9 @@
         cacheDom();
         renderNavigation();
         bindShellEvents();
-        const hasSession = await restoreSession();
+        await restoreSession();
         window.addEventListener("hashchange", route);
-        if (hasSession) {
-            await route();
-        } else {
-            dom.pageHost.innerHTML = `<section class="empty-state"><span class="empty-icon">IN</span><h2>설문 작업공간에 오신 것을 환영합니다.</h2><p>게스트 체험, 로그인 또는 회원가입으로 작업공간을 시작하세요.</p><button class="button button-primary" type="button" data-auth-action="guest">게스트로 시작</button></section>`;
-            dom.pageHost.querySelector('[data-auth-action="guest"]').addEventListener("click", () => openAuth("guest"));
-        }
+        await route();
     }
 
     function cacheDom() {
@@ -43,6 +57,8 @@
         dom.userMenu = document.querySelector("[data-user-menu]");
         dom.authDialog = document.querySelector("[data-auth-dialog]");
         dom.authMessage = document.querySelector("[data-auth-message]");
+        dom.guestRequest = document.querySelector("[data-guest-request-view]");
+        dom.guestCredentials = document.querySelector("[data-guest-credentials]");
         dom.modal = document.querySelector("[data-modal]");
         dom.modalBody = document.querySelector("[data-modal-body]");
     }
@@ -72,6 +88,7 @@
     }
 
     function bindShellEvents() {
+        window.addEventListener("surveyone:session-invalid", handleInvalidSession);
         dom.menuToggle.addEventListener("click", () => setSidebar(!dom.sidebar.classList.contains("is-open")));
         dom.scrim.addEventListener("click", () => setSidebar(false));
         dom.navigation.addEventListener("click", (event) => {
@@ -97,13 +114,19 @@
             }
             const authAction = event.target.closest("[data-auth-action]")?.dataset.authAction;
             if (authAction === "logout") logout();
-            if (authAction === "login" || authAction === "signup") openAuth(authAction);
+            if (["guest", "login", "signup"].includes(authAction)) openAuth(authAction);
         });
 
-        document.querySelector("[data-quick-create]").addEventListener("click", () => navigate("M02002"));
+        document.querySelector("[data-quick-create]").addEventListener("click", () => {
+            if (state.user) navigate("M02002"); else openAuth("guest");
+        });
         document.querySelector("[data-help-button]").addEventListener("click", () => void showHelp());
         document.querySelector("[data-guest-start]").addEventListener("click", startGuest);
-        document.querySelector("[data-guest-mode-picker]").addEventListener("change", renderGuestCapabilities);
+        document.querySelector("[data-guest-login]").addEventListener("click", showIssuedGuestLogin);
+        dom.guestCredentials.addEventListener("click", (event) => {
+            const copy = event.target.closest("[data-copy-guest-credential]");
+            if (copy) void copyIssuedGuestCredential(copy.dataset.copyGuestCredential);
+        });
         document.querySelectorAll("[data-auth-tab]").forEach((tab) => tab.addEventListener("click", () => selectAuthTab(tab.dataset.authTab)));
         document.querySelector("[data-login-form]").addEventListener("submit", submitLogin);
         document.querySelector("[data-signup-form]").addEventListener("submit", submitSignup);
@@ -112,6 +135,43 @@
             state.modalReturnFocus = null;
             if (target?.isConnected) target.focus({ preventScroll: true });
         });
+        dom.authDialog.addEventListener("close", clearIssuedGuest);
+    }
+
+    function handleInvalidSession() {
+        if (state.sessionInvalidHandling) return;
+        state.sessionInvalidHandling = true;
+        const hadUser = Boolean(state.user);
+        state.user = null;
+        state.routeController?.abort();
+        updateUserUi();
+        dom.userMenu.hidden = true;
+        dom.userButton.setAttribute("aria-expanded", "false");
+
+        if (hadUser) {
+            toast("로그인 세션이 만료되어 안전하게 로그아웃했습니다. 다시 로그인해 주세요.", "error");
+        }
+
+        void (async () => {
+            try {
+                await fetch(`${window.SURVEYONE_CONFIG.apiBaseUrl}/api/auth/logout`, {
+                    method: "POST",
+                    headers: { Accept: "application/json" },
+                    credentials: "same-origin"
+                });
+            } catch (error) {
+                console.warn("만료된 세션 쿠키를 서버에서 정리하지 못했습니다.", error);
+            }
+            try {
+                if (hadUser) {
+                    history.replaceState(null, "", "#/M01001");
+                    await route();
+                    openAuth("login");
+                }
+            } finally {
+                state.sessionInvalidHandling = false;
+            }
+        })();
     }
 
     function setSidebar(open) {
@@ -126,8 +186,34 @@
         return window.PAGE_CONFIG[code] ? code : window.SURVEYONE_CONFIG.defaultRoute;
     }
 
-    async function route() {
-        const code = routeCode();
+    function route() {
+        const requestedCode = routeCode();
+        const generation = state.routeGeneration + 1;
+        state.routeGeneration = generation;
+        state.routeController?.abort();
+        const controller = new AbortController();
+        state.routeController = controller;
+        const previousTask = state.routeTask;
+        const task = (async () => {
+            if (previousTask) {
+                try { await previousTask; } catch (error) { if (!isAbortError(error)) console.warn("이전 화면 정리를 완료하지 못했습니다.", error); }
+            }
+            if (!isCurrentRoute(generation, controller)) return;
+            await performRoute(requestedCode, generation, controller);
+        })();
+        state.routeTask = task;
+        const clearTask = () => { if (state.routeTask === task) state.routeTask = null; };
+        task.then(clearTask, clearTask);
+        return task;
+    }
+
+    async function performRoute(requestedCode, generation, controller) {
+        let code = requestedCode;
+        if (!state.user && code !== "M01001") {
+            code = "M01001";
+            history.replaceState(null, "", "#/M01001");
+            toast("둘러보기에서는 메인 대시보드를 볼 수 있습니다. 설문 작업은 메인에서 시작 방식을 선택해 주세요.");
+        }
         if (location.hash !== `#/${code}` && !location.hash.includes("?")) history.replaceState(null, "", `#/${code}`);
         const page = window.PAGE_CONFIG[code];
         if (dom.modal.open) dom.modal.close();
@@ -139,58 +225,181 @@
         helpButton.setAttribute("aria-label", `${page.label} 작성 도움말 열기`);
         helpButton.title = `${page.label} 작성 도움말`;
         document.title = `${page.label} | IN-SURVEYONE`;
-        dom.pageHost.innerHTML = loadingMarkup(page.label);
+        const routeRoot = document.createElement("div");
+        routeRoot.className = "route-view";
+        routeRoot.dataset.routeGeneration = String(generation);
+        routeRoot.innerHTML = loadingMarkup(page.label);
+        dom.pageHost.replaceChildren(routeRoot);
 
+        let candidatePage = null;
+        let candidateStyle = null;
         try {
-            if (state.currentPage?.destroy) await state.currentPage.destroy();
-            await loadPageStyle(page.style);
-            const response = await fetch(page.html, { cache: "no-store" });
+            const previousPage = state.currentPage;
+            state.currentPage = null;
+            await destroyPage(previousPage);
+            assertCurrentRoute(generation, controller);
+
+            candidateStyle = await loadPageStyle(page.style, { signal: controller.signal });
+            assertCurrentRoute(generation, controller);
+            activatePageStyle(candidateStyle);
+            candidateStyle = null;
+
+            const response = await fetch(page.html, { cache: "no-store", signal: controller.signal });
+            assertCurrentRoute(generation, controller);
             if (!response.ok) throw new Error(`화면 파일을 불러오지 못했습니다. (${response.status})`);
-            dom.pageHost.innerHTML = await response.text();
-            await loadScript(page.script);
-            state.currentPage = window.Pages?.[code] || null;
-            if (state.currentPage?.init) {
-                await state.currentPage.init({
-                    root: dom.pageHost,
-                    api: Common.api,
-                    toast,
-                    navigate,
-                    openModal,
+            const markup = await response.text();
+            assertCurrentRoute(generation, controller);
+            routeRoot.innerHTML = markup;
+
+            await loadScript(page.script, { signal: controller.signal });
+            assertCurrentRoute(generation, controller);
+            const pageDefinition = window.Pages?.[code] || null;
+            candidatePage = pageDefinition ? Object.create(pageDefinition) : null;
+            if (candidatePage?.init) {
+                const routeApi = createRouteApi(controller.signal);
+                const active = () => isCurrentRoute(generation, controller);
+                await candidatePage.init({
+                    root: routeRoot,
+                    api: routeApi,
+                    signal: controller.signal,
+                    routeGeneration: generation,
+                    isCurrentRoute: active,
+                    toast: (...args) => { if (active()) return toast(...args); },
+                    navigate: (...args) => { if (active()) return navigate(...args); },
+                    openModal: (...args) => { if (active()) return openModal(...args); },
+                    openAuth: (...args) => { if (active()) return openAuth(...args); },
+                    loadGuestCapabilities: (...args) => active() ? loadGuestCapabilities(...args) : Promise.reject(abortError()),
                     user: state.user,
                     appState: state
                 });
             }
+            assertCurrentRoute(generation, controller);
+            state.currentPage = candidatePage;
+            candidatePage = null;
             dom.pageHost.focus({ preventScroll: true });
         } catch (error) {
+            await destroyPage(candidatePage);
+            discardPageStyle(candidateStyle);
+            if (!isCurrentRoute(generation, controller) || isAbortError(error)) return;
             console.error(error);
-            dom.pageHost.innerHTML = errorMarkup(error.message);
-            dom.pageHost.querySelector("[data-route-retry]")?.addEventListener("click", route);
+            routeRoot.innerHTML = errorMarkup(error.message);
+            routeRoot.querySelector("[data-route-retry]")?.addEventListener("click", route);
         }
     }
 
-    function loadScript(src) {
+    function isCurrentRoute(generation, controller) {
+        return state.routeGeneration === generation && state.routeController === controller && !controller.signal.aborted;
+    }
+
+    function abortError() {
+        const error = new Error("화면 전환이 취소되었습니다.");
+        error.name = "AbortError";
+        return error;
+    }
+
+    function isAbortError(error) {
+        return error?.name === "AbortError";
+    }
+
+    function assertCurrentRoute(generation, controller) {
+        if (!isCurrentRoute(generation, controller)) throw abortError();
+    }
+
+    async function destroyPage(page) {
+        if (!page?.destroy) return;
+        try { await page.destroy(); } catch (error) { console.warn("화면 정리 중 오류가 발생했습니다.", error); }
+    }
+
+    function createRouteApi(signal) {
+        const request = (path, options = {}) => Common.request(path, { ...options, signal });
+        return {
+            get(path, options = {}) { return request(path, options); },
+            post(path, body, options = {}) { return request(path, { ...options, method: "POST", body }); },
+            put(path, body, options = {}) { return request(path, { ...options, method: "PUT", body }); },
+            patch(path, body, options = {}) { return request(path, { ...options, method: "PATCH", body }); },
+            delete(path, options = {}) { return request(path, { ...options, method: "DELETE" }); }
+        };
+    }
+
+    function loadScript(src, { signal } = {}) {
+        if (signal?.aborted) return Promise.reject(abortError());
         if (state.loadedScripts.has(src)) return Promise.resolve();
         return new Promise((resolve, reject) => {
             const script = document.createElement("script");
-            script.src = src;
-            script.onload = () => { state.loadedScripts.add(src); resolve(); };
-            script.onerror = () => reject(new Error(`${src} 스크립트를 불러오지 못했습니다.`));
+            let settled = false;
+            const finish = (error = null) => {
+                if (settled) return;
+                settled = true;
+                signal?.removeEventListener("abort", onAbort);
+                script.onload = null;
+                script.onerror = null;
+                if (error) reject(error); else resolve();
+            };
+            const onAbort = () => {
+                script.remove();
+                finish(abortError());
+            };
+            script.src = versionedAsset(src);
+            script.onload = () => {
+                if (signal?.aborted) return onAbort();
+                state.loadedScripts.add(src);
+                finish();
+            };
+            script.onerror = () => {
+                script.remove();
+                finish(new Error(`${src} 스크립트를 불러오지 못했습니다.`));
+            };
+            signal?.addEventListener("abort", onAbort, { once: true });
             document.body.appendChild(script);
         });
     }
 
-    async function loadPageStyle(href) {
-        if (state.activeStyle) state.activeStyle.remove();
-        return new Promise((resolve) => {
+    function loadPageStyle(href, { signal } = {}) {
+        if (!href) return Promise.resolve(null);
+        if (signal?.aborted) return Promise.reject(abortError());
+        const absoluteHref = versionedAsset(href);
+        if (state.activeStyle?.isConnected && state.activeStyle.href === absoluteHref) {
+            return Promise.resolve({ link: state.activeStyle, reused: true, activated: true });
+        }
+        return new Promise((resolve, reject) => {
             const link = document.createElement("link");
+            const candidate = { link, reused: false, activated: false };
+            let settled = false;
+            const finish = (value, error = null) => {
+                if (settled) return;
+                settled = true;
+                signal?.removeEventListener("abort", onAbort);
+                link.onload = null;
+                link.onerror = null;
+                if (error) reject(error); else resolve(value);
+            };
+            const onAbort = () => {
+                link.remove();
+                finish(null, abortError());
+            };
             link.rel = "stylesheet";
-            link.href = href;
+            link.href = absoluteHref;
             link.dataset.pageStyle = "";
-            link.onload = resolve;
-            link.onerror = resolve;
+            link.onload = () => signal?.aborted ? onAbort() : finish(candidate);
+            link.onerror = () => {
+                link.remove();
+                finish(null);
+            };
+            signal?.addEventListener("abort", onAbort, { once: true });
             document.head.appendChild(link);
-            state.activeStyle = link;
         });
+    }
+
+    function activatePageStyle(candidate) {
+        if (!candidate || candidate.reused || candidate.activated) return;
+        const previousStyle = state.activeStyle;
+        candidate.activated = true;
+        state.activeStyle = candidate.link;
+        if (previousStyle && previousStyle !== candidate.link) previousStyle.remove();
+    }
+
+    function discardPageStyle(candidate) {
+        if (candidate && !candidate.reused && !candidate.activated) candidate.link.remove();
     }
 
     function updateActiveNavigation(code) {
@@ -220,30 +429,112 @@
         } catch (error) {
             if (error.status !== 401) console.warn("세션을 확인하지 못했습니다.", error);
             updateUserUi();
-            openAuth("guest");
             return false;
         }
     }
 
     async function startGuest() {
-        const mode = document.querySelector('input[name="guestMode"]:checked')?.value || "local";
-        const capability = guestMode(mode);
+        const capability = databaseGuestCapability();
         if (!capability?.available) {
-            setAuthBusy(false, capability?.reason || "선택한 게스트 모드를 사용할 수 없습니다.", true);
+            setAuthBusy(false, capability?.reason || "DB 게스트 계정을 현재 발급할 수 없습니다.", true);
             return;
         }
-        setAuthBusy(true, "게스트 작업공간을 준비하고 있습니다.");
+        setAuthBusy(true, "DB 게스트 계정을 발급하고 있습니다.");
         try {
-            const payload = await Common.api.post("/api/auth/guest", { mode });
-            state.user = payload.user || payload;
-            sessionStorage.setItem("surveyone-welcome-seen", "true");
-            updateUserUi();
-            dom.authDialog.close();
-            toast(mode === "database" ? "DB 저장 체험 작업공간에 입장했습니다." : "로컬 체험 작업공간에 입장했습니다.", "success");
-            await route();
+            const payload = await Common.api.post("/api/auth/guest", { mode: "database" });
+            const issued = normalizeIssuedGuest(payload);
+            if (!issued.loginId || !issued.initialPassword) {
+                throw new Error("계정은 발급되었지만 일회용 자격정보를 확인하지 못했습니다. 새로고침하지 말고 관리자에게 문의해 주세요.");
+            }
+            state.issuedGuest = issued;
+            setAuthBusy(false, "");
+            renderIssuedGuest();
         } catch (error) {
-            setAuthBusy(false, error.message, true);
+            const message = error?.message || "DB 게스트 계정을 현재 발급할 수 없습니다.";
+            const status = Number(error?.status);
+            if (!Number.isFinite(status) || status >= 500) {
+                state.guestCapabilities = fallbackGuestCapabilities(message);
+            }
+            setAuthBusy(false, message, true);
         }
+    }
+
+    function normalizeIssuedGuest(payload) {
+        const source = payload?.data || payload || {};
+        const session = source.session?.data || source.session || source.authSession || source.auth_session || source;
+        const credential = source.guestCredential || source.guest_credential || source.credentials || source.credential || source.accountCredential || source.account_credential || {};
+        const pick = (...values) => values.find((value) => value !== undefined && value !== null && String(value) !== "");
+        return {
+            loginId: String(pick(credential.loginId, credential.login_id, source.loginId, source.login_id, session?.user?.loginId, session?.user?.login_id) || ""),
+            initialPassword: String(pick(credential.initialPassword, credential.initial_password, credential.temporaryPassword, credential.temporary_password, credential.password, source.initialPassword, source.initial_password) || ""),
+            expiresAt: pick(credential.expiresAt, credential.expires_at, session?.expiresAt, session?.expires_at, source.expiresAt, source.expires_at) || null
+        };
+    }
+
+    function renderIssuedGuest() {
+        const issued = state.issuedGuest;
+        if (!issued) return;
+        dom.guestRequest.hidden = true;
+        dom.guestCredentials.hidden = false;
+        dom.guestCredentials.querySelector("[data-guest-login-id]").textContent = issued.loginId;
+        dom.guestCredentials.querySelector("[data-guest-initial-password]").textContent = issued.initialPassword;
+        dom.guestCredentials.querySelector("[data-guest-expires-at]").textContent = formatGuestExpiry(issued.expiresAt);
+        dom.authMessage.textContent = "자격정보를 먼저 복사한 뒤 로그인 화면에서 quest 계정으로 로그인해 주세요.";
+        dom.authMessage.classList.remove("is-error");
+        requestAnimationFrame(() => dom.guestCredentials.querySelector("[data-guest-credential-title]")?.focus({ preventScroll: true }));
+    }
+
+    function formatGuestExpiry(value) {
+        if (!value) return "서버에 설정된 게스트 유효기간까지";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value);
+        try {
+            return new Intl.DateTimeFormat("ko-KR", { dateStyle: "long", timeStyle: "short" }).format(date);
+        } catch {
+            return String(value);
+        }
+    }
+
+    async function copyIssuedGuestCredential(field) {
+        const issued = state.issuedGuest;
+        if (!issued) return;
+        const values = {
+            loginId: issued.loginId,
+            initialPassword: issued.initialPassword,
+            all: `IN-SURVEYONE DB 게스트 계정\n아이디: ${issued.loginId}\n초기 비밀번호: ${issued.initialPassword}\n유효기간: ${formatGuestExpiry(issued.expiresAt)}`
+        };
+        const value = values[field];
+        if (!value) return;
+        try {
+            await navigator.clipboard.writeText(value);
+            toast(field === "all" ? "자격정보를 모두 복사했습니다." : "자격정보를 복사했습니다.", "success");
+        } catch {
+            toast("브라우저에서 복사를 허용하지 않았습니다. 값을 직접 선택해 복사해 주세요.", "error");
+        }
+    }
+
+    function showIssuedGuestLogin() {
+        const issued = state.issuedGuest;
+        if (!issued) return;
+        const form = document.querySelector("[data-login-form]");
+        form.elements.loginId.value = issued.loginId;
+        form.elements.password.value = issued.initialPassword;
+        clearIssuedGuest({ preserveLoginForm: true });
+        selectAuthTab("login");
+        dom.authMessage.textContent = "발급된 quest 계정 자격정보를 입력했습니다. 로그인 버튼을 눌러 계속하세요.";
+        dom.authMessage.classList.remove("is-error");
+        form.elements.password.focus({ preventScroll: true });
+    }
+
+    function clearIssuedGuest({ preserveLoginForm = false } = {}) {
+        const loginForm = document.querySelector("[data-login-form]");
+        if (!preserveLoginForm) loginForm.reset();
+        state.issuedGuest = null;
+        dom.guestRequest.hidden = false;
+        dom.guestCredentials.hidden = true;
+        dom.guestCredentials.querySelector("[data-guest-login-id]").textContent = "";
+        dom.guestCredentials.querySelector("[data-guest-initial-password]").textContent = "";
+        dom.guestCredentials.querySelector("[data-guest-expires-at]").textContent = "";
     }
 
     async function submitLogin(event) {
@@ -254,6 +545,7 @@
             const payload = await Common.api.post("/api/auth/login", data);
             state.user = payload.user || payload;
             updateUserUi();
+            setAuthBusy(false, "");
             dom.authDialog.close();
             toast("로그인했습니다.", "success");
             await route();
@@ -269,6 +561,7 @@
             const payload = await Common.api.post("/api/auth/signup", data);
             state.user = payload.user || payload;
             updateUserUi();
+            setAuthBusy(false, "");
             dom.authDialog.close();
             toast("IN-SURVEYONE 작업공간이 생성되었습니다.", "success");
             await route();
@@ -280,28 +573,34 @@
         state.user = null;
         updateUserUi();
         dom.userMenu.hidden = true;
-        openAuth("login");
+        toast("로그아웃했습니다. 메인 대시보드를 계속 둘러볼 수 있습니다.", "success");
+        await route();
     }
 
     function updateUserUi() {
         const user = state.user;
-        const name = user?.name || user?.displayName || "Guest";
-        const tenant = user?.organizationName || user?.tenantName || "게스트 체험관";
-        const guest = !user || Boolean(user.isGuest ?? user.role === "guest");
+        const name = user?.name || user?.displayName || "방문자";
+        const tenant = user?.organizationName || user?.tenantName || "IN-SURVEYONE";
+        const guest = Boolean(user && (user.isGuest ?? user.role === "guest"));
         document.querySelector("[data-user-name]").textContent = name;
-        const guestModeCode = String(user?.guestMode || user?.guest_mode || "").toLowerCase();
-        const guestModeLabel = ["database", "db"].includes(guestModeCode) ? "DB 저장 체험" : "로컬 체험";
-        document.querySelector("[data-user-role]").textContent = guest ? guestModeLabel : (user.roleLabel || "설문 관리자");
+        document.querySelector("[data-user-role]").textContent = !user ? "둘러보기" : (guest ? "DB 게스트 계정" : (user.roleLabel || "설문 관리자"));
         document.querySelector("[data-user-avatar]").textContent = name.trim().charAt(0).toUpperCase() || "G";
         document.querySelector("[data-tenant-name]").textContent = tenant;
-        document.querySelector("[data-guest-upgrade]").hidden = !guest;
+        document.querySelector("[data-save-state]").innerHTML = user
+            ? '<i aria-hidden="true"></i> 모든 변경사항 저장됨'
+            : '<i aria-hidden="true"></i> 읽기 전용 둘러보기';
+        document.querySelector("[data-quick-create]").innerHTML = user
+            ? '<span aria-hidden="true">＋</span> 새 설문'
+            : '<span aria-hidden="true">＋</span> 체험 시작';
+        document.querySelector("[data-guest-upgrade]").hidden = Boolean(user && !guest);
         document.querySelectorAll('[data-auth-action="logout"]').forEach((button) => { button.hidden = !user; });
         document.querySelectorAll('[data-auth-action="login"], [data-auth-action="signup"]').forEach((button) => { button.hidden = Boolean(user && !guest); });
     }
 
     function openAuth(mode = "guest") {
+        clearIssuedGuest();
+        setAuthBusy(false, "");
         selectAuthTab(mode);
-        dom.authMessage.textContent = "";
         if (!dom.authDialog.open) dom.authDialog.showModal();
         if (mode === "guest") void loadGuestCapabilities();
     }
@@ -313,27 +612,24 @@
             tab.tabIndex = selected ? 0 : -1;
         });
         document.querySelectorAll("[data-auth-panel]").forEach((panel) => { panel.hidden = panel.dataset.authPanel !== mode; });
-        const titles = { guest: "먼저 가볍게 체험하세요", login: "작업공간으로 돌아오기", signup: "기관 설문 작업공간 만들기" };
+        const titles = { guest: "DB 게스트 계정 발급", login: "작업공간으로 돌아오기", signup: "기관 설문 작업공간 만들기" };
+        const intros = {
+            guest: "만료형 quest 계정을 발급받아 독립된 Oracle 작업공간에서 제품 흐름을 체험할 수 있습니다.",
+            login: "회원 아이디 또는 발급받은 quest 계정으로 로그인하세요.",
+            signup: "기관 전용 설문 작업공간을 만들고 지속적으로 운영하세요."
+        };
         document.querySelector("[data-auth-title]").textContent = titles[mode];
+        document.querySelector("[data-auth-intro]").textContent = intros[mode];
         if (mode === "guest") void loadGuestCapabilities();
     }
 
-    function fallbackGuestCapabilities(reason = "DB 저장 체험 제공 상태를 확인하지 못했습니다.") {
+    function fallbackGuestCapabilities(reason = "DB 게스트 계정 제공 상태를 확인하지 못했습니다.") {
         return {
-            selectedMode: "local",
+            selectedMode: "database",
             modes: [
                 {
-                    mode: "local",
-                    title: "로컬 체험",
-                    available: true,
-                    reason: "프로세스가 종료되면 데이터가 사라질 수 있습니다.",
-                    persistence: "memory",
-                    limits: {},
-                    features: {}
-                },
-                {
                     mode: "database",
-                    title: "DB 저장 체험",
+                    title: "DB 게스트 계정",
                     available: false,
                     reason,
                     persistence: "oracle",
@@ -349,48 +645,49 @@
         const source = payload?.data || payload || {};
         const rawModes = Array.isArray(source.modes)
             ? source.modes
-            : [source.local, source.database].filter(Boolean);
+            : [source.database, source.mode === "database" ? source : null].filter(Boolean);
         const fallback = fallbackGuestCapabilities();
-        const modes = ["local", "database"].map((mode) => {
-            const candidate = rawModes.find((item) => String(item?.mode || item?.code || "").toLowerCase() === mode)
-                || rawModes[mode === "local" ? 0 : 1]
-                || fallback.modes.find((item) => item.mode === mode);
-            return {
+        const candidate = rawModes.find((item) => String(item?.mode || item?.code || "").toLowerCase() === "database")
+            || rawModes[0]
+            || fallback.modes[0];
+        return {
+            selectedMode: "database",
+            modes: [{
                 ...candidate,
-                mode,
-                available: mode === "local" ? candidate?.available !== false : Boolean(candidate?.available),
+                mode: "database",
+                title: candidate?.title || "DB 게스트 계정",
+                available: Boolean(candidate?.available),
                 limits: candidate?.limits || {},
                 features: candidate?.features || {},
-                providerConfigured: candidate?.providerConfigured || candidate?.providers || {}
-            };
-        });
-        const requested = String(source.selectedMode || source.selected_mode || "local").toLowerCase();
-        return { selectedMode: modes.some((item) => item.mode === requested && item.available) ? requested : "local", modes };
+                providerConfigured: candidate?.providerConfigured || candidate?.provider_configured || candidate?.providers || {}
+            }]
+        };
     }
 
     async function loadGuestCapabilities() {
-        if (state.guestCapabilities) {
+        const cachedDatabase = state.guestCapabilities?.modes?.find((item) => item.mode === "database");
+        if (cachedDatabase?.available) {
             renderGuestCapabilities();
             return state.guestCapabilities;
         }
         if (state.guestCapabilitiesPromise) return state.guestCapabilitiesPromise;
         const status = document.querySelector("[data-guest-capability-status]");
-        if (status) status.textContent = "게스트 모드 제공 상태를 확인하고 있습니다.";
-        state.guestCapabilitiesPromise = Common.api.get("/api/auth/guest/capabilities")
+        if (status) status.textContent = "DB 게스트 계정 발급 상태를 확인하고 있습니다.";
+        state.guestCapabilitiesPromise = Common.api.get("/api/auth/guest/capabilities?mode=database")
             .then((payload) => normalizeGuestCapabilities(payload))
             .catch((error) => fallbackGuestCapabilities(error.message))
             .then((capabilities) => {
                 state.guestCapabilities = capabilities;
-                renderGuestCapabilities(true);
+                renderGuestCapabilities();
                 return capabilities;
             })
             .finally(() => { state.guestCapabilitiesPromise = null; });
         return state.guestCapabilitiesPromise;
     }
 
-    function guestMode(mode) {
-        return state.guestCapabilities?.modes?.find((item) => item.mode === mode)
-            || fallbackGuestCapabilities().modes.find((item) => item.mode === mode);
+    function databaseGuestCapability() {
+        return state.guestCapabilities?.modes?.find((item) => item.mode === "database")
+            || fallbackGuestCapabilities().modes[0];
     }
 
     function limitSummary(mode) {
@@ -403,42 +700,24 @@
         return values.length ? values.map(([value, label]) => `${label} ${Common.formatNumber(value)}`).join(" · ") : "";
     }
 
-    function renderGuestCapabilities(selectRecommended = false) {
-        const picker = document.querySelector("[data-guest-mode-picker]");
-        if (!picker) return;
+    function renderGuestCapabilities() {
         const capabilities = state.guestCapabilities || fallbackGuestCapabilities();
-        capabilities.modes.forEach((mode) => {
-            const card = picker.querySelector(`[data-guest-mode-card="${mode.mode}"]`);
-            const input = card?.querySelector("input");
-            const reason = card?.querySelector(`[data-guest-mode-reason="${mode.mode}"]`);
-            if (!card || !input || !reason) return;
-            input.disabled = !mode.available;
-            card.classList.toggle("is-disabled", !mode.available);
-            card.classList.toggle("is-selected", input.checked && mode.available);
-            const limits = limitSummary(mode);
-            const providerLabels = { email: "이메일", sms: "문자", kakao: "카카오" };
-            const providers = Object.entries(mode.providerConfigured || {}).filter(([, configured]) => configured).map(([code]) => providerLabels[code] || code);
-            const providerSummary = mode.mode === "database" && providers.length ? `설정 감지 provider(전송 adapter 별도): ${providers.join(", ")}` : "";
-            reason.textContent = [mode.reason, limits, providerSummary].filter(Boolean).join(" · ") || (mode.available ? "현재 사용할 수 있습니다." : "현재 사용할 수 없습니다.");
-        });
-        if (selectRecommended) {
-            const recommended = capabilities.modes.find((item) => item.mode === capabilities.selectedMode && item.available)
-                || capabilities.modes.find((item) => item.available);
-            const selected = recommended && picker.querySelector(`input[value="${CSS.escape(recommended.mode)}"]`);
-            if (selected) selected.checked = true;
-        }
-        const checked = picker.querySelector('input[name="guestMode"]:checked:not(:disabled)');
-        if (!checked) picker.querySelector('input[name="guestMode"]:not(:disabled)')?.click();
-        capabilities.modes.forEach((mode) => {
-            const card = picker.querySelector(`[data-guest-mode-card="${mode.mode}"]`);
-            const input = card?.querySelector("input");
-            card?.classList.toggle("is-selected", Boolean(input?.checked && !input.disabled));
-        });
         const database = capabilities.modes.find((item) => item.mode === "database");
+        const card = document.querySelector("[data-guest-issue-card]");
+        const reason = document.querySelector("[data-guest-account-reason]");
+        const button = document.querySelector("[data-guest-start]");
+        const available = Boolean(database?.available);
+        card?.classList.toggle("is-disabled", !available);
+        if (button) button.disabled = !available;
+        const limits = limitSummary(database);
+        const expiryHours = database?.expiresInHours ?? database?.expires_in_hours;
+        const expirySummary = Number.isFinite(Number(expiryHours)) ? `발급 후 ${Common.formatNumber(expiryHours)}시간 유효` : "";
+        if (reason) reason.textContent = [database?.reason, expirySummary, limits].filter(Boolean).join(" · ")
+            || (available ? "현재 발급할 수 있습니다." : "현재 발급할 수 없습니다.");
         const status = document.querySelector("[data-guest-capability-status]");
-        if (status) status.textContent = database?.available
-            ? "두 체험 모드를 사용할 수 있습니다. 외부 발송은 provider 설정 상태를 따릅니다."
-            : `로컬 체험을 사용할 수 있습니다. DB 저장 체험: ${database?.reason || "현재 사용할 수 없습니다."}`;
+        if (status) status.textContent = available
+            ? "DB 게스트 계정을 발급할 수 있습니다. 외부 발송 기능은 제공자 설정 상태를 따릅니다."
+            : `DB 게스트 계정을 현재 발급할 수 없습니다. ${database?.reason || "Oracle 연결 상태를 확인해 주세요."}`;
     }
 
     function setAuthBusy(busy, message, error = false) {

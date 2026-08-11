@@ -114,9 +114,6 @@ class Settings:
     email_provider: str
     sms_provider: str
     kakao_provider: str
-    local_guest_max_projects: int
-    local_guest_max_questions: int
-    local_guest_max_responses: int
     db_guest_max_projects: int
     db_guest_max_questions: int
     db_guest_max_responses: int
@@ -171,11 +168,39 @@ def _development_session_secret() -> str:
     return generated
 
 
+def _resolved_cookie_secure(base_url: str, environment: str) -> bool:
+    requested = (
+        _env_bool("INIT_COOKIE_SECURE", False)
+        if os.getenv("INIT_COOKIE_SECURE") is not None
+        else _env_bool("SURVEYONE_COOKIE_SECURE", False)
+    )
+    parsed = urlsplit(base_url)
+    production = environment in {"production", "prod"}
+    loopback = (parsed.hostname or "").lower() in {"127.0.0.1", "localhost", "::1"}
+
+    if production:
+        if parsed.scheme.lower() != "https":
+            raise ValueError("Production SURVEYONE_BASE_URL must use HTTPS.")
+        if not requested:
+            raise ValueError("INIT_COOKIE_SECURE must be true in production.")
+        return True
+
+    if requested and parsed.scheme.lower() != "https":
+        if not loopback:
+            raise ValueError(
+                "Secure cookies require HTTPS; only loopback development may use HTTP."
+            )
+        # A Secure cookie cannot be relied on over the local HTTP development URL.
+        # Keep the production setting strict while making Ctrl+Shift+B usable locally.
+        return False
+    return requested
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     surveyone_db_mode = str(os.getenv("SURVEYONE_DB_MODE") or "").strip().lower()
     legacy_db_mode = str(os.getenv("DB_MODE") or "").strip().lower()
-    requested_db_mode = legacy_db_mode or surveyone_db_mode or "memory"
+    requested_db_mode = legacy_db_mode or surveyone_db_mode or "oracle"
     db_mode_aliases = {
         "memory": "memory",
         "oracle": "oracle",
@@ -282,11 +307,7 @@ def get_settings() -> Settings:
             28_800,
             minimum=300,
         ),
-        cookie_secure=(
-            _env_bool("INIT_COOKIE_SECURE", False)
-            if os.getenv("INIT_COOKIE_SECURE") is not None
-            else _env_bool("SURVEYONE_COOKIE_SECURE", False)
-        ),
+        cookie_secure=_resolved_cookie_secure(base_url, environment),
         cookie_samesite=samesite,
         db_user=str(db_user or "").strip() or None,
         db_password=db_password or None,
@@ -326,15 +347,6 @@ def get_settings() -> Settings:
         email_provider=str(os.getenv("SURVEYONE_EMAIL_PROVIDER", "disabled")).strip().lower(),
         sms_provider=str(os.getenv("SURVEYONE_SMS_PROVIDER", "disabled")).strip().lower(),
         kakao_provider=str(os.getenv("SURVEYONE_KAKAO_PROVIDER", "disabled")).strip().lower(),
-        local_guest_max_projects=_env_int(
-            "SURVEYONE_LOCAL_GUEST_MAX_PROJECTS", 2, minimum=1
-        ),
-        local_guest_max_questions=_env_int(
-            "SURVEYONE_LOCAL_GUEST_MAX_QUESTIONS", 30, minimum=1
-        ),
-        local_guest_max_responses=_env_int(
-            "SURVEYONE_LOCAL_GUEST_MAX_RESPONSES", 100, minimum=1
-        ),
         db_guest_max_projects=_env_int(
             "SURVEYONE_DB_GUEST_MAX_PROJECTS", 10, minimum=1
         ),

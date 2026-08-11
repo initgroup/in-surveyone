@@ -25,6 +25,21 @@ def _signup(client: TestClient, prefix: str) -> dict:
     return response.json()["data"]
 
 
+def _provision_and_login(client: TestClient) -> dict:
+    provisioned = client.post("/api/auth/guest")
+    assert provisioned.status_code == 201, provisioned.text
+    credential = provisioned.json()["data"]["guestCredential"]
+    logged_in = client.post(
+        "/api/auth/login",
+        json={
+            "loginId": credential["loginId"],
+            "password": credential["initialPassword"],
+        },
+    )
+    assert logged_in.status_code == 200, logged_in.text
+    return provisioned.json()["data"]
+
+
 def test_health_templates_and_seeded_public_demo() -> None:
     with TestClient(app) as client:
         health = client.get("/api/health")
@@ -50,9 +65,8 @@ def test_health_templates_and_seeded_public_demo() -> None:
 
 def test_guest_create_publish_respond_and_report_flow() -> None:
     with TestClient(app) as owner:
-        guest = owner.post("/api/auth/guest")
-        assert guest.status_code == 201
-        assert guest.json()["data"]["user"]["isGuest"] is True
+        guest = _provision_and_login(owner)
+        assert guest["user"]["isGuest"] is True
         assert owner.get("/api/auth/me").status_code == 200
 
         created = owner.post(
@@ -140,7 +154,7 @@ def test_guest_create_publish_respond_and_report_flow() -> None:
 
 def test_report_uses_only_latest_published_version_responses_and_snapshot() -> None:
     with TestClient(app) as owner:
-        assert owner.post("/api/auth/guest").status_code == 201
+        _provision_and_login(owner)
 
         created = owner.post(
             "/api/surveys",
@@ -259,7 +273,7 @@ def test_report_uses_only_latest_published_version_responses_and_snapshot() -> N
 
 def test_optional_composite_answers_with_only_blank_cells_are_omitted() -> None:
     with TestClient(app) as owner:
-        assert owner.post("/api/auth/guest").status_code == 201
+        _provision_and_login(owner)
         created = owner.post(
             "/api/surveys",
             json={

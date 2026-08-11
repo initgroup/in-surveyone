@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import math
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar
 from uuid import uuid4
 
 from pydantic import (
@@ -28,6 +28,11 @@ PUBLIC_JSON_MAX_CONTAINER_ITEMS = 1_000
 SAFE_ASSET_PREFIXES = ("/frontend/assets/", "/uploads/")
 HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 RADIUS_PATTERN = re.compile(r"^(?:0|[1-9][0-9]?)px$")
+STABLE_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+StableId = Annotated[
+    str,
+    Field(min_length=1, max_length=80, pattern=STABLE_ID_PATTERN),
+]
 
 
 def _validate_asset_url(value: str | None) -> str | None:
@@ -130,7 +135,6 @@ class UserRole(str, Enum):
 
 
 class GuestMode(str, Enum):
-    LOCAL = "local"
     DATABASE = "database"
 
 
@@ -149,7 +153,7 @@ class UserView(ApiModel):
 
 class GuestSessionRequest(ApiModel):
     display_name: str = Field(default="게스트", min_length=1, max_length=60)
-    mode: GuestMode = GuestMode.LOCAL
+    mode: GuestMode = GuestMode.DATABASE
 
 
 class GuestLimits(ApiModel):
@@ -192,6 +196,13 @@ class SignupRequest(ApiModel):
     email: str | None = Field(default=None, max_length=320)
     organization_name: str = Field(min_length=2, max_length=200)
 
+    @field_validator("login_id")
+    @classmethod
+    def reserve_guest_login_ids(cls, value: str) -> str:
+        if re.fullmatch(r"quest\d+", value, flags=re.IGNORECASE):
+            raise ValueError("quest followed by digits is reserved for guest accounts.")
+        return value
+
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str | None) -> str | None:
@@ -205,9 +216,21 @@ class LoginRequest(ApiModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class GuestCredentialView(ApiModel):
+    login_id: str
+    initial_password: str
+    expires_at: datetime
+
+
 class AuthSessionView(ApiModel):
     user: UserView
     expires_at: datetime
+
+
+class GuestProvisionView(ApiModel):
+    user: UserView
+    expires_at: datetime
+    guest_credential: GuestCredentialView
 
 
 class QuestionType(str, Enum):
@@ -227,8 +250,8 @@ class QuestionType(str, Enum):
 
 
 class QuestionOption(ApiModel):
-    id: str = Field(default_factory=lambda: uuid4().hex[:12], min_length=1, max_length=80)
-    label: str = Field(min_length=1, max_length=500)
+    id: StableId = Field(default_factory=lambda: uuid4().hex[:12])
+    label: str = Field(default="", max_length=500)
 
 
 class QuestionSettings(ApiModel):
@@ -274,9 +297,9 @@ class QuestionSettings(ApiModel):
 
 
 class Question(ApiModel):
-    id: str = Field(default_factory=lambda: uuid4().hex[:12], min_length=1, max_length=80)
+    id: StableId = Field(default_factory=lambda: uuid4().hex[:12])
     type: QuestionType
-    title: str = Field(min_length=1, max_length=1000)
+    title: str = Field(default="", max_length=1000)
     description: str | None = Field(default=None, max_length=4000)
     required: bool = False
     options: list[QuestionOption] = Field(default_factory=list, max_length=200)
@@ -373,21 +396,6 @@ class Question(ApiModel):
 
     @model_validator(mode="after")
     def validate_question_shape(self) -> "Question":
-        option_types = {
-            QuestionType.SINGLE_CHOICE,
-            QuestionType.MULTIPLE_CHOICE,
-            QuestionType.DROPDOWN,
-        }
-        if self.type in option_types and not self.options:
-            raise ValueError(f"{self.type.value} questions require at least one option.")
-        if self.type == QuestionType.MATRIX and (
-            not self.settings.rows or not self.settings.columns
-        ):
-            raise ValueError("matrix questions require rows and columns.")
-        if self.type in {QuestionType.TABLE, QuestionType.REPEAT_TABLE} and (
-            not self.settings.rows or not self.settings.columns
-        ):
-            raise ValueError("table questions require rows and columns.")
         if self.type == QuestionType.TEXT and self.required:
             raise ValueError("text blocks cannot be required.")
         identifiers = [option.id for option in self.options]
@@ -413,19 +421,6 @@ class Question(ApiModel):
             raise ValueError("question rows must equal settings.rows labels.")
         if self.columns != [item.label for item in self.settings.columns]:
             raise ValueError("question columns must equal settings.columns labels.")
-        if self.type == QuestionType.SCALE:
-            if self.min is None or self.max is None:
-                raise ValueError("scale questions require min and max values.")
-            if not float(self.min).is_integer() or not float(self.max).is_integer():
-                raise ValueError("scale min and max must be integers.")
-            if self.min not in {0, 1}:
-                raise ValueError("scale min must be either 0 or 1.")
-            if self.min >= self.max:
-                raise ValueError("scale min must be less than max.")
-            if not 2 <= self.max <= 10:
-                raise ValueError("scale max must be between 2 and 10.")
-            if self.settings.step is not None and self.settings.step != 1:
-                raise ValueError("scale step must be 1.")
         return self
 
     @field_serializer("type")
@@ -445,8 +440,8 @@ class Question(ApiModel):
 
 
 class SurveySection(ApiModel):
-    id: str = Field(default_factory=lambda: uuid4().hex[:12], min_length=1, max_length=80)
-    title: str = Field(default="새 섹션", min_length=1, max_length=500)
+    id: StableId = Field(default_factory=lambda: uuid4().hex[:12])
+    title: str = Field(default="새 섹션", max_length=500)
     description: str | None = Field(default=None, max_length=4000)
     questions: list[Question] = Field(default_factory=list, max_length=500)
 
@@ -456,6 +451,61 @@ class SurveySection(ApiModel):
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("Question IDs must be unique within a section.")
         return self
+
+
+def validate_publish_ready_sections(sections: list[SurveySection]) -> None:
+    answerable = False
+    option_types = {
+        QuestionType.SINGLE_CHOICE,
+        QuestionType.MULTIPLE_CHOICE,
+        QuestionType.DROPDOWN,
+    }
+    for section in sections:
+        if not section.title.strip():
+            raise ValueError("Each section requires a title before publishing.")
+        for question in section.questions:
+            if not question.title.strip():
+                raise ValueError("Each question requires a title before publishing.")
+            if question.type != QuestionType.TEXT:
+                answerable = True
+            if question.type in option_types:
+                if not question.options:
+                    raise ValueError(
+                        f"{question.type.value} questions require at least one option."
+                    )
+                if any(not option.label.strip() for option in question.options):
+                    raise ValueError("Every answer option requires a label.")
+            if question.type in {
+                QuestionType.MATRIX,
+                QuestionType.TABLE,
+                QuestionType.REPEAT_TABLE,
+            }:
+                if not question.settings.rows or not question.settings.columns:
+                    raise ValueError(
+                        f"{question.type.value} questions require rows and columns."
+                    )
+                if any(
+                    not item.label.strip()
+                    for item in question.settings.rows + question.settings.columns
+                ):
+                    raise ValueError("Every row and column requires a label.")
+            if question.type == QuestionType.SCALE:
+                if question.min is None or question.max is None:
+                    raise ValueError("scale questions require min and max values.")
+                if not float(question.min).is_integer() or not float(
+                    question.max
+                ).is_integer():
+                    raise ValueError("scale min and max must be integers.")
+                if question.min not in {0, 1}:
+                    raise ValueError("scale min must be either 0 or 1.")
+                if question.min >= question.max:
+                    raise ValueError("scale min must be less than max.")
+                if not 2 <= question.max <= 10:
+                    raise ValueError("scale max must be between 2 and 10.")
+                if question.settings.step is not None and question.settings.step != 1:
+                    raise ValueError("scale step must be 1.")
+    if not answerable:
+        raise ValueError("A survey requires at least one answerable question.")
 
 
 class SurveyTheme(ApiModel):
@@ -517,13 +567,22 @@ class SurveySettings(ApiModel):
             self.allow_edit = self.allow_response_edit
         return self
 
+    @field_validator("starts_at", "closes_at")
+    @classmethod
+    def normalize_aware_datetime(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("Survey response dates must include a timezone offset.")
+        return value.astimezone(timezone.utc)
+
 
 class SurveyQuestionTranslation(ApiModel):
     title: str | None = Field(default=None, max_length=1000)
     description: str | None = Field(default=None, max_length=4000)
-    options: dict[str, str] = Field(default_factory=dict)
-    rows: dict[str, str] = Field(default_factory=dict)
-    columns: dict[str, str] = Field(default_factory=dict)
+    options: dict[StableId, str] = Field(default_factory=dict)
+    rows: dict[StableId, str] = Field(default_factory=dict)
+    columns: dict[StableId, str] = Field(default_factory=dict)
     min_label: str | None = Field(default=None, max_length=100)
     max_label: str | None = Field(default=None, max_length=100)
     unit: str | None = Field(default=None, max_length=30)
@@ -532,7 +591,7 @@ class SurveyQuestionTranslation(ApiModel):
 class SurveySectionTranslation(ApiModel):
     title: str | None = Field(default=None, max_length=500)
     description: str | None = Field(default=None, max_length=4000)
-    questions: dict[str, SurveyQuestionTranslation] = Field(default_factory=dict)
+    questions: dict[StableId, SurveyQuestionTranslation] = Field(default_factory=dict)
 
 
 class SurveyTranslation(ApiModel):
@@ -541,13 +600,79 @@ class SurveyTranslation(ApiModel):
     title: str | None = Field(default=None, max_length=500)
     description: str | None = Field(default=None, max_length=4000)
     confirmation_message: str | None = Field(default=None, max_length=2000)
-    sections: dict[str, SurveySectionTranslation] = Field(default_factory=dict)
+    sections: dict[StableId, SurveySectionTranslation] = Field(default_factory=dict)
     # Flat maps remain accepted for early editor payload compatibility.
-    section_titles: dict[str, str] = Field(default_factory=dict)
-    section_descriptions: dict[str, str] = Field(default_factory=dict)
-    question_titles: dict[str, str] = Field(default_factory=dict)
-    question_descriptions: dict[str, str] = Field(default_factory=dict)
-    option_labels: dict[str, dict[str, str]] = Field(default_factory=dict)
+    section_titles: dict[StableId, str] = Field(default_factory=dict)
+    section_descriptions: dict[StableId, str] = Field(default_factory=dict)
+    question_titles: dict[StableId, str] = Field(default_factory=dict)
+    question_descriptions: dict[StableId, str] = Field(default_factory=dict)
+    option_labels: dict[StableId, dict[StableId, str]] = Field(default_factory=dict)
+
+
+def validate_translation_references(
+    translations: dict[str, SurveyTranslation], sections: list[SurveySection]
+) -> None:
+    section_map = {section.id: section for section in sections}
+    question_map = {
+        question.id: question for section in sections for question in section.questions
+    }
+
+    def reject_unknown(label: str, values: set[str], allowed: set[str]) -> None:
+        unknown = values - allowed
+        if unknown:
+            raise ValueError(
+                f"{label} references unknown stable IDs: {', '.join(sorted(unknown))}"
+            )
+
+    section_ids = set(section_map)
+    question_ids = set(question_map)
+    for locale, translation in translations.items():
+        reject_unknown(
+            f"translations.{locale}.sections",
+            set(translation.sections)
+            | set(translation.section_titles)
+            | set(translation.section_descriptions),
+            section_ids,
+        )
+        reject_unknown(
+            f"translations.{locale}.questions",
+            set(translation.question_titles)
+            | set(translation.question_descriptions)
+            | set(translation.option_labels),
+            question_ids,
+        )
+        for question_id, labels in translation.option_labels.items():
+            reject_unknown(
+                f"translations.{locale}.optionLabels.{question_id}",
+                set(labels),
+                {option.id for option in question_map[question_id].options},
+            )
+        for section_id, section_translation in translation.sections.items():
+            section_question_map = {
+                question.id: question for question in section_map[section_id].questions
+            }
+            reject_unknown(
+                f"translations.{locale}.sections.{section_id}.questions",
+                set(section_translation.questions),
+                set(section_question_map),
+            )
+            for question_id, question_translation in section_translation.questions.items():
+                question = section_question_map[question_id]
+                reject_unknown(
+                    f"translations.{locale}.questions.{question_id}.options",
+                    set(question_translation.options),
+                    {option.id for option in question.options},
+                )
+                for axis_name in ("rows", "columns"):
+                    items = getattr(question.settings, axis_name)
+                    allowed = {item.id for item in items} | {
+                        str(index) for index in range(len(items))
+                    }
+                    reject_unknown(
+                        f"translations.{locale}.questions.{question_id}.{axis_name}",
+                        set(getattr(question_translation, axis_name)),
+                        allowed,
+                    )
 
 
 class SurveyLanguages(ApiModel):
@@ -649,6 +774,9 @@ class SurveyLocaleMixin(ApiModel):
             raise ValueError(
                 "translations contain unsupported locales: " + ", ".join(sorted(unsupported))
             )
+        sections = getattr(self, "sections", None)
+        if sections is not None:
+            validate_translation_references(self.translations, sections)
         return self
 
 
@@ -725,7 +853,7 @@ class SurveyCreateRequest(SurveyLocaleMixin):
 
 
 class SurveyUpdateRequest(ApiModel):
-    title: str | None = Field(default=None, min_length=1, max_length=500)
+    title: str | None = Field(default=None, max_length=500)
     description: str | None = Field(default=None, max_length=4000)
     category: str | None = Field(default=None, min_length=1, max_length=100)
     sections: list[SurveySection] | None = Field(default=None, max_length=100)
@@ -776,6 +904,14 @@ class SurveyUpdateRequest(ApiModel):
             return None
         return {_normalize_locale(key): value for key, value in values.items()}
 
+    @model_validator(mode="after")
+    def validate_translation_targets_when_sections_are_present(
+        self,
+    ) -> "SurveyUpdateRequest":
+        if self.sections is not None and self.translations is not None:
+            validate_translation_references(self.translations, self.sections)
+        return self
+
 
 class SurveySummary(ApiModel):
     id: str
@@ -810,6 +946,11 @@ class SurveyDetail(SurveySummary):
     @classmethod
     def validate_skin(cls, value: dict[str, Any]) -> dict[str, Any]:
         return _validate_skin_assets(value) or {}
+
+    @model_validator(mode="after")
+    def validate_translation_targets(self) -> "SurveyDetail":
+        validate_translation_references(self.translations, self.sections)
+        return self
 
     @computed_field
     @property
@@ -879,7 +1020,7 @@ class PublicSurvey(SurveyLocaleMixin):
 
 
 class AnswerItem(ApiModel):
-    question_id: str = Field(min_length=1, max_length=80)
+    question_id: StableId
     value: Any = None
 
 

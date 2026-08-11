@@ -68,8 +68,9 @@
                 if (deleteOption) return this.deleteOption(card.dataset.questionId, deleteOption.dataset.deleteOption);
                 const mode = event.target.closest("[data-builder-mode]");
                 if (mode) return this.setMode(mode.dataset.builderMode);
+                if (event.target.closest("[data-builder-save]")) return this.saveExplicit();
                 if (event.target.closest("[data-builder-preview]")) return this.preview();
-                if (event.target.closest("[data-builder-publish]")) return this.publish();
+                if (event.target.closest("[data-builder-distribute]")) return this.prepareDistribution();
                 if (event.target.closest("[data-properties-close]")) return this.closeProperties();
                 const skin = event.target.closest("[data-skin-code]");
                 if (skin) return this.setSkin(skin.dataset.skinCode);
@@ -647,7 +648,10 @@
                 const code = this.localeCode(event.target.dataset.languageCode, undefined, null);
                 if (!code || code === this.survey.languages.sourceLocale) return this.renderLanguageControls();
                 if (event.target.checked && !this.survey.languages.enabled.includes(code)) this.survey.languages.enabled.push(code);
-                if (!event.target.checked) this.survey.languages.enabled = this.survey.languages.enabled.filter((item) => item !== code);
+                if (!event.target.checked) {
+                    this.survey.languages.enabled = this.survey.languages.enabled.filter((item) => item !== code);
+                    delete this.survey.translations[code];
+                }
                 if (!this.survey.languages.enabled.includes(this.survey.languages.defaultLocale)) this.survey.languages.defaultLocale = this.survey.languages.sourceLocale;
                 if (!this.survey.languages.enabled.includes(this.editingLocale)) this.editingLocale = this.survey.languages.sourceLocale;
                 this.renderSurvey();
@@ -714,13 +718,32 @@
             const from = this.questionLocation(fromId);
             const target = this.questionLocation(targetId);
             if (!from || !target) return;
+            const sourceSectionId = String(from.section.id);
             const [question] = from.section.questions.splice(from.questionIndex, 1);
             const targetAfterRemoval = this.questionLocation(targetId);
             const insertAt = targetAfterRemoval.questionIndex + (placeAfter ? 1 : 0);
             targetAfterRemoval.section.questions.splice(insertAt, 0, question);
+            const destinationSectionId = String(targetAfterRemoval.section.id);
+            if (sourceSectionId !== destinationSectionId) this.moveQuestionTranslations(question.id, sourceSectionId, destinationSectionId);
             this.refreshQuestions();
             this.renderQuestions();
             this.scheduleSave();
+        },
+        moveQuestionTranslations(questionId, sourceSectionId, destinationSectionId) {
+            const questionKey = String(questionId);
+            Object.values(this.survey.translations || {}).forEach((bucket) => {
+                if (!bucket || typeof bucket !== "object" || Array.isArray(bucket)) return;
+                const sourceQuestions = bucket.sections?.[sourceSectionId]?.questions;
+                if (!sourceQuestions || !Object.prototype.hasOwnProperty.call(sourceQuestions, questionKey)) return;
+                const translatedQuestion = sourceQuestions[questionKey];
+                delete sourceQuestions[questionKey];
+                if (!bucket.sections[destinationSectionId] || typeof bucket.sections[destinationSectionId] !== "object") {
+                    bucket.sections[destinationSectionId] = { title: "", description: "", questions: {} };
+                }
+                const destination = bucket.sections[destinationSectionId];
+                if (!destination.questions || typeof destination.questions !== "object") destination.questions = {};
+                destination.questions[questionKey] = translatedQuestion;
+            });
         },
         duplicateQuestion(id) {
             const location = this.questionLocation(id);
@@ -734,10 +757,44 @@
             this.renderQuestions();
             this.scheduleSave();
         },
+        pruneQuestionTranslations(questionId) {
+            const key = String(questionId);
+            Object.values(this.survey.translations || {}).forEach((bucket) => {
+                if (!bucket || typeof bucket !== "object" || Array.isArray(bucket)) return;
+                Object.values(bucket.sections || {}).forEach((sectionTranslation) => {
+                    if (sectionTranslation?.questions && typeof sectionTranslation.questions === "object") delete sectionTranslation.questions[key];
+                });
+                ["questionTitles", "question_titles", "questionDescriptions", "question_descriptions", "optionLabels", "option_labels"].forEach((field) => {
+                    if (bucket[field] && typeof bucket[field] === "object") delete bucket[field][key];
+                });
+            });
+        },
+        pruneOptionTranslations(questionId, optionId) {
+            const questionKey = String(questionId);
+            const optionKey = String(optionId);
+            Object.values(this.survey.translations || {}).forEach((bucket) => {
+                if (!bucket || typeof bucket !== "object" || Array.isArray(bucket)) return;
+                Object.values(bucket.sections || {}).forEach((sectionTranslation) => {
+                    const options = sectionTranslation?.questions?.[questionKey]?.options;
+                    if (options && typeof options === "object") delete options[optionKey];
+                });
+                ["optionLabels", "option_labels"].forEach((field) => {
+                    const labels = bucket[field]?.[questionKey];
+                    if (labels && typeof labels === "object") delete labels[optionKey];
+                });
+            });
+        },
         deleteQuestion(id) {
             const location = this.questionLocation(id);
             if (!location) return;
             location.section.questions.splice(location.questionIndex, 1);
+            this.pruneQuestionTranslations(id);
+            this.survey.logicRules = (this.survey.logicRules || []).filter((rule) => ![
+                rule?.questionId,
+                rule?.sourceQuestionId,
+                rule?.targetQuestionId,
+                rule?.destinationQuestionId
+            ].some((reference) => String(reference ?? "") === String(id)));
             this.refreshQuestions();
             if (this.activeId === id) {
                 this.activeId = null;
@@ -745,10 +802,11 @@
                 this.root.querySelector("[data-properties-panel]").hidden = true;
             }
             this.renderQuestions();
+            this.renderRules();
             this.scheduleSave();
         },
         addOption(questionId) { const question = this.question(questionId); if (!question) return; question.options = question.options || []; question.options.push({ id: uid("o"), label: `보기 ${question.options.length + 1}` }); this.renderQuestions(); this.scheduleSave(); },
-        deleteOption(questionId, optionId) { const question = this.question(questionId); if (!question || question.options.length <= 1) return this.context.toast("보기는 한 개 이상 필요합니다.", "error"); question.options = question.options.filter((item) => item.id !== optionId); this.renderQuestions(); this.scheduleSave(); },
+        deleteOption(questionId, optionId) { const question = this.question(questionId); if (!question || question.options.length <= 1) return this.context.toast("보기는 한 개 이상 필요합니다.", "error"); question.options = question.options.filter((item) => item.id !== optionId); this.pruneOptionTranslations(questionId, optionId); this.renderQuestions(); this.scheduleSave(); },
         setMode(mode) { this.root.querySelectorAll("[data-builder-mode]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.builderMode === mode))); this.root.querySelectorAll("[data-mode-panel]").forEach((panel) => { panel.hidden = panel.dataset.modePanel !== mode; }); },
         addLogicRule() {
             const source = this.survey.questions.find((question) => optionTypes.has(question.type)) || this.survey.questions[0];
@@ -854,6 +912,20 @@
             }
             return true;
         },
+        async saveExplicit({ notify = true } = {}) {
+            if (!this.survey) return false;
+            this.dirty = true;
+            this.setSaveLabel("저장 중…");
+            try {
+                await this.flushSave();
+                if (notify && !this.destroyed) this.context.toast("설문 초안을 저장했습니다.", "success");
+                return true;
+            } catch (error) {
+                this.setSaveLabel("저장 실패");
+                if (!this.destroyed) this.context.toast(`설문 초안을 저장하지 못했습니다. ${error.message}`, "error");
+                return false;
+            }
+        },
         preview() {
             const questions = this.survey.questions.slice(0, 6);
             const skin = window.SURVEYONE_CONFIG.skinPresets.find((item) => item.code === this.survey.skin?.preset) || window.SURVEYONE_CONFIG.skinPresets[0];
@@ -866,19 +938,12 @@
             }).join("");
             this.context.openModal(`<p class="eyebrow">RESPONDENT PREVIEW · ${Common.escapeHtml(this.localeLabel(this.editingLocale))}</p><h2>모바일 응답 미리보기</h2><div class="builder-preview" style="--survey-primary:${skin.primary}"><div class="builder-preview-cover"><h3>${Common.escapeHtml(this.localizedSurveyField("title"))}</h3><p>${Common.escapeHtml(this.localizedSurveyField("description") || "설문에 참여해 주세요.")}</p></div>${questionMarkup || '<div class="builder-preview-question">문항을 추가하면 여기에 표시됩니다.</div>'}</div>`, { wide: false });
         },
-        async publish() {
+        async prepareDistribution() {
             if (!this.survey.questions.some((question) => question.type !== "notice")) return this.context.toast("배포하려면 응답 가능한 문항을 한 개 이상 추가하세요.", "error");
-            try {
-                await this.flushSave();
-                const payload = await this.context.api.post(`/api/surveys/${encodeURIComponent(this.survey.id)}/publish`, {});
-                this.survey = { ...this.survey, ...(payload.survey || payload), status: "published" };
-                if (this.destroyed) return;
-                this.renderSurvey();
-                this.context.toast("불변 배포본과 고유 URL을 만들었습니다.", "success");
-                this.context.navigate("M03001", { surveyId: this.survey.id });
-            } catch (error) {
-                if (!this.destroyed) this.context.toast(`저장 또는 배포에 실패했습니다. ${error.message}`, "error");
-            }
+            const saved = await this.saveExplicit({ notify: false });
+            if (!saved || this.destroyed) return;
+            this.context.toast("초안을 저장했습니다. 배포 설정으로 이동합니다.", "success");
+            this.context.navigate("M03001", { surveyId: this.survey.id });
         },
         async destroy() {
             clearTimeout(this.saveTimer);

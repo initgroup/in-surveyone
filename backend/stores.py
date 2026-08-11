@@ -16,6 +16,7 @@ from backend.models import (
     DashboardView,
     GuestCapabilitiesView,
     GuestFeatures,
+    GuestProvisionView,
     GuestLimits,
     GuestMode,
     GuestModeCapability,
@@ -46,13 +47,15 @@ def _database_guest_probe(
     settings: Settings, *, force_refresh: bool = False
 ) -> tuple[bool, str | None]:
     global _probe_at, _probe_result
+    if settings.environment == "test" and settings.db_mode == "memory":
+        return True, None
     if settings.db_mode != "oracle" or not all(
         (settings.db_user, settings.db_password, settings.db_dsn)
     ):
         return False, "Oracle mode and DB connection settings are required."
     now = time.monotonic()
     with _probe_lock:
-        if _probe_at and (not force_refresh or now - _probe_at < 30):
+        if _probe_at and not force_refresh and now - _probe_at < 30:
             return _probe_result
         store = oracle_store()
         readiness = getattr(store, "readiness", None)
@@ -72,8 +75,8 @@ def prime_database_guest_probe(settings: Settings | None = None) -> tuple[bool, 
 @runtime_checkable
 class SurveyStore(Protocol):
     def create_guest(
-        self, display_name: str, mode: GuestMode = GuestMode.LOCAL
-    ) -> tuple[str, AuthSessionView]: ...
+        self, display_name: str, mode: GuestMode = GuestMode.DATABASE
+    ) -> GuestProvisionView: ...
 
     def signup(self, request: SignupRequest) -> tuple[str, AuthSessionView]: ...
     def login(self, request: LoginRequest) -> tuple[str, AuthSessionView]: ...
@@ -125,24 +128,20 @@ def oracle_store() -> SurveyStore:
 
 def primary_store(settings: Settings | None = None) -> SurveyStore:
     selected = settings or get_settings()
-    return oracle_store() if selected.db_mode == "oracle" else memory_store
+    if selected.environment == "test" and selected.db_mode == "memory":
+        return memory_store
+    return oracle_store()
 
 
 def resolve_authenticated_store(raw_token: str | None) -> tuple[SurveyStore, UserRecord]:
     if not raw_token:
         raise AuthenticationError("로그인 세션이 필요합니다.")
 
-    # Tokens are opaque random values. Store selection is proven by finding the
-    # HMAC token hash in a repository, never by trusting a caller-controlled prefix.
-    try:
+    selected = get_settings()
+    if selected.environment == "test" and selected.db_mode == "memory":
         return memory_store, memory_store.authenticate(raw_token)
-    except AuthenticationError:
-        pass
-
-    if get_settings().db_mode == "oracle":
-        store = oracle_store()
-        return store, store.authenticate(raw_token)
-    raise AuthenticationError("로그인 세션이 유효하지 않습니다.")
+    store = oracle_store()
+    return store, store.authenticate(raw_token)
 
 
 def request_store(request: Request, *, authenticate: bool = True) -> SurveyStore:
@@ -166,22 +165,14 @@ def request_store(request: Request, *, authenticate: bool = True) -> SurveyStore
 
 
 def public_store(slug: str) -> SurveyStore:
-    # The namespace itself selects exactly one repository. This prevents a
-    # local slug from shadowing a persistent route and prevents local typos
-    # from ever acquiring an Oracle connection.
-    if slug.startswith("local-guest-"):
-        memory_store.public_survey(slug)
+    selected = get_settings()
+    if selected.environment == "test" and selected.db_mode == "memory":
         return memory_store
-    if get_settings().db_mode == "oracle":
-        store = oracle_store()
-        store.public_survey(slug)
-        return store
-    memory_store.public_survey(slug)
-    return memory_store
+    return oracle_store()
 
 
 def guest_capabilities(
-    selected_mode: GuestMode = GuestMode.LOCAL,
+    selected_mode: GuestMode = GuestMode.DATABASE,
     *,
     settings: Settings | None = None,
 ) -> GuestCapabilitiesView:
@@ -195,29 +186,6 @@ def guest_capabilities(
         "sms": selected.sms_provider not in {"", "disabled"},
         "kakao": selected.kakao_provider not in {"", "disabled"},
     }
-    local = GuestModeCapability(
-        mode=GuestMode.LOCAL,
-        title="로컬 게스트",
-        available=True,
-        reason="브라우저 체험용이며 서버 재시작 시 데이터가 사라집니다.",
-        persistence="process-memory",
-        expires_in_hours=selected.guest_project_ttl_hours,
-        limits=GuestLimits(
-            max_projects=selected.local_guest_max_projects,
-            max_questions_per_survey=selected.local_guest_max_questions,
-            max_responses_per_survey=selected.local_guest_max_responses,
-        ),
-        features=GuestFeatures(
-            templates=True,
-            publish_demo_url=True,
-            external_delivery=False,
-            raw_data_export=False,
-            custom_report_persistence=False,
-            multilingual=True,
-            all_question_types=True,
-        ),
-        provider_configured={key: False for key in providers},
-    )
     database = GuestModeCapability(
         mode=GuestMode.DATABASE,
         title="DB 게스트",
@@ -246,4 +214,7 @@ def guest_capabilities(
         ),
         provider_configured=providers,
     )
-    return GuestCapabilitiesView(selected_mode=selected_mode, modes=[local, database])
+    return GuestCapabilitiesView(
+        selected_mode=GuestMode.DATABASE,
+        modes=[database],
+    )

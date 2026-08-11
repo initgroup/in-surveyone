@@ -1,14 +1,114 @@
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.memory_store import MemoryStore
-from backend.models import Question, QuestionSettings, QuestionType
+from backend.errors import DomainValidationError
+from backend.memory_store import MemoryStore, report_cutoff_exclusive
+from backend.models import (
+    Question,
+    QuestionOption,
+    QuestionSettings,
+    QuestionType,
+    SurveyCreateRequest,
+    SurveySection,
+    SurveySettings,
+    validate_publish_ready_sections,
+)
 from backend.oracle_store import OracleStore
 from main import app
+
+
+def _provision_and_login(client: TestClient) -> None:
+    provisioned = client.post("/api/auth/guest", json={"mode": "database"})
+    assert provisioned.status_code == 201, provisioned.text
+    credential = provisioned.json()["data"]["guestCredential"]
+    logged_in = client.post(
+        "/api/auth/login",
+        json={
+            "loginId": credential["loginId"],
+            "password": credential["initialPassword"],
+        },
+    )
+    assert logged_in.status_code == 200, logged_in.text
+
+
+def test_survey_period_requires_timezone_and_normalizes_to_utc() -> None:
+    with pytest.raises(ValueError, match="timezone"):
+        SurveySettings(startsAt="2030-01-01T09:00:00")
+
+    settings = SurveySettings(
+        startsAt="2030-01-01T09:00:00+09:00",
+        closesAt="2030-01-01T10:00:00+09:00",
+    )
+    assert settings.starts_at == datetime(2030, 1, 1, tzinfo=timezone.utc)
+    assert settings.closes_at == datetime(2030, 1, 1, 1, tzinfo=timezone.utc)
+
+    with pytest.raises(ValueError, match="earlier"):
+        SurveySettings(
+            startsAt="2030-01-01T10:00:00+09:00",
+            closesAt="2030-01-01T09:00:00+09:00",
+        )
+
+    with TestClient(app) as client:
+        _provision_and_login(client)
+        response = client.post(
+            "/api/surveys",
+            json={
+                "title": "Naive schedule",
+                "settings": {"startsAt": "2030-01-01T09:00:00"},
+            },
+        )
+        assert response.status_code == 422
+
+
+@pytest.mark.parametrize("invalid_id", ["한글-id", "question:option", "x" * 81])
+def test_oracle_stable_ids_are_ascii_and_byte_bounded(invalid_id: str) -> None:
+    with pytest.raises(ValueError):
+        QuestionOption(id=invalid_id, label="Option")
+    with pytest.raises(ValueError):
+        Question(id=invalid_id, type=QuestionType.SHORT_TEXT, title="Question")
+    with pytest.raises(ValueError):
+        SurveySection(id=invalid_id, title="Section")
+
+
+def test_translations_cannot_reference_unknown_stable_ids() -> None:
+    with pytest.raises(ValueError, match="unknown stable IDs"):
+        SurveyCreateRequest.model_validate(
+            {
+                "title": "Translated survey",
+                "languages": {
+                    "sourceLocale": "ko",
+                    "defaultLocale": "ko",
+                    "enabled": ["ko", "en"],
+                },
+                "sections": [
+                    {
+                        "id": "section-1",
+                        "title": "Section",
+                        "questions": [
+                            {
+                                "id": "question-1",
+                                "type": "single",
+                                "title": "Question",
+                                "options": [{"id": "yes", "label": "Yes"}],
+                            }
+                        ],
+                    }
+                ],
+                "translations": {
+                    "en": {"sectionTitles": {"missing-section": "Missing"}}
+                },
+            }
+        )
+
+
+def test_report_cutoff_rejects_unrepresentable_exclusive_date() -> None:
+    with pytest.raises(DomainValidationError, match="cutoffDate"):
+        report_cutoff_exclusive(date.max)
 
 
 def test_question_top_level_and_settings_are_canonical_and_equal() -> None:
@@ -55,11 +155,14 @@ def test_question_top_level_and_settings_are_canonical_and_equal() -> None:
                 "columns": [{"id": "column", "label": "Column"}],
             },
         )
+    incomplete_table = Question(
+        id="invalid-table",
+        type=QuestionType.TABLE,
+        title="Missing shape",
+    )
     with pytest.raises(ValueError, match="rows and columns"):
-        Question(
-            id="invalid-table",
-            type=QuestionType.TABLE,
-            title="Missing shape",
+        validate_publish_ready_sections(
+            [SurveySection(title="Section", questions=[incomplete_table])]
         )
 
 
@@ -94,28 +197,34 @@ def test_scale_design_contract_rejects_unsupported_ranges(
     settings = {"maxValue": maximum}
     if minimum is not None:
         settings["minValue"] = minimum
+    question = Question(
+        id="invalid-scale",
+        type=QuestionType.SCALE,
+        title="Invalid scale",
+        settings=settings,
+    )
     with pytest.raises(ValueError, match=message):
-        Question(
-            id="invalid-scale",
-            type=QuestionType.SCALE,
-            title="Invalid scale",
-            settings=settings,
+        validate_publish_ready_sections(
+            [SurveySection(title="Section", questions=[question])]
         )
 
 
 def test_scale_design_requires_unit_step() -> None:
+    question = Question(
+        id="invalid-scale-step",
+        type=QuestionType.SCALE,
+        title="Invalid scale step",
+        settings={"minValue": 1, "maxValue": 5, "step": 0.5},
+    )
     with pytest.raises(ValueError, match="step must be 1"):
-        Question(
-            id="invalid-scale-step",
-            type=QuestionType.SCALE,
-            title="Invalid scale step",
-            settings={"minValue": 1, "maxValue": 5, "step": 0.5},
+        validate_publish_ready_sections(
+            [SurveySection(title="Section", questions=[question])]
         )
 
 
 def test_scale_contract_is_enforced_by_survey_api() -> None:
     with TestClient(app) as client:
-        assert client.post("/api/auth/guest", json={"mode": "local"}).status_code == 201
+        _provision_and_login(client)
         response = client.post(
             "/api/surveys",
             json={
@@ -131,7 +240,11 @@ def test_scale_contract_is_enforced_by_survey_api() -> None:
                 ],
             },
         )
-        assert response.status_code == 422
+        assert response.status_code == 201, response.text
+        invalid_publish = client.post(
+            f"/api/surveys/{response.json()['data']['id']}/publish", json={}
+        )
+        assert invalid_publish.status_code == 422
 
         created = client.post(
             "/api/surveys",
@@ -171,11 +284,63 @@ def test_scale_contract_is_enforced_by_survey_api() -> None:
         assert whole.status_code == 201, whole.text
 
 
+def test_incomplete_draft_can_save_but_cannot_publish() -> None:
+    with TestClient(app) as client:
+        _provision_and_login(client)
+        created = client.post(
+            "/api/surveys",
+            json={
+                "title": "Working draft",
+                "questions": [
+                    {
+                        "id": "draft-choice",
+                        "type": "single",
+                        "title": "Temporary",
+                        "options": [{"id": "draft-option", "label": "Temporary"}],
+                    }
+                ],
+            },
+        )
+        assert created.status_code == 201, created.text
+        survey_id = created.json()["data"]["id"]
+
+        saved = client.put(
+            f"/api/surveys/{survey_id}",
+            json={
+                "title": "",
+                "sections": [
+                    {
+                        "id": "draft-section",
+                        "title": "",
+                        "questions": [
+                            {
+                                "id": "draft-choice",
+                                "type": "single",
+                                "title": "",
+                                "options": [
+                                    {"id": "draft-option", "label": ""}
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["data"]["title"] == ""
+        assert saved.json()["data"]["sections"][0]["title"] == ""
+        assert saved.json()["data"]["questions"][0]["title"] == ""
+
+        rejected = client.post(f"/api/surveys/{survey_id}/publish", json={})
+        assert rejected.status_code == 422
+        assert "title" in rejected.json()["detail"].lower()
+
+
 def test_table_and_repeat_table_response_shapes_are_strict_and_shared() -> None:
     assert OracleStore._validate_answer_value is MemoryStore._validate_answer_value
 
     with TestClient(app) as client:
-        assert client.post("/api/auth/guest", json={"mode": "local"}).status_code == 201
+        _provision_and_login(client)
         created = client.post(
             "/api/surveys",
             json={

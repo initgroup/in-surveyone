@@ -7,22 +7,73 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 import pytest
 
-from backend.errors import NotFoundError
 from backend.models import SubmitResponseRequest
 import backend.stores as stores
 from main import app, settings
 
 
-def test_guest_capabilities_and_local_limits() -> None:
+def _provision_and_login(client: TestClient) -> dict:
+    provisioned = client.post("/api/auth/guest", json={"mode": "database"})
+    assert provisioned.status_code == 201, provisioned.text
+    credential = provisioned.json()["data"]["guestCredential"]
+    logged_in = client.post(
+        "/api/auth/login",
+        json={
+            "loginId": credential["loginId"],
+            "password": credential["initialPassword"],
+        },
+    )
+    assert logged_in.status_code == 200, logged_in.text
+    return provisioned.json()["data"]
+
+
+def test_database_guest_probe_cache_expires_and_force_refreshes(monkeypatch) -> None:
+    probe_settings = replace(
+        settings,
+        db_mode="oracle",
+        db_user="user",
+        db_password="password",
+        db_dsn="localhost/service",
+    )
+
+    class ReadyStore:
+        calls = 0
+
+        def readiness(self):
+            self.calls += 1
+            return True, None
+
+    ready_store = ReadyStore()
+    ticks = iter((100.0, 110.0, 131.0, 132.0))
+    monkeypatch.setattr(stores, "_probe_at", 0.0)
+    monkeypatch.setattr(
+        stores, "_probe_result", (False, "Oracle has not been checked.")
+    )
+    monkeypatch.setattr(stores, "oracle_store", lambda: ready_store)
+    monkeypatch.setattr(stores.time, "monotonic", lambda: next(ticks))
+
+    assert stores._database_guest_probe(probe_settings) == (True, None)
+    assert stores._database_guest_probe(probe_settings) == (True, None)
+    assert ready_store.calls == 1
+    assert stores._database_guest_probe(probe_settings) == (True, None)
+    assert ready_store.calls == 2
+    assert stores._database_guest_probe(probe_settings, force_refresh=True) == (
+        True,
+        None,
+    )
+    assert ready_store.calls == 3
+
+
+def test_guest_capabilities_expose_only_database_mode_and_credentials() -> None:
     with TestClient(app) as client:
         capabilities = client.get("/api/auth/guest/capabilities")
         assert capabilities.status_code == 200, capabilities.text
         modes = {
             item["mode"]: item for item in capabilities.json()["data"]["modes"]
         }
-        assert modes["local"]["available"] is True
-        assert modes["local"]["limits"]["maxProjects"] == settings.local_guest_max_projects
-        assert modes["database"]["available"] is False
+        assert set(modes) == {"database"}
+        assert capabilities.json()["data"]["selectedMode"] == "database"
+        assert modes["database"]["available"] is True
         assert modes["database"]["features"]["externalDelivery"] is False
         assert modes["database"]["features"]["customReportPersistence"] is False
         assert modes["database"]["limits"]["maxProjects"] == settings.db_guest_max_projects
@@ -37,63 +88,75 @@ def test_guest_capabilities_and_local_limits() -> None:
 
         guest = client.post(
             "/api/auth/guest",
-            json={"mode": "local", "displayName": "Local tester"},
+            json={"mode": "database", "displayName": "Database tester"},
         )
         assert guest.status_code == 201, guest.text
-        assert guest.json()["data"]["user"]["guestMode"] == "local"
+        assert guest.json()["data"]["user"]["guestMode"] == "database"
+        credential = guest.json()["data"]["guestCredential"]
+        assert credential["loginId"].startswith("quest")
+        assert len(credential["initialPassword"]) >= 24
+        assert guest.headers["cache-control"] == "no-store"
         expires_at = datetime.fromisoformat(guest.json()["data"]["expiresAt"])
         remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
         assert settings.guest_project_ttl_hours * 3600 - 10 <= remaining
-        cookie = guest.headers["set-cookie"].lower()
-        assert f"max-age={settings.guest_project_ttl_hours * 3600}" in cookie or (
-            f"max-age={settings.guest_project_ttl_hours * 3600 - 1}" in cookie
+        assert "set-cookie" not in guest.headers
+        assert client.get("/api/auth/me").status_code == 401
+
+        login_id = credential["loginId"]
+        password = credential["initialPassword"]
+        relogged = client.post(
+            "/api/auth/login",
+            json={"loginId": login_id, "password": password},
         )
+        assert relogged.status_code == 200, relogged.text
+        assert "guestCredential" not in relogged.json()["data"]
+        assert "initialPassword" not in relogged.text
+        cookie = relogged.headers["set-cookie"].lower()
+        assert "httponly" in cookie
+        max_age = int(cookie.split("max-age=", 1)[1].split(";", 1)[0])
+        assert 1 <= max_age <= settings.session_ttl_seconds
+        session_expiry = datetime.fromisoformat(relogged.json()["data"]["expiresAt"])
+        assert session_expiry <= expires_at
+        me = client.get("/api/auth/me")
+        assert me.status_code == 200
+        assert "guestCredential" not in me.text
+        assert "initialPassword" not in me.text
 
-        for index in range(settings.local_guest_max_projects):
-            created = client.post(
-                "/api/surveys",
-                json={
-                    "title": f"Local project {index}",
-                    "questions": [
-                        {
-                            "id": f"q-{index}",
-                            "type": "short_text",
-                            "title": "Question",
-                        }
-                    ],
-                },
-            )
-            assert created.status_code == 201, created.text
+        local = client.post("/api/auth/guest", json={"mode": "local"})
+        assert local.status_code == 422
 
-        rejected = client.post(
-            "/api/surveys",
+        reserved = client.post(
+            "/api/auth/signup",
             json={
-                "title": "Over limit",
-                "questions": [
-                    {"id": "q-over", "type": "short_text", "title": "Question"}
-                ],
+                "loginId": "quest999",
+                "password": "SurveyOne!234",
+                "name": "Reserved",
+                "organizationName": "Reserved tenant",
             },
         )
-        assert rejected.status_code == 422
-        assert "limit" in rejected.json()["detail"].lower()
+        assert reserved.status_code == 422
 
 
 def test_multilingual_snapshot_and_public_language_resolution() -> None:
     with TestClient(app) as client:
-        assert client.post("/api/auth/guest", json={"mode": "local"}).status_code == 201
+        _provision_and_login(client)
         slug = f"i18n-{uuid4().hex[:10]}"
         created = client.post(
             "/api/surveys",
             json={
                 "title": "한국어 설문",
-                "questions": [
+                "sections": [{
+                    "id": "section",
+                    "title": "기본 섹션",
+                    "questions": [
                     {
                         "id": "choice-q",
                         "type": "single",
                         "title": "선택해 주세요",
                         "options": [{"id": "yes", "label": "예"}],
                     }
-                ],
+                    ],
+                }],
                 "languages": {
                     "sourceLocale": "ko",
                     "defaultLocale": "ko",
@@ -104,7 +167,6 @@ def test_multilingual_snapshot_and_public_language_resolution() -> None:
                         "title": "English survey",
                         "confirmationMessage": "Thank you",
                         "sections": {
-                            "ignored-section": {"title": "Ignored"},
                             "section": {
                                 "questions": {
                                     "choice-q": {
@@ -143,7 +205,7 @@ def test_multilingual_snapshot_and_public_language_resolution() -> None:
         )
         assert published.status_code == 200, published.text
         slug = published.json()["data"]["slug"]
-        assert slug.startswith("local-guest-")
+        assert slug.startswith("i18n-")
         english = client.get(f"/api/public/surveys/{slug}", params={"lang": "en"})
         assert english.status_code == 200, english.text
         payload = english.json()["data"]
@@ -158,7 +220,7 @@ def test_multilingual_snapshot_and_public_language_resolution() -> None:
 
 def test_matrix_translation_syncs_index_keys_to_both_axis_shapes() -> None:
     with TestClient(app) as client:
-        assert client.post("/api/auth/guest", json={"mode": "local"}).status_code == 201
+        _provision_and_login(client)
         slug = f"matrix-i18n-{uuid4().hex[:8]}"
         created = client.post(
             "/api/surveys",
@@ -211,7 +273,7 @@ def test_matrix_translation_syncs_index_keys_to_both_axis_shapes() -> None:
         )
         assert published.status_code == 200, published.text
         slug = published.json()["data"]["slug"]
-        assert slug.startswith("local-guest-")
+        assert slug.startswith("matrix-i18n-")
 
         public = client.get(f"/api/public/surveys/{slug}", params={"lang": "en"})
         assert public.status_code == 200, public.text
@@ -228,7 +290,7 @@ def test_matrix_translation_syncs_index_keys_to_both_axis_shapes() -> None:
         ]
 
 
-def test_public_store_uses_explicit_local_namespace_without_shadowing(
+def test_runtime_public_store_routes_every_slug_to_oracle(
     monkeypatch,
 ) -> None:
     class FakeOracleStore:
@@ -244,20 +306,18 @@ def test_public_store_uses_explicit_local_namespace_without_shadowing(
     object.__setattr__(settings, "db_mode", "oracle")
     monkeypatch.setattr(stores, "oracle_store", lambda: fake_oracle)
     try:
-        with pytest.raises(NotFoundError):
-            stores.public_store("local-guest-missing")
-        assert fake_oracle.lookups == []
+        selected_first = stores.public_store("any-missing-slug")
+        assert selected_first is fake_oracle
 
         selected = stores.public_store("citizen-life-demo")
         assert selected is fake_oracle
-        assert fake_oracle.lookups == ["citizen-life-demo"]
     finally:
         object.__setattr__(settings, "db_mode", original_mode)
 
 
-def test_local_one_response_policy_requires_respondent_key() -> None:
+def test_database_guest_one_response_policy_requires_respondent_key() -> None:
     with TestClient(app) as client:
-        assert client.post("/api/auth/guest", json={"mode": "local"}).status_code == 201
+        _provision_and_login(client)
         created = client.post(
             "/api/surveys",
             json={
@@ -283,9 +343,9 @@ def test_local_one_response_policy_requires_respondent_key() -> None:
         assert "respondentkey" in rejected.json()["detail"].lower()
 
 
-def test_local_response_idempotency_and_payload_limits() -> None:
+def test_database_guest_response_idempotency_and_payload_limits() -> None:
     with TestClient(app) as client:
-        assert client.post("/api/auth/guest", json={"mode": "local"}).status_code == 201
+        _provision_and_login(client)
         created = client.post(
             "/api/surveys",
             json={
@@ -359,7 +419,7 @@ def test_public_submission_model_rejects_non_finite_values(non_finite: float) ->
 
 def test_memory_public_numeric_submission_rejects_nan() -> None:
     with TestClient(app) as client:
-        assert client.post("/api/auth/guest", json={"mode": "local"}).status_code == 201
+        _provision_and_login(client)
         created = client.post(
             "/api/surveys",
             json={
@@ -394,7 +454,7 @@ def test_memory_public_numeric_submission_rejects_nan() -> None:
 
 def test_server_logic_allows_hidden_required_and_rejects_hidden_answer() -> None:
     with TestClient(app) as client:
-        assert client.post("/api/auth/guest", json={"mode": "local"}).status_code == 201
+        _provision_and_login(client)
         created = client.post(
             "/api/surveys",
             json={
@@ -476,10 +536,10 @@ def test_server_logic_allows_hidden_required_and_rejects_hidden_answer() -> None
         assert "숨겨진" in tampered.json()["detail"]
 
 
-def test_expired_local_guest_public_url_and_submission_are_blocked() -> None:
+def test_expired_database_guest_public_url_and_submission_are_blocked() -> None:
     with TestClient(app) as client:
-        guest = client.post("/api/auth/guest", json={"mode": "local"})
-        tenant_id = guest.json()["data"]["user"]["tenantId"]
+        guest = _provision_and_login(client)
+        tenant_id = guest["user"]["tenantId"]
         created = client.post(
             "/api/surveys",
             json={

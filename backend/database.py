@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 class OraclePool:
     """Lazy Oracle pool using the shared INIT DB_MODE contract.
 
-    The memory repository remains the default development backend. This class
-    deliberately imports python-oracledb only when Oracle mode is selected, so
-    the prototype can run without native Oracle components.
+    Runtime development and production both use Oracle. The driver import stays
+    lazy so isolated automated repository tests can use their explicit memory
+    fixture without loading native Oracle components.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -85,6 +85,15 @@ class OraclePool:
                 )
         return args
 
+    @staticmethod
+    def _initialize_session(connection: Any, _requested_tag: str | None) -> None:
+        """Keep application DML serial even if the database profile forces PDML."""
+        cursor = connection.cursor()
+        try:
+            cursor.execute("ALTER SESSION DISABLE PARALLEL DML")
+        finally:
+            cursor.close()
+
     def get_pool(self):
         if self._pool is not None:
             return self._pool
@@ -97,6 +106,7 @@ class OraclePool:
                 min=self.settings.db_pool_min,
                 max=self.settings.db_pool_max,
                 increment=self.settings.db_pool_increment,
+                session_callback=self._initialize_session,
                 getmode=oracledb.POOL_GETMODE_TIMEDWAIT,
                 wait_timeout=max(
                     1_000,
@@ -115,15 +125,15 @@ class OraclePool:
         pool = self.get_pool()
         started_at = time.monotonic()
         connection = pool.acquire()
-        connection.call_timeout = self.settings.db_call_timeout_ms
-        elapsed = time.monotonic() - started_at
-        log_method = (
-            logger.warning
-            if elapsed >= self.settings.db_pool_acquire_warn_seconds
-            else logger.info
-        )
-        log_method("Oracle pool acquire completed in %.3fs.", elapsed)
         try:
+            connection.call_timeout = self.settings.db_call_timeout_ms
+            elapsed = time.monotonic() - started_at
+            log_method = (
+                logger.warning
+                if elapsed >= self.settings.db_pool_acquire_warn_seconds
+                else logger.info
+            )
+            log_method("Oracle pool acquire completed in %.3fs.", elapsed)
             yield connection
         finally:
             connection.close()

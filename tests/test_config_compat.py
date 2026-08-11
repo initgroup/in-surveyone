@@ -171,6 +171,7 @@ def test_members_init_environment_keys_are_used(monkeypatch) -> None:
         environment.setenv("INIT_COOKIE_SAMESITE", "strict")
         environment.setenv("INIT_SESSION_TTL_SECONDS", "3600")
         environment.setenv("SURVEYONE_ENV", "production")
+        environment.setenv("SURVEYONE_BASE_URL", "https://survey.example.com")
 
         settings = _read_settings()
 
@@ -179,3 +180,31 @@ def test_members_init_environment_keys_are_used(monkeypatch) -> None:
         assert settings.cookie_secure is True
         assert settings.cookie_samesite == "strict"
         assert settings.session_ttl_seconds == 3600
+
+
+def test_loopback_http_disables_secure_cookie_only_in_development(monkeypatch) -> None:
+    with monkeypatch.context() as environment:
+        environment.setenv("SURVEYONE_ENV", "development")
+        environment.setenv("SURVEYONE_BASE_URL", "http://127.0.0.1:8300")
+        environment.setenv("INIT_COOKIE_SECURE", "true")
+
+        settings = _read_settings()
+
+        assert settings.cookie_secure is False
+
+
+def test_production_rejects_insecure_cookie_or_http_origin(monkeypatch) -> None:
+    with monkeypatch.context() as environment:
+        environment.setenv("SURVEYONE_ENV", "production")
+        environment.setenv("INIT_SECRET_KEY", "production-session-secret-value")
+        environment.setenv("SURVEYONE_BASE_URL", "http://survey.example.com")
+        environment.setenv("INIT_COOKIE_SECURE", "true")
+
+        with pytest.raises(ValueError, match="must use HTTPS"):
+            _read_settings()
+
+        environment.setenv("SURVEYONE_BASE_URL", "https://survey.example.com")
+        environment.setenv("INIT_COOKIE_SECURE", "false")
+
+        with pytest.raises(ValueError, match="must be true in production"):
+            _read_settings()
