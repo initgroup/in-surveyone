@@ -1,0 +1,346 @@
+-- [SURVEY_DB_GUEST_TENANT_LOCK]
+SELECT TENANT_ID
+  FROM "INIT$SVY_TB_TENANT"
+ WHERE TENANT_ID = :tenantId
+   AND TENANT_TYPE_CODE = 'DB_GUEST'
+   AND STATUS_CODE = 'ACTIVE'
+   AND EXPIRES_AT > SYSTIMESTAMP
+ FOR UPDATE
+;
+
+-- [SURVEY_COUNT_BY_TENANT]
+SELECT COUNT(*) AS PROJECT_COUNT
+  FROM "INIT$SVY_TB_SURVEY"
+ WHERE TENANT_ID = :tenantId
+;
+
+-- [SURVEY_LIST_BY_OWNER]
+SELECT S.SURVEY_ID
+     , S.SURVEY_TITLE
+     , S.CATEGORY_CODE
+     , S.STATUS_CODE
+     , S.REVISION_NO
+     , S.DRAFT_JSON
+     , S.PUBLIC_SLUG
+     , S.ACTIVE_VERSION_NO
+     , S.CREATED_AT
+     , S.UPDATED_AT
+     , S.PUBLISHED_AT
+     , (
+           SELECT COUNT(*)
+             FROM "INIT$SVY_TB_RESPONSE" R
+            WHERE R.TENANT_ID = S.TENANT_ID
+              AND R.SURVEY_ID = S.SURVEY_ID
+       ) AS RESPONSE_COUNT
+  FROM "INIT$SVY_TB_SURVEY" S
+ WHERE S.TENANT_ID = :tenantId
+   AND S.OWNER_USER_ID = :ownerUserId
+   AND (:statusCode IS NULL OR S.STATUS_CODE = :statusCode)
+ ORDER BY S.UPDATED_AT DESC
+;
+
+-- [SURVEY_DETAIL_BY_OWNER]
+SELECT SURVEY_ID
+     , TENANT_ID
+     , OWNER_USER_ID
+     , TEMPLATE_CODE
+     , SURVEY_TITLE
+     , DESCRIPTION
+     , CATEGORY_CODE
+     , STATUS_CODE
+     , REVISION_NO
+     , DRAFT_JSON
+     , PUBLIC_SLUG
+     , ACTIVE_VERSION_NO
+     , CREATED_AT
+     , UPDATED_AT
+     , PUBLISHED_AT
+  FROM "INIT$SVY_TB_SURVEY"
+ WHERE SURVEY_ID = :surveyId
+   AND TENANT_ID = :tenantId
+   AND OWNER_USER_ID = :ownerUserId
+;
+
+-- [SURVEY_DETAIL_FOR_UPDATE]
+SELECT SURVEY_ID
+     , TENANT_ID
+     , OWNER_USER_ID
+     , TEMPLATE_CODE
+     , SURVEY_TITLE
+     , DESCRIPTION
+     , CATEGORY_CODE
+     , STATUS_CODE
+     , REVISION_NO
+     , DRAFT_JSON
+     , PUBLIC_SLUG
+     , ACTIVE_VERSION_NO
+     , CREATED_AT
+     , UPDATED_AT
+     , PUBLISHED_AT
+  FROM "INIT$SVY_TB_SURVEY"
+ WHERE SURVEY_ID = :surveyId
+   AND TENANT_ID = :tenantId
+   AND OWNER_USER_ID = :ownerUserId
+ FOR UPDATE
+;
+
+-- [SURVEY_INSERT]
+INSERT INTO "INIT$SVY_TB_SURVEY" (
+       SURVEY_ID
+     , TENANT_ID
+     , OWNER_USER_ID
+     , TEMPLATE_CODE
+     , SURVEY_TITLE
+     , DESCRIPTION
+     , CATEGORY_CODE
+     , STATUS_CODE
+     , REVISION_NO
+     , DRAFT_JSON
+     , CREATED_AT
+     , UPDATED_AT
+) VALUES (
+       :surveyId
+     , :tenantId
+     , :ownerUserId
+     , :templateCode
+     , :surveyTitle
+     , :description
+     , :categoryCode
+     , 'DRAFT'
+     , 1
+     , :draftJson
+     , SYSTIMESTAMP
+     , SYSTIMESTAMP
+)
+;
+
+-- [SURVEY_UPDATE_BY_OWNER]
+UPDATE "INIT$SVY_TB_SURVEY"
+   SET SURVEY_TITLE = :surveyTitle
+     , DESCRIPTION = :description
+     , CATEGORY_CODE = :categoryCode
+     , DRAFT_JSON = :draftJson
+     , REVISION_NO = REVISION_NO + 1
+     , UPDATED_AT = SYSTIMESTAMP
+ WHERE SURVEY_ID = :surveyId
+   AND TENANT_ID = :tenantId
+   AND OWNER_USER_ID = :ownerUserId
+;
+
+-- [SURVEY_VERSION_NEXT]
+SELECT NVL(MAX(VERSION_NO), 0) + 1 AS VERSION_NO
+  FROM "INIT$SVY_TB_SURVEY_VERSION"
+ WHERE TENANT_ID = :tenantId
+   AND SURVEY_ID = :surveyId
+;
+
+-- [SURVEY_VERSION_INSERT]
+INSERT INTO "INIT$SVY_TB_SURVEY_VERSION" (
+       SURVEY_ID
+     , VERSION_NO
+     , SNAPSHOT_JSON
+     , CONTENT_HASH
+     , PUBLISHED_BY
+     , PUBLISHED_AT
+     , TENANT_ID
+) VALUES (
+       :surveyId
+     , :versionNo
+     , :snapshotJson
+     , :contentHash
+     , :publishedBy
+     , :publishedAt
+     , :tenantId
+)
+;
+
+-- [SURVEY_VERSION_BY_NO]
+SELECT VERSION_NO
+     , SNAPSHOT_JSON
+     , CONTENT_HASH
+     , PUBLISHED_AT
+  FROM "INIT$SVY_TB_SURVEY_VERSION"
+ WHERE TENANT_ID = :tenantId
+   AND SURVEY_ID = :surveyId
+   AND VERSION_NO = :versionNo
+;
+
+-- [SURVEY_MARK_PUBLISHED_BY_OWNER]
+UPDATE "INIT$SVY_TB_SURVEY"
+   SET STATUS_CODE = 'PUBLISHED'
+     , PUBLIC_SLUG = :publicSlug
+     , ACTIVE_VERSION_NO = :versionNo
+     , PUBLISHED_AT = :publishedAt
+     , UPDATED_AT = :publishedAt
+ WHERE SURVEY_ID = :surveyId
+   AND TENANT_ID = :tenantId
+   AND OWNER_USER_ID = :ownerUserId
+;
+
+-- [SURVEY_SLUG_OWNER]
+SELECT SURVEY_ID
+  FROM "INIT$SVY_TB_SURVEY"
+ WHERE PUBLIC_SLUG = :publicSlug
+;
+
+-- [SURVEY_PUBLIC_BY_SLUG]
+SELECT S.SURVEY_ID
+     , S.TENANT_ID
+     , S.PUBLIC_SLUG
+     , V.VERSION_NO
+     , V.SNAPSHOT_JSON
+     , V.CONTENT_HASH
+     , V.PUBLISHED_AT
+     , T.TENANT_TYPE_CODE
+     , T.EXPIRES_AT AS TENANT_EXPIRES_AT
+  FROM "INIT$SVY_TB_SURVEY" S
+  JOIN "INIT$SVY_TB_SURVEY_VERSION" V
+    ON V.TENANT_ID = S.TENANT_ID
+   AND V.SURVEY_ID = S.SURVEY_ID
+   AND V.VERSION_NO = S.ACTIVE_VERSION_NO
+  JOIN "INIT$SVY_TB_TENANT" T
+    ON T.TENANT_ID = S.TENANT_ID
+ WHERE S.PUBLIC_SLUG = :publicSlug
+   AND S.STATUS_CODE = 'PUBLISHED'
+   AND T.STATUS_CODE = 'ACTIVE'
+   AND (
+       T.TENANT_TYPE_CODE = 'MEMBER'
+       OR (T.TENANT_TYPE_CODE = 'DB_GUEST' AND T.EXPIRES_AT > SYSTIMESTAMP)
+   )
+;
+
+-- [SURVEY_DEPLOYMENT_MERGE]
+MERGE INTO "INIT$SVY_TB_SURVEY_DEPLOYMENT" D
+USING (
+    SELECT :tenantId AS TENANT_ID, :surveyId AS SURVEY_ID FROM DUAL
+) S
+   ON (D.TENANT_ID = S.TENANT_ID AND D.SURVEY_ID = S.SURVEY_ID)
+ WHEN MATCHED THEN UPDATE SET
+      D.SURVEY_VERSION_NO = :versionNo
+    , D.PUBLIC_SLUG = :publicSlug
+    , D.STATUS_CODE = 'ACTIVE'
+    , D.RESPONSE_POLICY_JSON = :responsePolicyJson
+    , D.SKIN_SNAPSHOT_JSON = :skinSnapshotJson
+    , D.UPDATED_AT = :publishedAt
+ WHEN NOT MATCHED THEN INSERT (
+      DEPLOYMENT_ID
+    , TENANT_ID
+    , SURVEY_ID
+    , SURVEY_VERSION_NO
+    , PUBLIC_SLUG
+    , STATUS_CODE
+    , RESPONSE_POLICY_JSON
+    , SKIN_SNAPSHOT_JSON
+    , CREATED_BY
+    , CREATED_AT
+    , UPDATED_AT
+ ) VALUES (
+      :deploymentId
+    , :tenantId
+    , :surveyId
+    , :versionNo
+    , :publicSlug
+    , 'ACTIVE'
+    , :responsePolicyJson
+    , :skinSnapshotJson
+    , :createdBy
+    , :publishedAt
+    , :publishedAt
+ )
+;
+
+-- [SURVEY_LANG_DELETE]
+DELETE FROM "INIT$SVY_TB_SURVEY_LANG"
+ WHERE TENANT_ID = :tenantId
+   AND SURVEY_ID = :surveyId
+;
+
+-- [LANGUAGE_MERGE]
+MERGE INTO "INIT$SVY_TB_LANGUAGE" L
+USING (SELECT :langCode AS LANG_CODE FROM DUAL) S
+   ON (L.LANG_CODE = S.LANG_CODE)
+ WHEN MATCHED THEN UPDATE SET
+      L.LANG_NAME = :langName
+    , L.NATIVE_NAME = :nativeName
+    , L.DIRECTION_CODE = :directionCode
+    , L.USE_YN = 'Y'
+    , L.UPDATED_AT = SYSTIMESTAMP
+ WHEN NOT MATCHED THEN INSERT (
+      LANG_CODE
+    , LANG_NAME
+    , NATIVE_NAME
+    , DIRECTION_CODE
+    , USE_YN
+    , SORT_ORDER
+    , CREATED_AT
+ ) VALUES (
+      :langCode
+    , :langName
+    , :nativeName
+    , :directionCode
+    , 'Y'
+    , 0
+    , SYSTIMESTAMP
+ )
+;
+
+-- [SURVEY_LANG_INSERT]
+INSERT INTO "INIT$SVY_TB_SURVEY_LANG" (
+       TENANT_ID
+     , SURVEY_ID
+     , LANG_CODE
+     , DEFAULT_YN
+     , USE_YN
+     , CREATED_AT
+) VALUES (
+       :tenantId
+     , :surveyId
+     , :langCode
+     , :defaultYn
+     , 'Y'
+     , SYSTIMESTAMP
+)
+;
+
+-- [SURVEY_I18N_DELETE_VERSION]
+DELETE FROM "INIT$SVY_TB_SURVEY_I18N"
+ WHERE TENANT_ID = :tenantId
+   AND SURVEY_ID = :surveyId
+   AND VERSION_NO = :versionNo
+;
+
+-- [SURVEY_I18N_INSERT]
+INSERT INTO "INIT$SVY_TB_SURVEY_I18N" (
+       TENANT_ID
+     , SURVEY_ID
+     , VERSION_NO
+     , LANG_CODE
+     , RESOURCE_TYPE_CODE
+     , RESOURCE_ID
+     , FIELD_CODE
+     , TEXT_VALUE
+     , CREATED_AT
+) VALUES (
+       :tenantId
+     , :surveyId
+     , :versionNo
+     , :langCode
+     , :resourceTypeCode
+     , :resourceId
+     , :fieldCode
+     , :textValue
+     , SYSTIMESTAMP
+)
+;
+
+-- [PAGE_HELP_SELECT]
+SELECT MENU_ID
+     , LANG_CODE
+     , HELP_TITLE
+     , HELP_BODY
+     , GUIDE_JSON
+  FROM "INIT$SVY_TB_PAGE_HELP"
+ WHERE MENU_ID = :menuId
+   AND LANG_CODE = :langCode
+   AND USE_YN = 'Y'
+;

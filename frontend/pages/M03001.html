@@ -1,0 +1,78 @@
+<section class="distribution-hero">
+    <div>
+        <span class="eyebrow">PUBLISH & DISTRIBUTE</span>
+        <h2>한 번 확정하고, 필요한 채널로 안내하세요.</h2>
+        <p>배포본마다 고유 URL을 만들고 홈페이지 게시, 이메일, 문자, 카카오 안내를 같은 이력으로 관리합니다.</p>
+    </div>
+    <label class="distribution-survey-select">배포할 설문<select data-distribution-survey><option value="">설문을 선택하세요</option></select></label>
+</section>
+
+<div class="distribution-layout">
+    <section class="card distribution-main" aria-labelledby="distributionTitle">
+        <header class="card-header distribution-header">
+            <div><span class="eyebrow">PUBLIC LINK</span><h2 id="distributionTitle" data-distribution-title>설문을 선택하세요</h2></div>
+            <span class="status-badge" data-distribution-status>선택 필요</span>
+        </header>
+        <div class="card-body" data-distribution-body>
+            <div class="distribution-empty"><span>↗</span><strong>배포할 설문을 먼저 선택하세요.</strong><p>작성 중인 설문은 확정 후 고유 응답 URL이 생성됩니다.</p></div>
+        </div>
+    </section>
+
+    <aside class="distribution-side">
+        <section class="card release-checklist">
+            <header class="card-header"><h3>배포 전 체크</h3><span data-check-progress>0/4</span></header>
+            <div class="card-body">
+                <label><input type="checkbox" disabled data-release-check="questions"><span><strong>문항 구성</strong><small>응답 가능한 문항 1개 이상</small></span></label>
+                <label><input type="checkbox" disabled data-release-check="intro"><span><strong>안내문</strong><small>조사 목적과 개인정보 고지</small></span></label>
+                <label><input type="checkbox" disabled data-release-check="mobile"><span><strong>모바일 미리보기</strong><small>작은 화면에서 흐름 확인</small></span></label>
+                <label><input type="checkbox" disabled data-release-check="published"><span><strong>배포본 확정</strong><small>불변 버전과 고유 URL</small></span></label>
+            </div>
+        </section>
+        <section class="card channel-summary">
+            <header class="card-header"><h3>채널 연동 상태</h3></header>
+            <div class="card-body">
+                <div><span class="channel-icon email">@</span><span><strong>이메일</strong><small>기본 SMTP/API 설정 필요</small></span><i>준비</i></div>
+                <div><span class="channel-icon sms">M</span><span><strong>문자</strong><small>발송 사업자 연결 필요</small></span><i>연동 전</i></div>
+                <div><span class="channel-icon kakao">K</span><span><strong>카카오 알림톡</strong><small>승인 템플릿 연결 필요</small></span><i>연동 전</i></div>
+            </div>
+        </section>
+    </aside>
+</div>
+
+<template data-published-distribution-template>
+    <div class="distribution-published">
+        <div class="public-url-panel">
+            <div class="public-url-copy"><span>응답자 URL</span><div><input type="text" readonly data-public-url><button class="button button-primary" type="button" data-copy-public>URL 복사</button><button class="button button-icon" type="button" data-open-public aria-label="새 창에서 열기">↗</button></div></div>
+            <dl><div><dt>배포 버전</dt><dd data-version-label>-</dd></div><div><dt>배포일</dt><dd data-published-at>-</dd></div><div><dt>누적 응답</dt><dd data-distribution-response-count>0</dd></div></dl>
+        </div>
+        <div class="channel-tabs" role="tablist" aria-label="배포 채널">
+            <button role="tab" type="button" aria-selected="true" data-channel="link">링크·게시</button>
+            <button role="tab" type="button" aria-selected="false" data-channel="email">이메일</button>
+            <button role="tab" type="button" aria-selected="false" data-channel="message">문자·카카오</button>
+            <button role="tab" type="button" aria-selected="false" data-channel="qr">QR</button>
+        </div>
+        <div class="channel-panel" data-channel-panel="link">
+            <div class="channel-panel-copy"><span class="channel-large-icon">⌁</span><div><h3>홈페이지에 설문 게시</h3><p>버튼 링크를 사용하거나 반응형 iframe 코드를 홈페이지에 붙여 넣으세요.</p></div></div>
+            <label class="form-field">반응형 iframe 코드<textarea rows="3" readonly data-embed-code></textarea></label>
+            <button class="button button-small" type="button" data-copy-embed>삽입 코드 복사</button>
+        </div>
+        <div class="channel-panel" data-channel-panel="email" hidden>
+            <div class="recipient-toolbar"><div><h3>이메일 안내</h3><p>CSV/XLSX 수신자 업로드는 발송 API 연결 시 활성화됩니다.</p></div><button class="button button-small" type="button" data-download-recipient-sample>수신자 양식</button></div>
+            <div class="form-grid form-grid-two"><label class="form-field">발신자명<input value="IN-SURVEYONE 담당자" data-email-sender></label><label class="form-field">수신자 파일<input type="file" accept=".csv,.xlsx" data-recipient-file></label></div>
+            <label class="form-field">제목<input data-email-subject></label><label class="form-field">안내문<textarea rows="5" data-email-message></textarea></label>
+            <div class="channel-action-row"><span class="beta-note">현재는 발송 내용 미리보기 단계입니다.</span><button class="button button-primary" type="button" data-preview-message>발송 내용 미리보기</button></div>
+        </div>
+        <div class="channel-panel" data-channel-panel="message" hidden>
+            <div class="message-channel-grid"><button type="button" aria-pressed="true" data-message-channel="sms"><span class="channel-icon sms">M</span><strong>문자</strong><small>SMS / LMS</small></button><button type="button" aria-pressed="false" data-message-channel="kakao"><span class="channel-icon kakao">K</span><strong>카카오 알림톡</strong><small>승인 템플릿 필요</small></button></div>
+            <label class="form-field">안내문<textarea rows="5" maxlength="1000" data-message-body></textarea><span class="field-help" data-message-count>0 / 1,000자</span></label>
+            <div class="channel-action-row"><span class="beta-note">발송 사업자 연결 후 실제 전송됩니다.</span><button class="button button-primary" type="button" data-preview-message>발송 내용 미리보기</button></div>
+        </div>
+        <div class="channel-panel" data-channel-panel="qr" hidden>
+            <div class="qr-panel"><div class="qr-preview" data-qr-preview aria-label="QR 코드 시각 미리보기"></div><div><h3>오프라인 홍보물용 QR</h3><p>현재 화면은 고유 URL 확인용 시각 미리보기입니다. 실제 스캔 가능한 QR PNG/SVG 생성은 서버 QR 모듈 연동 단계에서 활성화됩니다.</p><button class="button" type="button" data-copy-public>URL 복사</button></div></div>
+        </div>
+    </div>
+</template>
+
+<template data-draft-distribution-template>
+    <div class="distribution-draft"><span class="draft-mark">✓</span><h3>설문 편집을 마쳤나요?</h3><p>확정하면 현재 문항을 불변 배포 버전으로 저장하고 회원사·프로젝트별 고유 응답 URL을 만듭니다.</p><div><button class="button" type="button" data-edit-survey>편집기로 돌아가기</button><button class="button button-primary" type="button" data-publish-survey>설문 확정 및 URL 만들기</button></div></div>
+</template>

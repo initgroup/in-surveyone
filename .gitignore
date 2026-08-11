@@ -1,0 +1,65 @@
+# Python environments and caches
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.uv-cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+coverage/
+
+# Local environment, credentials, wallets, and certificates
+.env
+.env.*
+!.env.example
+*.env.local
+.envrc
+secrets/
+.secrets/
+etc/secrets/
+instantclient/
+.instantclient/
+Wallet*/
+wallet*/
+*Wallet*.zip
+*wallet*.zip
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+.render-static/
+*.whl
+
+# Runtime and user-generated data
+runtime/
+uploads/
+exports/
+artifacts/
+test-results/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated captures and local notes
+screenshots/
+prompt/
+.tmp/
+tmp/
+backup/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp

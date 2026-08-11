@@ -1,0 +1,39 @@
+.template-hero { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(290px, .6fr); gap: 25px; align-items: end; margin-bottom: 22px; padding: clamp(28px, 4vw, 48px); background: linear-gradient(125deg, #f0f5ff, #fff 58%, #ecfbf7); border: 1px solid #d8e2f1; border-radius: 22px; }
+.template-hero h2 { margin: 7px 0 10px; font-size: clamp(26px, 3.5vw, 42px); line-height: 1.15; letter-spacing: -.055em; }
+.template-hero p { max-width: 680px; margin: 0; color: var(--muted); }
+.blank-template-card { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 13px; align-items: center; min-height: 96px; padding: 18px; color: #fff; text-align: left; background: var(--navy); border: 0; border-radius: 16px; cursor: pointer; box-shadow: 0 12px 28px rgba(16,35,66,.18); }
+.blank-template-card > span:nth-child(2) { display: grid; }
+.blank-template-card small { color: #b9c7da; }
+.blank-plus { display: grid; place-items: center; width: 46px; height: 46px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.15); border-radius: 13px; font-size: 24px; }
+.template-category-row { display: flex; gap: 5px; align-items: center; overflow-x: auto; padding-bottom: 3px; }
+.template-category-row > button { flex: 0 0 auto; min-height: 39px; padding: 7px 13px; color: var(--muted); background: #fff; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-size: 11px; font-weight: 750; }
+.template-category-row > button[aria-selected="true"] { color: #fff; background: var(--blue); border-color: var(--blue); }
+.template-search { min-width: 220px; margin-left: auto; }
+.template-count { color: var(--muted); font-size: 11px; }
+.template-library-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.library-card { position: relative; display: flex; flex-direction: column; min-height: 340px; overflow: hidden; background: #fff; border: 1px solid var(--line); border-radius: 17px; box-shadow: var(--shadow-sm); }
+.library-card:hover { border-color: #aabced; box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.library-cover { position: relative; min-height: 126px; padding: 19px; overflow: hidden; color: #fff; background: var(--cover, linear-gradient(135deg,#2457d6,#173985)); }
+.library-cover::after { position: absolute; right: -30px; bottom: -55px; width: 140px; height: 140px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.13); border-radius: 50%; content: ""; }
+.library-cover-number { position: relative; z-index: 1; font-size: 39px; font-weight: 250; letter-spacing: -.08em; opacity: .83; }
+.library-cover .tag { position: absolute; top: 17px; right: 17px; color: #fff; background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.18); }
+.library-content { display: flex; flex: 1; flex-direction: column; padding: 18px; }
+.library-content h3 { margin: 0 0 6px; font-size: 17px; }
+.library-content p { flex: 1; margin: 0; color: var(--muted); font-size: 11px; }
+.library-meta { display: flex; gap: 12px; margin-top: 16px; color: var(--muted); font-size: 10px; }
+.library-footer { display: flex; gap: 7px; padding: 13px 18px; background: #fafbfd; border-top: 1px solid #e8ecf2; }
+.library-footer .button:last-child { flex: 1; }
+.template-guide { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 15px; align-items: center; padding: 18px 20px; }
+.template-guide-icon { display: grid; place-items: center; width: 38px; height: 38px; color: var(--blue); background: var(--blue-soft); border-radius: 50%; font-family: Georgia, serif; font-weight: 850; }
+.template-guide p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+@media (max-width: 66rem) { .template-library-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 50rem) {
+    .template-hero { grid-template-columns: 1fr; padding: 25px 20px; }
+    .template-hero h2 br { display: none; }
+    .template-category-row { margin-inline: -16px; padding-inline: 16px; }
+    .template-search { order: -1; flex: 0 0 100%; min-width: 100%; margin: 0 0 7px; }
+    .template-category-row { flex-wrap: wrap; overflow: visible; }
+    .template-library-grid { grid-template-columns: 1fr; }
+    .template-guide { grid-template-columns: auto 1fr; }
+    .template-guide .button { grid-column: 1/-1; width: 100%; }
+}

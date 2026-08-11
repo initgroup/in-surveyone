@@ -1,0 +1,31 @@
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.avif binary
+*.pdf binary
+
+*.svg text eol=lf
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+
+*.zip binary
+*.7z binary
+*.gz binary
+*.tar binary
+*.whl binary
+*.jar binary
+*.exe binary
+*.dll binary
+*.pyd binary
+
+venv/** -text

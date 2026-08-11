@@ -1,0 +1,73 @@
+.distribution-hero { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(280px,.6fr); gap: 25px; align-items: end; margin-bottom: 18px; padding: 28px; color: #fff; background: linear-gradient(118deg,#07162d,#153b69); border-radius: 19px; }
+.distribution-hero .eyebrow { color: var(--mint); }
+.distribution-hero h2 { margin: 5px 0 7px; font-size: clamp(24px,3vw,35px); letter-spacing: -.05em; }
+.distribution-hero p { max-width: 700px; margin: 0; color: #bdcadb; }
+.distribution-survey-select { display: grid; gap: 5px; color: #dbe5f2; }
+.distribution-survey-select select { color: var(--ink); }
+.distribution-layout { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 16px; }
+.distribution-main { min-width: 0; }
+.distribution-header h2 { margin-top: 3px; }
+.distribution-empty, .distribution-draft { display: grid; place-items: center; min-height: 390px; text-align: center; align-content: center; }
+.distribution-empty > span, .draft-mark { display: grid; place-items: center; width: 58px; height: 58px; color: var(--blue); background: var(--blue-soft); border-radius: 17px; font-size: 26px; }
+.distribution-empty strong, .distribution-draft h3 { margin-top: 15px; font-size: 18px; }
+.distribution-empty p, .distribution-draft p { max-width: 520px; margin: 4px 0; color: var(--muted); }
+.distribution-draft > div { display: flex; gap: 8px; margin-top: 19px; }
+.distribution-side { display: grid; gap: 14px; align-content: start; }
+.release-checklist .card-header span { color: var(--blue); font-weight: 850; }
+.release-checklist .card-body { display: grid; gap: 14px; }
+.release-checklist label { display: flex; gap: 10px; align-items: flex-start; }
+.release-checklist input { width: 18px; min-height: 18px; accent-color: var(--jade); }
+.release-checklist label > span { display: grid; }
+.release-checklist small { color: var(--muted); font-size: 9px; font-weight: 500; }
+.channel-summary .card-body { display: grid; gap: 14px; }
+.channel-summary .card-body > div { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 10px; align-items: center; }
+.channel-summary .card-body > div > span:nth-child(2) { display: grid; }
+.channel-summary small { color: var(--muted); font-size: 9px; }
+.channel-summary i { color: var(--muted); font-size: 9px; font-style: normal; }
+.channel-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; font-weight: 900; }
+.channel-icon.email { color: var(--blue); background: var(--blue-soft); }
+.channel-icon.sms { color: #fff; background: #2c67de; }
+.channel-icon.kakao { color: #3b3010; background: #f9db39; }
+.distribution-published { display: grid; gap: 18px; }
+.public-url-panel { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 20px; padding: 19px; background: linear-gradient(120deg,#eef4ff,#f4fbf9); border: 1px solid #d4e0f2; border-radius: 13px; }
+.public-url-copy { display: grid; gap: 6px; min-width: 0; }
+.public-url-copy > span { color: var(--blue); font-size: 10px; font-weight: 850; }
+.public-url-copy > div { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 6px; }
+.public-url-panel dl { display: flex; gap: 20px; margin: 0; }
+.public-url-panel dl div { display: grid; align-content: center; min-width: 60px; }
+.public-url-panel dt { color: var(--muted); font-size: 9px; }
+.public-url-panel dd { margin: 0; font-size: 12px; font-weight: 800; }
+.channel-tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 1px; border-bottom: 1px solid var(--line); }
+.channel-tabs button { flex: 0 0 auto; padding: 10px 15px; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; cursor: pointer; font-size: 11px; font-weight: 800; }
+.channel-tabs button[aria-selected="true"] { color: var(--blue); border-bottom-color: var(--blue); }
+.channel-panel { min-height: 270px; padding: 20px; background: #fafbfd; border: 1px solid var(--line); border-radius: 12px; }
+.channel-panel-copy { display: flex; gap: 14px; align-items: center; margin-bottom: 17px; }
+.channel-large-icon { display: grid; place-items: center; width: 46px; height: 46px; color: var(--blue); background: var(--blue-soft); border-radius: 13px; font-size: 21px; }
+.channel-panel h3 { margin: 0; }
+.channel-panel p { margin: 2px 0; color: var(--muted); font-size: 10px; }
+.channel-panel textarea[readonly] { background: #f2f5f9; font-family: Consolas, monospace; font-size: 10px; }
+.recipient-toolbar, .channel-action-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+.channel-action-row { margin: 15px 0 0; }
+.beta-note { color: var(--amber); font-size: 9px; font-weight: 700; }
+.message-channel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.message-channel-grid button { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; align-items: center; padding: 13px; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.message-channel-grid button[aria-pressed="true"] { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(36,87,214,.08); }
+.message-channel-grid .channel-icon { grid-row: 1/3; }
+.message-channel-grid small { color: var(--muted); }
+.qr-panel { display: grid; grid-template-columns: 190px 1fr; gap: 24px; align-items: center; }
+.qr-preview { display: grid; grid-template-columns: repeat(13,1fr); width: 180px; height: 180px; padding: 12px; background: #fff; border: 1px solid var(--line); }
+.qr-preview i { background: var(--navy-deep); }
+.qr-panel .button { margin-top: 14px; }
+@media (max-width: 68rem) { .distribution-layout { grid-template-columns: 1fr; } .distribution-side { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 50rem) {
+    .distribution-hero { grid-template-columns: 1fr; padding: 22px 19px; }
+    .distribution-side { grid-template-columns: 1fr; }
+    .public-url-panel { grid-template-columns: 1fr; }
+    .public-url-panel dl { display: grid; grid-template-columns: repeat(3,1fr); }
+    .public-url-copy > div { grid-template-columns: minmax(0,1fr) auto; }
+    .public-url-copy [data-open-public] { display: none; }
+    .form-grid-two { grid-template-columns: 1fr; }
+    .qr-panel { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+    .recipient-toolbar, .channel-action-row { align-items: stretch; flex-direction: column; }
+    .distribution-draft > div { align-items: stretch; flex-direction: column; }
+}

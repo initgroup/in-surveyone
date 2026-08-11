@@ -1,0 +1,42 @@
+<section class="response-header page-section">
+    <div>
+        <span class="eyebrow">RESPONSE DATA</span>
+        <h2>응답 데이터를 안전하게 조회하고 내보냅니다.</h2>
+        <p>원본 제출값과 수집 메타데이터를 분리해 확인하고, 현재 필터 조건 그대로 CSV를 생성합니다.</p>
+    </div>
+    <label class="response-survey-select">분석할 설문<select data-response-survey><option value="">설문을 선택하세요</option></select></label>
+</section>
+
+<section class="metric-grid response-metrics" data-response-metrics>
+    <article class="card metric-card"><span class="metric-label">전체 응답</span><strong class="metric-value">-</strong><span class="metric-trend">제출 기준</span></article>
+    <article class="card metric-card"><span class="metric-label">완료 응답</span><strong class="metric-value">-</strong><span class="metric-trend">필수 문항 충족</span></article>
+    <article class="card metric-card"><span class="metric-label">완료율</span><strong class="metric-value">-</strong><span class="metric-trend">시작 대비 완료</span></article>
+    <article class="card metric-card"><span class="metric-label">평균 소요</span><strong class="metric-value">-</strong><span class="metric-trend">완료 응답 기준</span></article>
+</section>
+
+<section class="card response-data-card">
+    <header class="card-header response-data-head">
+        <div><span class="eyebrow">RAW DATA VIEW</span><h2 data-response-title>설문을 선택하세요</h2></div>
+        <div class="section-actions">
+            <button class="button button-small" type="button" data-toggle-columns disabled>열 설정</button>
+            <button class="button button-small button-success" type="button" data-export-responses disabled>CSV 다운로드</button>
+        </div>
+    </header>
+    <div class="response-filter-bar">
+        <label class="search-field"><span class="sr-only">응답 검색</span><input type="search" placeholder="응답 내용 또는 응답 ID 검색" data-response-search disabled></label>
+        <select data-response-state disabled><option value="all">전체 상태</option><option value="complete">완료</option><option value="partial">미완료</option></select>
+        <label>수집 시작일<input type="date" data-response-from disabled></label>
+        <label>수집 종료일<input type="date" data-response-to disabled></label>
+        <button class="button button-small" type="button" data-response-reset disabled>초기화</button>
+    </div>
+    <div class="response-table-state" data-response-state-host>
+        <div class="response-empty"><span>≡</span><strong>설문을 선택하면 응답이 표시됩니다.</strong><p>개인정보가 포함된 열은 권한과 다운로드 사유를 확인한 뒤 제공합니다.</p></div>
+    </div>
+    <footer class="card-footer response-footer"><span data-response-count>총 0건</span><span>현재 화면은 메모리 데모 데이터 기준입니다.</span></footer>
+</section>
+
+<section class="privacy-callout">
+    <span class="privacy-icon">◈</span>
+    <div><strong>개인정보 최소 조회 원칙</strong><p>다운로드 권한, 사유 기록, 보유기간 만료, 민감정보 마스킹은 Oracle 운영 전환 단계에서 서버 정책으로 강제합니다.</p></div>
+    <button class="button button-small" type="button" data-privacy-guide>처리 원칙 보기</button>
+</section>

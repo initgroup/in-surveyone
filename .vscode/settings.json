@@ -1,0 +1,41 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python.defaultInterpreterPath": "${workspaceFolder}\\venv\\Scripts\\python.exe",
+    "python.terminal.activateEnvironment": true,
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": ["tests"],
+    "terminal.integrated.defaultProfile.windows": "PowerShell (IN-SURVEYONE venv)",
+    "terminal.integrated.profiles.windows": {
+        "PowerShell (IN-SURVEYONE venv)": {
+            "source": "PowerShell",
+            "args": [
+                "-NoExit",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "if (Test-Path -LiteralPath '${workspaceFolder}\\venv\\Scripts\\Activate.ps1') { . '${workspaceFolder}\\venv\\Scripts\\Activate.ps1' }"
+            ]
+        }
+    },
+    "terminal.integrated.automationProfile.windows": {
+        "path": "powershell.exe"
+    },
+    "terminal.integrated.env.windows": {
+        "SURVEYONE_HOST": "127.0.0.1",
+        "SURVEYONE_PORT": "8300"
+    },
+    "files.encoding": "utf8",
+    "files.autoGuessEncoding": false,
+    "files.eol": "\n",
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+    "git.enabled": true,
+    "git.autorefresh": true,
+    "git.autoRepositoryDetection": true,
+    "git.decorations.enabled": true,
+    "scm.diffDecorations": "all",
+    "scm.alwaysShowRepositories": true,
+    "scm.countBadge": "all",
+    "workbench.localHistory.enabled": true,
+    "workbench.localHistory.maxFileEntries": 100
+}

@@ -1,0 +1,134 @@
+<section class="survey-report-page survey-report-basic" data-page="M05001" aria-labelledby="m05001-title">
+    <header class="report-hero">
+        <div>
+            <p class="report-eyebrow">SURVEY INSIGHT</p>
+            <div class="report-title-row">
+                <h2 id="m05001-title">기본형 보고서</h2>
+                <span class="report-badge">Beta</span>
+            </div>
+            <p class="report-lead">응답 현황과 문항별 분포를 같은 기준으로 빠르게 확인합니다.</p>
+        </div>
+        <div class="report-hero-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+        </div>
+    </header>
+
+    <form class="report-filter-card" data-role="filter-form">
+        <div class="report-filter-grid">
+            <label class="report-field report-field-wide">
+                <span>설문 프로젝트</span>
+                <select data-role="survey-select" required aria-describedby="m05001-survey-help">
+                    <option value="">설문을 불러오는 중입니다</option>
+                </select>
+                <small id="m05001-survey-help">보고서에 사용할 설문을 선택하세요.</small>
+            </label>
+            <label class="report-field">
+                <span>응답 기준일</span>
+                <input type="date" data-role="cutoff-date">
+            </label>
+            <label class="report-field">
+                <span>응답 상태</span>
+                <select data-role="response-filter">
+                    <option value="ALL">전체 응답</option>
+                    <option value="COMPLETE">완료 응답</option>
+                    <option value="PARTIAL">진행 중 응답</option>
+                </select>
+            </label>
+        </div>
+        <div class="report-filter-actions">
+            <p data-role="basis-text" aria-live="polite">설문을 선택하면 집계 기준이 표시됩니다.</p>
+            <button class="report-button report-button-primary" type="submit" data-role="apply-filter">
+                <span aria-hidden="true">↻</span> 보고서 조회
+            </button>
+        </div>
+    </form>
+
+    <div class="report-state report-state-loading" data-role="loading-state" role="status" aria-live="polite">
+        <span class="report-spinner" aria-hidden="true"></span>
+        <strong>보고서 데이터를 준비하고 있습니다</strong>
+        <p>설문과 응답 현황을 안전하게 집계하는 중입니다.</p>
+    </div>
+
+    <div class="report-state report-state-error" data-role="error-state" role="alert" hidden>
+        <span class="report-state-icon" aria-hidden="true">!</span>
+        <strong>보고서를 불러오지 못했습니다</strong>
+        <p data-role="error-message">잠시 후 다시 시도해 주세요.</p>
+        <button class="report-button report-button-secondary" type="button" data-role="retry">다시 시도</button>
+    </div>
+
+    <div class="report-state report-state-empty" data-role="empty-state" hidden>
+        <span class="report-state-icon" aria-hidden="true">○</span>
+        <strong>표시할 설문이 없습니다</strong>
+        <p>새 설문을 만들거나 응답이 있는 설문을 선택해 주세요.</p>
+    </div>
+
+    <div class="report-content" data-role="report-content" hidden>
+        <section aria-labelledby="m05001-kpi-title">
+            <div class="report-section-heading">
+                <div>
+                    <p class="report-section-kicker">AT A GLANCE</p>
+                    <h2 id="m05001-kpi-title">응답 핵심 지표</h2>
+                </div>
+                <span class="report-updated" data-role="updated-at"></span>
+            </div>
+            <div class="report-kpi-grid" data-role="kpi-grid"></div>
+        </section>
+
+        <section class="report-panel" aria-labelledby="m05001-chart-title">
+            <div class="report-section-heading">
+                <div>
+                    <p class="report-section-kicker">QUESTION DISTRIBUTION</p>
+                    <h2 id="m05001-chart-title">문항별 응답 분포</h2>
+                </div>
+                <p>막대의 길이는 각 보기의 응답 비율을 나타냅니다.</p>
+            </div>
+            <div class="report-chart-grid" data-role="chart-grid"></div>
+            <div class="report-inline-empty" data-role="chart-empty" hidden>
+                집계 가능한 선택형 문항이 없습니다.
+            </div>
+        </section>
+
+        <section class="report-panel" aria-labelledby="m05001-table-title">
+            <div class="report-section-heading">
+                <div>
+                    <p class="report-section-kicker">QUESTION SUMMARY</p>
+                    <h2 id="m05001-table-title">문항 요약</h2>
+                </div>
+                <p data-role="question-count"></p>
+            </div>
+            <div class="report-table-wrap">
+                <table class="report-table">
+                    <caption class="sr-only">선택한 설문의 문항별 응답 집계</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">번호</th>
+                            <th scope="col">문항</th>
+                            <th scope="col">유형</th>
+                            <th scope="col">응답</th>
+                            <th scope="col">무응답</th>
+                            <th scope="col">주요 결과</th>
+                        </tr>
+                    </thead>
+                    <tbody data-role="question-table-body"></tbody>
+                </table>
+            </div>
+            <div class="report-inline-empty" data-role="table-empty" hidden>
+                표시할 문항 집계가 없습니다.
+            </div>
+        </section>
+
+        <section class="report-export-card" aria-labelledby="m05001-export-title">
+            <div>
+                <div class="report-title-row">
+                    <h2 id="m05001-export-title">보고서 내보내기</h2>
+                    <span class="report-badge report-badge-soft">Demo</span>
+                </div>
+                <p id="m05001-export-help">현재는 화면 미리보기 단계입니다. 파일 내보내기는 정식 버전에서 제공됩니다.</p>
+            </div>
+            <div class="report-export-actions" aria-describedby="m05001-export-help">
+                <button class="report-button report-button-secondary" type="button" data-role="export" data-format="xlsx">Excel <small>Beta</small></button>
+                <button class="report-button report-button-secondary" type="button" data-role="export" data-format="pdf">PDF <small>Demo</small></button>
+            </div>
+        </section>
+    </div>
+</section>

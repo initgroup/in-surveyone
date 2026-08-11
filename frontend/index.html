@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#102342">
+    <meta name="description" content="기관을 위한 설문 제작, 배포, 수집, 분석 통합 플랫폼 IN-SURVEYONE">
+    <title>IN-SURVEYONE</title>
+    <link rel="icon" href="/frontend/assets/images/surveyone-mark.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/frontend/css/app.css">
+</head>
+<body>
+    <a class="skip-link" href="#pageHost">본문 바로가기</a>
+
+    <div class="app-shell" data-app-shell>
+        <header class="app-header">
+            <button class="icon-button mobile-menu-button" type="button" data-menu-toggle aria-label="메뉴 열기" aria-expanded="false">
+                <span aria-hidden="true">☰</span>
+            </button>
+            <a class="brand" href="#/M01001" aria-label="IN-SURVEYONE 홈">
+                <img src="/frontend/assets/images/inSurveyOneLogoW.png" alt="IN-SURVEYONE">
+            </a>
+            <div class="header-context">
+                <button class="workspace-chip" type="button" title="회원사 작업공간">
+                    <span class="workspace-mark" aria-hidden="true">IN</span>
+                    <span><small>작업공간</small><strong data-tenant-name>게스트 체험관</strong></span>
+                    <span aria-hidden="true">⌄</span>
+                </button>
+            </div>
+            <div class="header-actions">
+                <button class="header-help" type="button" data-help-button aria-haspopup="dialog" aria-controls="appModal" title="현재 화면 작성 도움말">
+                    <span aria-hidden="true">?</span><span class="header-help-label">작성 도움말</span>
+                </button>
+                <button class="user-button" type="button" data-user-button aria-haspopup="menu" aria-expanded="false">
+                    <span class="user-avatar" data-user-avatar>G</span>
+                    <span class="user-copy"><strong data-user-name>Guest</strong><small data-user-role>체험 계정</small></span>
+                    <span aria-hidden="true">⌄</span>
+                </button>
+                <div class="user-menu" data-user-menu role="menu" hidden>
+                    <button type="button" role="menuitem" data-auth-action="signup">회원가입</button>
+                    <button type="button" role="menuitem" data-auth-action="login">로그인</button>
+                    <button type="button" role="menuitem" data-auth-action="logout" hidden>로그아웃</button>
+                </div>
+            </div>
+        </header>
+
+        <aside class="app-sidebar" data-sidebar aria-label="주 메뉴">
+            <nav class="app-navigation" data-navigation></nav>
+            <div class="sidebar-upgrade" data-guest-upgrade>
+                <span class="eyebrow">GUEST MODE</span>
+                <strong>설문 흐름을 먼저 체험하세요</strong>
+                <p>게스트 프로젝트는 최대 2개이며 발송 연동과 영구 보관은 제한됩니다.</p>
+                <button class="button button-light button-small" type="button" data-auth-action="signup">무료로 시작하기</button>
+            </div>
+            <p class="sidebar-copyright">© inIT. All rights reserved.</p>
+        </aside>
+
+        <button class="sidebar-scrim" type="button" data-sidebar-scrim aria-label="메뉴 닫기" hidden></button>
+
+        <main class="app-main">
+            <div class="page-context-bar">
+                <div>
+                    <span class="page-breadcrumb" data-page-group>홈</span>
+                    <h1 data-page-title>대시보드</h1>
+                </div>
+                <div class="page-context-actions">
+                    <span class="save-state" data-save-state><i aria-hidden="true"></i> 모든 변경사항 저장됨</span>
+                    <button class="button button-primary button-small" type="button" data-quick-create>
+                        <span aria-hidden="true">＋</span> 새 설문
+                    </button>
+                </div>
+            </div>
+            <div id="pageHost" class="page-host" tabindex="-1" aria-live="polite"></div>
+        </main>
+
+        <nav class="mobile-bottom-nav" aria-label="빠른 메뉴" data-mobile-nav></nav>
+    </div>
+
+    <dialog class="auth-dialog" data-auth-dialog aria-labelledby="authTitle">
+        <form method="dialog" class="dialog-close-row">
+            <button class="icon-button" value="cancel" aria-label="닫기">×</button>
+        </form>
+        <div class="auth-brand-mark"><img src="/frontend/assets/images/surveyone-mark.svg" alt=""></div>
+        <p class="eyebrow">ONE-STOP SURVEY WORKSPACE</p>
+        <h2 id="authTitle" data-auth-title>IN-SURVEYONE 시작하기</h2>
+        <p class="auth-intro" data-auth-intro>회원가입 전에도 샘플 설문을 만들고 모바일 응답 흐름을 체험할 수 있습니다.</p>
+        <div class="auth-mode-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected="true" data-auth-tab="guest">게스트 체험</button>
+            <button type="button" role="tab" aria-selected="false" data-auth-tab="login">로그인</button>
+            <button type="button" role="tab" aria-selected="false" data-auth-tab="signup">회원가입</button>
+        </div>
+        <section class="auth-panel" data-auth-panel="guest">
+            <fieldset class="guest-mode-picker" data-guest-mode-picker aria-describedby="guestModeGuide guestCapabilityStatus">
+                <legend>체험 데이터 저장 방식</legend>
+                <p id="guestModeGuide">사용 목적에 맞는 모드를 선택하세요. 실제 연락처와 민감정보는 입력하지 마세요.</p>
+                <label class="guest-mode-card" data-guest-mode-card="local">
+                    <input type="radio" name="guestMode" value="local" checked>
+                    <span class="guest-mode-copy"><strong>로컬 체험</strong><small>빠르게 기능 흐름 확인</small></span>
+                    <span class="guest-mode-badge">임시 저장</span>
+                    <ul>
+                        <li>서버 메모리와 현재 프로세스 수명 동안만 유지</li>
+                        <li>프로젝트·문항·응답 수와 원자료 내보내기 제한</li>
+                        <li>실제 외부 발송 및 맞춤 보고서 영구 저장 불가</li>
+                    </ul>
+                    <span class="guest-mode-reason" data-guest-mode-reason="local"></span>
+                </label>
+                <label class="guest-mode-card is-disabled" data-guest-mode-card="database">
+                    <input type="radio" name="guestMode" value="database" disabled>
+                    <span class="guest-mode-copy"><strong>DB 저장 체험</strong><small>Oracle 기반 전체 제품 흐름</small></span>
+                    <span class="guest-mode-badge">만료형 DB</span>
+                    <ul>
+                        <li>Oracle에 설문·배포·응답을 만료 전까지 저장</li>
+                        <li>전체 문항 유형·다국어·분석 흐름 체험</li>
+                        <li>맞춤 보고서 레이아웃은 현재 브라우저 Beta 저장</li>
+                        <li>외부 발송은 화면 체험만 제공하며 실제 전송하지 않음</li>
+                    </ul>
+                    <span class="guest-mode-reason" data-guest-mode-reason="database">사용 가능 여부를 확인하고 있습니다.</span>
+                </label>
+            </fieldset>
+            <p class="guest-capability-status" id="guestCapabilityStatus" data-guest-capability-status role="status">게스트 모드 제공 상태를 확인하고 있습니다.</p>
+            <button class="button button-primary button-block" type="button" data-guest-start>선택한 모드로 시작</button>
+            <small>DB 저장 체험도 운영 회원 계정이나 영구 보관 서비스가 아니며, 실제 연락처와 민감정보를 입력하면 안 됩니다.</small>
+        </section>
+        <form class="auth-panel" data-auth-panel="login" hidden data-login-form>
+            <label>아이디<input type="text" name="loginId" autocomplete="username" required placeholder="가입한 아이디"></label>
+            <label>비밀번호<input type="password" name="password" autocomplete="current-password" required minlength="8" placeholder="8자 이상"></label>
+            <button class="button button-primary button-block" type="submit">로그인</button>
+        </form>
+        <form class="auth-panel" data-auth-panel="signup" hidden data-signup-form>
+            <div class="form-grid form-grid-two">
+                <label>기관명<input type="text" name="organizationName" required placeholder="기관 또는 회사명"></label>
+                <label>담당자명<input type="text" name="name" required placeholder="이름"></label>
+            </div>
+            <label>아이디<input type="text" name="loginId" required minlength="4" maxlength="50" pattern="[A-Za-z0-9._-]+" placeholder="영문, 숫자, ., _, - 조합"></label>
+            <label>업무 이메일<input type="email" name="email" autocomplete="username" required placeholder="name@organization.kr"></label>
+            <label>비밀번호<input type="password" name="password" autocomplete="new-password" required minlength="8" placeholder="8자 이상"></label>
+            <label class="check-label"><input type="checkbox" name="terms" required> 이용약관과 개인정보 처리방침에 동의합니다.</label>
+            <button class="button button-primary button-block" type="submit">작업공간 만들기</button>
+        </form>
+        <p class="form-message" data-auth-message role="status"></p>
+    </dialog>
+
+    <dialog id="appModal" class="modal" data-modal aria-label="안내">
+        <form method="dialog" class="dialog-close-row"><button class="icon-button" value="cancel" aria-label="닫기">×</button></form>
+        <div data-modal-body></div>
+    </dialog>
+
+    <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="true"></div>
+
+    <script src="/frontend/config/app.config.js"></script>
+    <script src="/frontend/config/menu.config.js"></script>
+    <script src="/frontend/config/help.config.js"></script>
+    <script src="/frontend/js/common.js"></script>
+    <script src="/frontend/js/app.js"></script>
+</body>
+</html>

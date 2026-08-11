@@ -1,0 +1,211 @@
+-- [AUTH_USER_BY_LOGIN]
+SELECT U.USER_ID
+     , U.TENANT_ID
+     , U.LOGIN_ID
+     , U.PASSWORD_HASH
+     , U.USER_NAME
+     , U.EMAIL
+     , U.ROLE_CODE
+     , U.GUEST_YN
+     , U.GUEST_MODE_CODE
+     , U.CREATED_AT
+     , T.TENANT_NAME
+     , T.EXPIRES_AT AS TENANT_EXPIRES_AT
+  FROM "INIT$SVY_TB_USER" U
+  JOIN "INIT$SVY_TB_TENANT" T
+    ON T.TENANT_ID = U.TENANT_ID
+ WHERE LOWER(U.LOGIN_ID) = LOWER(:loginId)
+   AND U.USE_YN = 'Y'
+   AND T.STATUS_CODE = 'ACTIVE'
+   AND (T.EXPIRES_AT IS NULL OR T.EXPIRES_AT > SYSTIMESTAMP)
+;
+
+-- [AUTH_TENANT_INSERT]
+INSERT INTO "INIT$SVY_TB_TENANT" (
+       TENANT_ID
+     , TENANT_NAME
+     , TENANT_TYPE_CODE
+     , STATUS_CODE
+     , EXPIRES_AT
+     , CREATED_AT
+) VALUES (
+       :tenantId
+     , :tenantName
+     , :tenantTypeCode
+     , 'ACTIVE'
+     , :expiresAt
+     , SYSTIMESTAMP
+)
+;
+
+-- [AUTH_USER_INSERT]
+INSERT INTO "INIT$SVY_TB_USER" (
+       USER_ID
+     , TENANT_ID
+     , LOGIN_ID
+     , PASSWORD_HASH
+     , USER_NAME
+     , EMAIL
+     , ROLE_CODE
+     , GUEST_YN
+     , GUEST_MODE_CODE
+     , USE_YN
+     , CREATED_AT
+) VALUES (
+       :userId
+     , :tenantId
+     , :loginId
+     , :passwordHash
+     , :userName
+     , :email
+     , :roleCode
+     , :guestYn
+     , :guestModeCode
+     , 'Y'
+     , SYSTIMESTAMP
+)
+;
+
+-- [AUTH_SESSION_INSERT]
+INSERT INTO "INIT$SVY_TB_AUTH_SESSION" (
+       SESSION_TOKEN_HASH
+     , USER_ID
+     , CREATED_AT
+     , EXPIRES_AT
+) VALUES (
+       :sessionTokenHash
+     , :userId
+     , SYSTIMESTAMP
+     , :expiresAt
+)
+;
+
+-- [AUTH_SESSION_SELECT]
+SELECT S.SESSION_TOKEN_HASH
+     , S.USER_ID
+     , S.EXPIRES_AT
+     , U.TENANT_ID
+     , U.LOGIN_ID
+     , U.USER_NAME
+     , U.EMAIL
+     , U.ROLE_CODE
+     , U.GUEST_YN
+     , U.GUEST_MODE_CODE
+     , U.CREATED_AT
+     , T.TENANT_NAME
+     , T.EXPIRES_AT AS TENANT_EXPIRES_AT
+  FROM "INIT$SVY_TB_AUTH_SESSION" S
+  JOIN "INIT$SVY_TB_USER" U
+    ON U.USER_ID = S.USER_ID
+  JOIN "INIT$SVY_TB_TENANT" T
+    ON T.TENANT_ID = U.TENANT_ID
+ WHERE S.SESSION_TOKEN_HASH = :sessionTokenHash
+   AND S.REVOKED_AT IS NULL
+   AND S.EXPIRES_AT > SYSTIMESTAMP
+   AND U.USE_YN = 'Y'
+   AND T.STATUS_CODE = 'ACTIVE'
+   AND (T.EXPIRES_AT IS NULL OR T.EXPIRES_AT > SYSTIMESTAMP)
+;
+
+-- [AUTH_SESSION_REVOKE]
+UPDATE "INIT$SVY_TB_AUTH_SESSION"
+   SET REVOKED_AT = SYSTIMESTAMP
+ WHERE SESSION_TOKEN_HASH = :sessionTokenHash
+   AND REVOKED_AT IS NULL
+;
+
+-- [AUTH_GUEST_CAP_INSERT]
+INSERT INTO "INIT$SVY_TB_GUEST_CAP" (
+       TENANT_ID
+     , USER_ID
+     , CAPABILITY_CODE
+     , ALLOWED_YN
+     , LIMIT_VALUE
+     , EXPIRES_AT
+     , CREATED_AT
+) VALUES (
+       :tenantId
+     , :userId
+     , :capabilityCode
+     , :allowedYn
+     , :limitValue
+     , :expiresAt
+     , SYSTIMESTAMP
+)
+;
+
+-- [AUTH_GUEST_CAP_LIST]
+SELECT CAPABILITY_CODE
+     , ALLOWED_YN
+     , LIMIT_VALUE
+     , EXPIRES_AT
+  FROM "INIT$SVY_TB_GUEST_CAP"
+ WHERE TENANT_ID = :tenantId
+   AND USER_ID = :userId
+   AND (EXPIRES_AT IS NULL OR EXPIRES_AT > SYSTIMESTAMP)
+ ORDER BY CAPABILITY_CODE
+;
+
+-- [AUTH_SCHEMA_READY]
+SELECT (
+           SELECT COUNT(*)
+             FROM USER_TABLES
+            WHERE TABLE_NAME IN (
+                  'INIT$SVY_TB_TENANT'
+                , 'INIT$SVY_TB_USER'
+                , 'INIT$SVY_TB_AUTH_SESSION'
+                , 'INIT$SVY_TB_GUEST_CAP'
+                , 'INIT$SVY_TB_LANGUAGE'
+                , 'INIT$SVY_TB_PAGE_HELP'
+                , 'INIT$SVY_TB_TEMPLATE'
+                , 'INIT$SVY_TB_SURVEY'
+                , 'INIT$SVY_TB_SURVEY_VERSION'
+                , 'INIT$SVY_TB_SURVEY_LANG'
+                , 'INIT$SVY_TB_SURVEY_I18N'
+                , 'INIT$SVY_TB_RESPONSE'
+                , 'INIT$SVY_TB_RESPONSE_ANSWER'
+                , 'INIT$SVY_TB_SURVEY_SKIN'
+                , 'INIT$SVY_TB_SURVEY_DEPLOYMENT'
+                , 'INIT$SVY_TB_DELIVERY_RECIPIENT'
+                , 'INIT$SVY_TB_DELIVERY'
+                , 'INIT$SVY_TB_REPORT_DEFINITION'
+                , 'INIT$SVY_TB_REPORT_RUN'
+                , 'INIT$SVY_TB_AUDIT_LOG'
+            )
+       ) AS TABLE_COUNT
+     , (
+           SELECT COUNT(*)
+             FROM USER_TAB_COLUMNS
+            WHERE (TABLE_NAME = 'INIT$SVY_TB_TENANT' AND COLUMN_NAME = 'TENANT_TYPE_CODE' AND DATA_TYPE = 'VARCHAR2' AND NULLABLE = 'N')
+               OR (TABLE_NAME = 'INIT$SVY_TB_USER' AND COLUMN_NAME = 'GUEST_MODE_CODE' AND DATA_TYPE = 'VARCHAR2' AND NULLABLE = 'N')
+               OR (TABLE_NAME = 'INIT$SVY_TB_SURVEY' AND COLUMN_NAME = 'PUBLIC_SLUG' AND DATA_TYPE = 'VARCHAR2' AND NULLABLE = 'Y')
+               OR (TABLE_NAME = 'INIT$SVY_TB_SURVEY_VERSION' AND COLUMN_NAME = 'TENANT_ID' AND DATA_TYPE = 'VARCHAR2' AND NULLABLE = 'N')
+               OR (TABLE_NAME = 'INIT$SVY_TB_RESPONSE' AND COLUMN_NAME = 'TENANT_ID' AND DATA_TYPE = 'VARCHAR2' AND NULLABLE = 'N')
+               OR (TABLE_NAME = 'INIT$SVY_TB_RESPONSE' AND COLUMN_NAME = 'IDEMPOTENCY_KEY_HASH' AND DATA_TYPE = 'VARCHAR2' AND NULLABLE = 'Y')
+               OR (TABLE_NAME = 'INIT$SVY_TB_RESPONSE' AND COLUMN_NAME = 'REQUEST_PAYLOAD_HASH' AND DATA_TYPE = 'VARCHAR2' AND NULLABLE = 'Y')
+               OR (TABLE_NAME = 'INIT$SVY_TB_RESPONSE_ANSWER' AND COLUMN_NAME = 'TENANT_ID' AND DATA_TYPE = 'VARCHAR2' AND NULLABLE = 'N')
+               OR (TABLE_NAME = 'INIT$SVY_TB_SURVEY_I18N' AND COLUMN_NAME = 'RESOURCE_ID' AND DATA_TYPE = 'VARCHAR2' AND DATA_LENGTH >= 200 AND NULLABLE = 'N')
+       ) AS CRITICAL_COLUMN_COUNT
+     , (
+           SELECT COUNT(*)
+             FROM USER_CONSTRAINTS
+            WHERE CONSTRAINT_NAME IN (
+                  'INIT$SVY_UK_RESP_TENANT'
+                , 'INIT$SVY_UK_RESP_IDEMP'
+                , 'INIT$SVY_FK_ANSWER_RESP_T'
+                , 'INIT$SVY_FK_RESPONSE_VERSION_T'
+                , 'INIT$SVY_FK_SURVEY_ACTIVE_VER'
+                , 'INIT$SVY_CK_I18N_RESOURCE'
+            )
+              AND STATUS = 'ENABLED'
+              AND VALIDATED = 'VALIDATED'
+       ) AS CRITICAL_CONSTRAINT_COUNT
+     , (
+           SELECT COUNT(*)
+             FROM USER_OBJECTS
+            WHERE OBJECT_NAME IN ('INIT$SVY_FN_GUEST_CAN', 'INIT$SVY_FN_I18N_TEXT')
+              AND OBJECT_TYPE = 'FUNCTION'
+              AND STATUS = 'VALID'
+       ) AS VALID_FUNCTION_COUNT
+  FROM DUAL
+;

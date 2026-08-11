@@ -1,0 +1,126 @@
+<section class="custom-report-page" data-page="M05002" aria-labelledby="m05002-title">
+    <header class="custom-report-hero">
+        <div>
+            <p class="custom-report-eyebrow">REPORT STUDIO</p>
+            <div class="custom-report-title-row">
+                <h2 id="m05002-title">맞춤형 보고서</h2>
+                <span class="custom-report-badge">Beta</span>
+            </div>
+            <p>필요한 결과 위젯을 선택하고 한 장의 보고서로 구성해 보세요.</p>
+        </div>
+        <div class="custom-report-hero-note">
+            <strong>브라우저 임시 저장</strong>
+            <span>초안은 서버가 아닌 현재 브라우저에만 저장됩니다.</span>
+        </div>
+    </header>
+
+    <section class="custom-report-settings" aria-labelledby="m05002-settings-title">
+        <div class="custom-report-section-heading">
+            <div>
+                <p>REPORT SETUP</p>
+                <h2 id="m05002-settings-title">보고서 설정</h2>
+            </div>
+            <span data-role="report-basis" aria-live="polite">설문을 선택해 주세요.</span>
+        </div>
+        <div class="custom-report-settings-grid">
+            <label class="custom-report-field custom-report-field-survey">
+                <span>설문 프로젝트</span>
+                <select data-role="survey-select">
+                    <option value="">설문을 불러오는 중입니다</option>
+                </select>
+            </label>
+            <label class="custom-report-field custom-report-field-name">
+                <span>템플릿 이름</span>
+                <input type="text" maxlength="80" data-role="template-name" value="새 맞춤형 보고서" autocomplete="off">
+            </label>
+            <label class="custom-report-field">
+                <span>용지</span>
+                <select data-role="paper-size">
+                    <option value="A4">A4</option>
+                    <option value="A3">A3</option>
+                </select>
+            </label>
+            <fieldset class="custom-report-orientation">
+                <legend>방향</legend>
+                <div>
+                    <label><input type="radio" name="m05002-orientation" value="PORTRAIT" checked><span>세로</span></label>
+                    <label><input type="radio" name="m05002-orientation" value="LANDSCAPE"><span>가로</span></label>
+                </div>
+            </fieldset>
+        </div>
+        <div class="custom-report-draft-bar">
+            <label class="custom-report-field">
+                <span>로컬 초안</span>
+                <select data-role="draft-select"><option value="">저장된 초안 선택</option></select>
+            </label>
+            <button class="custom-report-button custom-report-button-ghost" type="button" data-role="new-draft">새 초안</button>
+            <button class="custom-report-button custom-report-button-ghost" type="button" data-role="delete-draft" disabled>초안 삭제</button>
+            <button class="custom-report-button custom-report-button-primary" type="button" data-role="save-draft">브라우저에 저장 <small>Beta</small></button>
+        </div>
+        <p class="custom-report-beta-note" id="m05002-beta-note">
+            <strong>Beta 안내</strong> 레이아웃 설정만 저장하며 설문 응답 데이터는 브라우저에 저장하지 않습니다. 브라우저 데이터 삭제 시 초안도 사라집니다.
+        </p>
+    </section>
+
+    <div class="custom-report-state custom-report-state-loading" data-role="loading-state" role="status" aria-live="polite">
+        <span class="custom-report-spinner" aria-hidden="true"></span>
+        <strong>보고서 위젯을 준비하고 있습니다</strong>
+        <p>설문과 응답 집계를 불러오는 중입니다.</p>
+    </div>
+    <div class="custom-report-state custom-report-state-error" data-role="error-state" role="alert" hidden>
+        <span aria-hidden="true">!</span>
+        <strong>보고서 데이터를 불러오지 못했습니다</strong>
+        <p data-role="error-message">잠시 후 다시 시도해 주세요.</p>
+        <button class="custom-report-button custom-report-button-ghost" type="button" data-role="retry">다시 시도</button>
+    </div>
+    <div class="custom-report-state custom-report-state-empty" data-role="empty-state" hidden>
+        <span aria-hidden="true">○</span>
+        <strong>사용할 수 있는 설문이 없습니다</strong>
+        <p>설문을 만든 뒤 맞춤형 보고서를 구성해 주세요.</p>
+    </div>
+
+    <div class="custom-report-workbench" data-role="workbench" hidden>
+        <aside class="custom-report-palette" aria-labelledby="m05002-palette-title">
+            <div class="custom-report-section-heading">
+                <div>
+                    <p>WIDGET PALETTE</p>
+                    <h2 id="m05002-palette-title">결과 위젯</h2>
+                </div>
+                <span data-role="widget-count">0 / 6</span>
+            </div>
+            <p class="custom-report-palette-help">추가 버튼으로 위젯을 배치하세요. 모든 편집 기능은 키보드로도 사용할 수 있습니다.</p>
+            <div class="custom-report-widget-list" data-role="widget-palette"></div>
+        </aside>
+
+        <section class="custom-report-designer" aria-labelledby="m05002-canvas-title">
+            <div class="custom-report-canvas-heading">
+                <div>
+                    <p>12-COLUMN LAYOUT</p>
+                    <h2 id="m05002-canvas-title">실시간 보고서 미리보기</h2>
+                </div>
+                <div class="custom-report-canvas-actions">
+                    <span data-role="layout-summary">0개 위젯</span>
+                    <button class="custom-report-button custom-report-button-ghost" type="button" data-role="print-demo">인쇄 미리보기 <small>Demo</small></button>
+                </div>
+            </div>
+            <div class="custom-report-paper-shell">
+                <section class="custom-report-paper is-a4 is-portrait" data-role="report-paper" aria-label="맞춤형 보고서 12열 미리보기">
+                    <header class="custom-report-paper-header">
+                        <div>
+                            <span>inSurveyOne</span>
+                            <h3 data-role="preview-title">새 맞춤형 보고서</h3>
+                        </div>
+                        <p data-role="preview-survey">설문을 선택해 주세요.</p>
+                    </header>
+                    <div class="custom-report-layout" data-role="layout" aria-live="polite"></div>
+                    <div class="custom-report-layout-empty" data-role="layout-empty">
+                        <span aria-hidden="true">＋</span>
+                        <strong>결과 위젯을 추가해 주세요</strong>
+                        <p>왼쪽 팔레트에서 필요한 위젯을 선택하면 이곳에 미리보기가 표시됩니다.</p>
+                    </div>
+                </section>
+            </div>
+            <p class="custom-report-status" data-role="status" aria-live="polite">레이아웃은 아직 저장되지 않았습니다.</p>
+        </section>
+    </div>
+</section>
