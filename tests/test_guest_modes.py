@@ -98,9 +98,10 @@ def test_guest_capabilities_expose_only_database_mode_and_credentials() -> None:
         assert guest.headers["cache-control"] == "no-store"
         expires_at = datetime.fromisoformat(guest.json()["data"]["expiresAt"])
         remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
-        assert settings.guest_project_ttl_hours * 3600 - 10 <= remaining
-        assert "set-cookie" not in guest.headers
-        assert client.get("/api/auth/me").status_code == 401
+        assert settings.guest_unused_ttl_hours * 3600 - 10 <= remaining
+        assert "set-cookie" in guest.headers
+        assert guest.json()["data"]["session"]["user"]["loginId"] == credential["loginId"]
+        assert client.get("/api/auth/me").status_code == 200
 
         login_id = credential["loginId"]
         password = credential["initialPassword"]
@@ -149,6 +150,23 @@ def test_guest_capabilities_expose_only_database_mode_and_credentials() -> None:
             },
         )
         assert reserved.status_code == 422
+
+
+def test_guest_project_save_extends_unused_account_retention() -> None:
+    with TestClient(app) as client:
+        guest = client.post("/api/auth/guest", json={"mode": "database"})
+        assert guest.status_code == 201, guest.text
+        data = guest.json()["data"]
+        initial_expiry = datetime.fromisoformat(data["expiresAt"])
+
+        created = client.post("/api/surveys", json={"title": "지연 발급 보존기간 확인"})
+        assert created.status_code == 201, created.text
+
+        user = stores.memory_store._users[data["user"]["id"]]
+        assert user.tenant_expires_at is not None
+        assert user.tenant_expires_at > initial_expiry
+        remaining = (user.tenant_expires_at - datetime.now(timezone.utc)).total_seconds()
+        assert settings.guest_project_ttl_hours * 3600 - 10 <= remaining
 
 
 def test_multilingual_snapshot_and_public_language_resolution() -> None:

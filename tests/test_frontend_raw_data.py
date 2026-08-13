@@ -29,12 +29,24 @@ def test_raw_data_page_starts_with_analysis_project_browser_and_exports() -> Non
     assert 'data-response-project-layout="list"' in html
     assert "data-response-workspace" in html
     assert "data-response-project-back" in html
+    assert "data-response-query" in html
+    assert "data-response-refresh" in html
+    assert 'aria-label="최신 응답 새로고침"' in html
     assert 'role="combobox"' not in html
     assert "data-column-summary" in html
     assert "data-response-pagination" in html
     assert "renderProjects(errorMessage" in script
     assert "projectCardMarkup(item)" in script
     assert "showProjectList()" in script
+    assert "applyResponseFilters()" in script
+    assert "async refreshResponses(button)" in script
+    assert 'await this.loadResponses(this.selectedSurveyId, { preserveView: true })' in script
+    assert "previousColumns" in script
+    assert 'this.root.querySelector("[data-response-refresh]").disabled = !this.selectedSurveyId;' in script
+    assert 'this.root.querySelector("[data-response-refresh]").disabled = true;' in script
+    set_enabled = script[script.index("setEnabled(enabled)"):script.index("renderMetrics(summary")]
+    assert "[data-response-query]" in set_enabled
+    assert "[data-response-refresh]" not in set_enabled
     assert 'localStorage.getItem("surveyone-rawdata-view")' in script
     assert "analysisDescriptors" in script
     assert "this.responseLoadToken = 0" in script
@@ -56,8 +68,8 @@ def test_frontend_assets_are_versioned_and_not_cached_in_local_or_test_mode() ->
         encoding="utf-8"
     )
 
-    assert 'assetVersion: "20260814.29"' in config
-    assert index.count("?v=20260814.28") >= 6
+    assert 'assetVersion: "20260814.40"' in config
+    assert index.count("?v=20260814.40") >= 6
     assert "function versionedAsset(src)" in app_script
     assert 'url.searchParams.set("v", runtimeAssetVersion)' in app_script
     assert "link.href = absoluteHref" in app_script

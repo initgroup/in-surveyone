@@ -15,6 +15,21 @@ SELECT COUNT(*) AS PROJECT_COUNT
    AND STATUS_CODE <> 'DELETED'
 ;
 
+-- [SURVEY_DB_GUEST_TENANT_EXTEND]
+UPDATE "INIT$SVY_TB_TENANT"
+   SET EXPIRES_AT = GREATEST(EXPIRES_AT, :expiresAt)
+ WHERE TENANT_ID = :tenantId
+   AND TENANT_TYPE_CODE = 'DB_GUEST'
+   AND STATUS_CODE = 'ACTIVE'
+;
+
+-- [SURVEY_DB_GUEST_CAP_EXTEND]
+UPDATE "INIT$SVY_TB_GUEST_CAP"
+   SET EXPIRES_AT = GREATEST(EXPIRES_AT, :expiresAt)
+ WHERE TENANT_ID = :tenantId
+   AND USER_ID = :userId
+;
+
 -- [SURVEY_LIST_BY_OWNER]
 SELECT S.SURVEY_ID
      , S.SURVEY_TITLE
@@ -35,6 +50,18 @@ SELECT S.SURVEY_ID
      , S.POPULATION_MODE_CODE
      , S.POPULATION_SIZE
      , S.TARGET_RESPONSE_COUNT
+     , CASE
+           WHEN S.STATUS_CODE = 'PUBLISHED' AND EXISTS (
+                SELECT 1
+                  FROM "INIT$SVY_TB_DELIVERY_BATCH" B
+                 WHERE B.TENANT_ID = S.TENANT_ID
+                   AND B.SURVEY_ID = S.SURVEY_ID
+                   AND B.SURVEY_VERSION_NO = S.ACTIVE_VERSION_NO
+                   AND B.STATUS_CODE <> 'CANCELLED'
+                   AND B.EXECUTION_STATUS_CODE IS NOT NULL
+           ) THEN 'ACTIVE'
+           WHEN S.STATUS_CODE = 'PUBLISHED' THEN 'READY'
+       END AS DEPLOYMENT_STATUS
      , (
            SELECT COUNT(*)
              FROM "INIT$SVY_TB_RESPONSE" R
@@ -47,6 +74,25 @@ SELECT S.SURVEY_ID
    AND S.STATUS_CODE <> 'DELETED'
    AND S.ADMIN_TEMPLATE_YN = 'N'
    AND (:statusCode IS NULL OR S.STATUS_CODE = :statusCode)
+   AND (
+          :deploymentStage IS NULL
+       OR (:deploymentStage = 'ACTIVE' AND S.STATUS_CODE = 'PUBLISHED' AND EXISTS (
+              SELECT 1 FROM "INIT$SVY_TB_DELIVERY_BATCH" B
+               WHERE B.TENANT_ID = S.TENANT_ID
+                 AND B.SURVEY_ID = S.SURVEY_ID
+                 AND B.SURVEY_VERSION_NO = S.ACTIVE_VERSION_NO
+                 AND B.STATUS_CODE <> 'CANCELLED'
+                 AND B.EXECUTION_STATUS_CODE IS NOT NULL
+          ))
+       OR (:deploymentStage = 'CONFIRMED' AND S.STATUS_CODE = 'PUBLISHED' AND NOT EXISTS (
+              SELECT 1 FROM "INIT$SVY_TB_DELIVERY_BATCH" B
+               WHERE B.TENANT_ID = S.TENANT_ID
+                 AND B.SURVEY_ID = S.SURVEY_ID
+                 AND B.SURVEY_VERSION_NO = S.ACTIVE_VERSION_NO
+                 AND B.STATUS_CODE <> 'CANCELLED'
+                 AND B.EXECUTION_STATUS_CODE IS NOT NULL
+          ))
+   )
  ORDER BY S.UPDATED_AT DESC
 ;
 
@@ -55,6 +101,25 @@ SELECT COUNT(*) AS TOTAL_COUNT
      , COUNT(
            CASE
                WHEN (:statusCode IS NULL OR S.STATUS_CODE = :statusCode)
+                AND (
+                       :deploymentStage IS NULL
+                    OR (:deploymentStage = 'ACTIVE' AND S.STATUS_CODE = 'PUBLISHED' AND EXISTS (
+                           SELECT 1 FROM "INIT$SVY_TB_DELIVERY_BATCH" B
+                            WHERE B.TENANT_ID = S.TENANT_ID
+                              AND B.SURVEY_ID = S.SURVEY_ID
+                              AND B.SURVEY_VERSION_NO = S.ACTIVE_VERSION_NO
+                              AND B.STATUS_CODE <> 'CANCELLED'
+                              AND B.EXECUTION_STATUS_CODE IS NOT NULL
+                       ))
+                    OR (:deploymentStage = 'CONFIRMED' AND S.STATUS_CODE = 'PUBLISHED' AND NOT EXISTS (
+                           SELECT 1 FROM "INIT$SVY_TB_DELIVERY_BATCH" B
+                            WHERE B.TENANT_ID = S.TENANT_ID
+                              AND B.SURVEY_ID = S.SURVEY_ID
+                              AND B.SURVEY_VERSION_NO = S.ACTIVE_VERSION_NO
+                              AND B.STATUS_CODE <> 'CANCELLED'
+                              AND B.EXECUTION_STATUS_CODE IS NOT NULL
+                       ))
+                )
                 AND (
                        :queryPattern IS NULL
                     OR LOWER(S.SURVEY_TITLE) LIKE :queryPattern
@@ -91,6 +156,18 @@ SELECT S.SURVEY_ID
      , S.POPULATION_MODE_CODE
      , S.POPULATION_SIZE
      , S.TARGET_RESPONSE_COUNT
+     , CASE
+           WHEN S.STATUS_CODE = 'PUBLISHED' AND EXISTS (
+                SELECT 1
+                  FROM "INIT$SVY_TB_DELIVERY_BATCH" B
+                 WHERE B.TENANT_ID = S.TENANT_ID
+                   AND B.SURVEY_ID = S.SURVEY_ID
+                   AND B.SURVEY_VERSION_NO = S.ACTIVE_VERSION_NO
+                   AND B.STATUS_CODE <> 'CANCELLED'
+                   AND B.EXECUTION_STATUS_CODE IS NOT NULL
+           ) THEN 'ACTIVE'
+           WHEN S.STATUS_CODE = 'PUBLISHED' THEN 'READY'
+       END AS DEPLOYMENT_STATUS
      , (
            SELECT COUNT(*)
              FROM "INIT$SVY_TB_RESPONSE" R
@@ -103,6 +180,25 @@ SELECT S.SURVEY_ID
    AND S.STATUS_CODE <> 'DELETED'
    AND S.ADMIN_TEMPLATE_YN = 'N'
    AND (:statusCode IS NULL OR S.STATUS_CODE = :statusCode)
+   AND (
+          :deploymentStage IS NULL
+       OR (:deploymentStage = 'ACTIVE' AND S.STATUS_CODE = 'PUBLISHED' AND EXISTS (
+              SELECT 1 FROM "INIT$SVY_TB_DELIVERY_BATCH" B
+               WHERE B.TENANT_ID = S.TENANT_ID
+                 AND B.SURVEY_ID = S.SURVEY_ID
+                 AND B.SURVEY_VERSION_NO = S.ACTIVE_VERSION_NO
+                 AND B.STATUS_CODE <> 'CANCELLED'
+                 AND B.EXECUTION_STATUS_CODE IS NOT NULL
+          ))
+       OR (:deploymentStage = 'CONFIRMED' AND S.STATUS_CODE = 'PUBLISHED' AND NOT EXISTS (
+              SELECT 1 FROM "INIT$SVY_TB_DELIVERY_BATCH" B
+               WHERE B.TENANT_ID = S.TENANT_ID
+                 AND B.SURVEY_ID = S.SURVEY_ID
+                 AND B.SURVEY_VERSION_NO = S.ACTIVE_VERSION_NO
+                 AND B.STATUS_CODE <> 'CANCELLED'
+                 AND B.EXECUTION_STATUS_CODE IS NOT NULL
+          ))
+   )
    AND (
           :queryPattern IS NULL
        OR LOWER(S.SURVEY_TITLE) LIKE :queryPattern

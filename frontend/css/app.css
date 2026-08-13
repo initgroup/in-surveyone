@@ -370,6 +370,17 @@ img, svg { display: block; max-width: 100%; }
 .button-small { min-height: 36px; padding: 7px 12px; font-size: 12px; border-radius: 9px; }
 .button-block { width: 100%; }
 .button-icon { width: 40px; padding: 0; }
+.workspace-list-button {
+    flex: 0 0 auto;
+    min-height: 40px;
+    color: #264463;
+    background: #fff;
+    border-color: #b9c7da;
+    box-shadow: 0 1px 2px rgba(18, 43, 77, .04);
+    white-space: nowrap;
+}
+.workspace-list-button:hover { color: var(--blue-strong); border-color: #8fa9d4; background: #f8fbff; }
+.workspace-list-button-icon { display: inline-grid; place-items: center; width: 18px; height: 18px; font-size: 17px; font-weight: 850; line-height: 1; }
 
 .eyebrow { color: var(--blue); font-size: 10px; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
 .section-kicker { color: var(--blue); font-weight: 800; }
@@ -428,6 +439,8 @@ img, svg { display: block; max-width: 100%; }
 .status-draft::before { background: #825ec9; }
 .status-published, .status-active { color: #08705f; background: #eafaf5; border-color: #bceadc; }
 .status-published::before, .status-active::before { background: #16a385; }
+.status-confirmed { color: #2457b8; background: #eef4ff; border-color: #cbdafa; }
+.status-confirmed::before { background: #2c63d6; }
 .status-closed { color: #526074; background: #edf0f4; }
 .status-paused { color: #9a650b; background: #fff7e7; border-color: #f2d99f; }
 .status-paused::before { background: #d79624; }

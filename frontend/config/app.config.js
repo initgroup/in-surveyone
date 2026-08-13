@@ -4,7 +4,7 @@
     window.SURVEYONE_CONFIG = Object.freeze({
         productName: "IN-SURVEYONE",
         companyName: "inIT",
-        assetVersion: "20260814.29",
+        assetVersion: "20260814.40",
         apiBaseUrl: "",
         defaultRoute: "M01001",
         publicPathPrefix: "/s/",

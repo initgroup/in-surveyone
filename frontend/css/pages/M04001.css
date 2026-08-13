@@ -42,7 +42,7 @@
 .response-project-empty { grid-column: 1/-1; }
 .response-project-privacy { margin-top: 18px; }
 .response-workspace[hidden], [data-response-project-view][hidden] { display: none; }
-.response-workspace-header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 18px; padding: 20px 24px; align-items: center; background: linear-gradient(110deg,#fff,#eef4ff); border: 1px solid #d7e1f2; border-radius: 16px; }
+.response-workspace-header { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; padding: 20px 24px; align-items: center; background: linear-gradient(110deg,#fff,#eef4ff); border: 1px solid #d7e1f2; border-radius: 16px; }
 .response-workspace-title h2 { margin: 3px 0 2px; font-size: clamp(20px,2.4vw,28px); letter-spacing: -.04em; }
 .response-workspace-title p { display: flex; gap: 5px; margin: 0; color: var(--muted); font-size: 9px; }
 .response-workspace-title code { color: var(--blue-strong); }
@@ -57,6 +57,10 @@
 .response-filter-bar { display: grid; grid-template-columns: minmax(230px,1fr) 130px 150px 150px auto; gap: 8px; align-items: end; padding: 13px 18px; background: #fafbfd; border-bottom: 1px solid var(--line); }
 .response-filter-bar > label:not(.search-field) { display: grid; gap: 3px; color: var(--muted); font-size: 9px; }
 .response-filter-bar input, .response-filter-bar select { min-height: 38px; }
+.response-filter-actions { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+.response-grid-refresh { width: 38px; min-width: 38px; min-height: 38px; color: var(--blue-strong); font-size: 20px; font-weight: 800; line-height: 1; }
+.response-grid-refresh[aria-busy="true"] span { animation: response-grid-spin .7s linear infinite; }
+@keyframes response-grid-spin { to { transform: rotate(360deg); } }
 .response-table-state { min-height: 360px; overflow: hidden; }
 .response-empty { display: grid; place-items: center; min-height: 360px; padding: 35px; text-align: center; align-content: center; }
 .response-empty > span { display: grid; place-items: center; width: 54px; height: 54px; color: var(--blue); background: var(--blue-soft); border-radius: 15px; font-size: 24px; }
@@ -146,10 +150,11 @@
     .response-project-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
     .response-project-grid.is-list .response-project-card { grid-template-columns: 135px minmax(220px,1fr) 270px; }
     .response-project-grid.is-list .response-project-card-footer { display: none; }
-    .response-workspace-header { grid-template-columns: auto minmax(0,1fr); }
+    .response-workspace-header { grid-template-columns: minmax(0,1fr); }
     .response-workspace-actions { grid-column: 1/-1; justify-content: flex-end; }
     .response-filter-bar { grid-template-columns: 1fr 1fr 1fr; }
     .response-filter-bar .search-field { grid-column: span 2; }
+    .response-filter-actions { grid-column: 1/-1; }
     .response-footer { grid-template-columns: 1fr auto; }
     .response-footer > :last-child { grid-column: 1/-1; text-align: left; }
 }
@@ -165,11 +170,12 @@
     .response-project-grid.is-list .response-project-stats { margin: 0 17px 15px; }
     .response-project-grid.is-list .response-project-card-footer { display: flex; border-top: 1px solid #e7ebf1; border-left: 0; }
     .response-workspace-header { grid-template-columns: 1fr; padding: 19px; }
-    .response-workspace-header > .button { justify-self: start; }
     .response-workspace-actions { grid-column: auto; justify-content: stretch; }
-    .response-workspace-actions .button { flex: 1; }
+    .response-workspace-actions .button:not(.workspace-list-button) { flex: 1; }
+    .response-workspace-actions .workspace-list-button { flex: 0 0 auto; margin-left: auto; }
     .response-filter-bar { display: flex; align-items: stretch; flex-direction: column; }
     .response-filter-bar .search-field { grid-column: auto; }
+    .response-filter-actions { justify-content: flex-end; }
     .response-data-head { align-items: flex-start; flex-direction: column; }
     .response-data-head .section-actions { width: 100%; }
     .response-data-head .button { flex: 1; }

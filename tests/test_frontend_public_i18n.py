@@ -51,6 +51,8 @@ def test_public_shell_markup_and_locale_resolution_are_accessible() -> None:
         "defaultLocale, sourceLocale];"
     ) in PUBLIC_SCRIPT
     assert 'return PUBLIC_UI[defaultLocale] ? defaultLocale : "ko";' in PUBLIC_SCRIPT
+    assert 'new URLSearchParams(location.search).get("r")' in PUBLIC_SCRIPT
+    assert "respondentKey: recipientToken" in PUBLIC_SCRIPT
 
 
 def test_public_generated_controls_use_localized_accessible_text() -> None:

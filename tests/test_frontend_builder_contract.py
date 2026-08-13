@@ -55,7 +55,11 @@ def test_project_creation_is_a_single_menu_four_step_flow() -> None:
     assert 'this.context.api.post("/api/surveys"' not in builder_script
     assert 'this.context.api.post("/api/surveys", body)' in project_script
     assert 'this.openWorkspace("M02001", { create: "1" })' in dashboard_script
-    assert 'navigate("M02001", { create: "1" })' in app_script
+    assert 'guestStartTarget: null' in app_script
+    assert 'navigate(target.route || "M02001", target.params || { create: "1" })' in app_script
+    assert 'start: "template"' in dashboard_script
+    assert 'this.startMode = params.get("start") === "template"' in project_script
+    assert 'this.context.navigate("M02003", { surveyId: survey.id, flow: "project", template: "1"' in project_script
     assert 'post("/api/surveys", { title: "제목 없는 설문" })' not in dashboard_script
     assert "async openTemplateLibrary()" in builder_script
     assert builder_page.count("data-builder-template-library") == 2
@@ -92,6 +96,11 @@ def test_project_creation_is_a_single_menu_four_step_flow() -> None:
     assert "프로젝트 ID" in project_script
     assert "data-delete-id" in project_script
     assert "data-close-id" in project_script
+    assert "data-copy-public-url" in project_script
+    assert "프로젝트 배포 URL" in project_script
+    assert 'params.set("stage", this.filter);' in project_script
+    assert 'data-status-filter="confirmed"' in project_page
+    assert 'data-status-filter="active"' in project_page
     assert '/close`, {})' in project_script
     assert 'this.context.api.delete(`/api/surveys/${encodeURIComponent(id)}`)' in project_script
 

@@ -7,7 +7,7 @@
     <meta name="description" content="기관을 위한 설문 제작, 배포, 수집, 분석 통합 플랫폼 IN-SURVEYONE">
     <title>IN-SURVEYONE</title>
     <link rel="icon" href="/frontend/assets/images/surveyone-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/frontend/css/app.css?v=20260814.28">
+    <link rel="stylesheet" href="/frontend/css/app.css?v=20260814.40">
 </head>
 <body>
     <a class="skip-link" href="#pageHost">본문 바로가기</a>
@@ -63,7 +63,7 @@
             <div class="sidebar-upgrade" data-guest-upgrade>
                 <span class="eyebrow">START WHEN READY</span>
                 <strong>둘러본 뒤 편하게 시작하세요</strong>
-                <p>메인에서 게스트 체험 계정을 발급하거나 기관 회원 작업공간을 시작할 수 있습니다.</p>
+                <p>게스트 프로젝트 작성을 시작하거나 기관 회원 작업공간을 만들 수 있습니다.</p>
                 <button class="button button-light button-small" type="button" data-auth-action="signup">무료로 시작하기</button>
             </div>
             <p class="sidebar-copyright">© inIT. All rights reserved.</p>
@@ -85,7 +85,7 @@
         <div class="auth-brand-mark"><img src="/frontend/assets/images/surveyone-mark.svg" alt=""></div>
         <p class="eyebrow">ONE-STOP SURVEY WORKSPACE</p>
         <h2 id="authTitle" data-auth-title>IN-SURVEYONE 시작하기</h2>
-        <p class="auth-intro" data-auth-intro>만료형 게스트 계정을 발급받아 제품 흐름을 체험할 수 있습니다.</p>
+        <p class="auth-intro" data-auth-intro>계정 없이 작성하고 첫 저장 시 만료형 게스트 작업공간을 발급받습니다.</p>
         <div class="auth-mode-tabs" role="tablist">
             <button type="button" role="tab" aria-selected="true" data-auth-tab="guest">게스트(손님)</button>
             <button type="button" role="tab" aria-selected="false" data-auth-tab="login">로그인</button>
@@ -95,18 +95,18 @@
             <div class="guest-account-request" data-guest-request-view>
                 <article class="guest-account-card is-disabled" data-guest-issue-card aria-describedby="guestCapabilityStatus">
                     <span class="guest-account-kicker">GUEST EXPERIENCE</span>
-                    <div class="guest-account-heading"><strong>게스트 체험 계정 발급</strong><span>만료형 계정</span></div>
-                    <p>별도 가입 없이 <strong>게스트 아이디</strong>를 발급받아 설문 제작부터 배포·응답·분석까지 체험합니다.</p>
+                    <div class="guest-account-heading"><strong>게스트 프로젝트 시작</strong><span>저장 시 발급</span></div>
+                    <p>지금은 계정을 만들지 않습니다. 프로젝트 기본정보를 작성하고 <strong>처음 저장할 때</strong> 만료형 게스트 계정이 한 번만 발급됩니다.</p>
                     <ul>
                         <li>설문과 응답은 계정 유효기간 동안 Oracle에 저장됩니다.</li>
                         <li>각 계정은 독립된 tenant로 발급되어 다른 게스트와 완전히 분리됩니다.</li>
-                        <li>초기 비밀번호는 발급 직후 이 화면에서 한 번만 표시됩니다.</li>
+                        <li>초기 비밀번호는 첫 프로젝트 저장 직후 한 번만 표시됩니다.</li>
                         <li>유효기간이 지나면 계정과 체험 데이터에 접근할 수 없습니다.</li>
                     </ul>
                     <span class="guest-account-reason" data-guest-account-reason>사용 가능 여부를 확인하고 있습니다.</span>
                 </article>
                 <p class="guest-capability-status" id="guestCapabilityStatus" data-guest-capability-status role="status">게스트 계정 발급 상태를 확인하고 있습니다.</p>
-                <button class="button button-primary button-block" type="button" data-guest-start disabled>게스트 계정 발급</button>
+                <button class="button button-primary button-block" type="button" data-guest-start disabled>프로젝트 작성 시작</button>
                 <button class="button button-secondary button-block" type="button" data-guest-capability-retry hidden>발급 상태 다시 확인</button>
                 <small>실제 연락처나 민감정보를 입력하지 마세요. 외부 메시지 발송은 제공자 설정에 따라 제한됩니다.</small>
             </div>
@@ -117,11 +117,12 @@
                 <dl class="guest-credential-list">
                     <div><dt>아이디</dt><dd><code data-guest-login-id></code><button class="button button-small" type="button" data-copy-guest-credential="loginId">복사</button></dd></div>
                     <div><dt>초기 비밀번호</dt><dd><code data-guest-initial-password></code><button class="button button-small" type="button" data-copy-guest-credential="initialPassword">복사</button></dd></div>
-                    <div><dt>유효기간</dt><dd><span data-guest-expires-at></span></dd></div>
+                    <div><dt>최초 발급 기준</dt><dd><span data-guest-expires-at></span></dd></div>
                 </dl>
+                <p class="guest-credential-retention">프로젝트 저장이 완료되면 계정 보존기간은 체험 프로젝트 정책에 따라 연장됩니다.</p>
                 <button class="button button-secondary button-block" type="button" data-copy-guest-credential="all">자격정보 모두 복사</button>
                 <div class="guest-credential-actions">
-                    <button class="button button-primary" type="button" data-guest-login>로그인 화면으로</button>
+                    <button class="button button-primary" type="button" data-guest-login>작업 계속하기</button>
                 </div>
             </section>
         </section>
@@ -211,10 +212,10 @@
 
     <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="true"></div>
 
-    <script src="/frontend/config/app.config.js?v=20260814.28"></script>
-    <script src="/frontend/config/menu.config.js?v=20260814.28"></script>
-    <script src="/frontend/config/help.config.js?v=20260814.28"></script>
-    <script src="/frontend/js/common.js?v=20260814.28"></script>
-    <script src="/frontend/js/app.js?v=20260814.28"></script>
+    <script src="/frontend/config/app.config.js?v=20260814.40"></script>
+    <script src="/frontend/config/menu.config.js?v=20260814.40"></script>
+    <script src="/frontend/config/help.config.js?v=20260814.40"></script>
+    <script src="/frontend/js/common.js?v=20260814.40"></script>
+    <script src="/frontend/js/app.js?v=20260814.40"></script>
 </body>
 </html>

@@ -98,6 +98,7 @@ def test_content_length_and_chunked_caps_run_before_json_parsing() -> None:
     for method_path in (
         "/api/deployments/by-survey/survey-1",
         "/api/deployments/by-survey/survey-1/execute",
+        "/api/deployments/recipients/import",
     ):
         method = "PUT" if method_path.endswith("survey-1") else "POST"
         status, calls, _ = _run_guard(

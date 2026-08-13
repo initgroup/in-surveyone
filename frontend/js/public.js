@@ -1027,9 +1027,10 @@
         );
         state.idempotencyKey ||= `submission_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
         try {
+            const recipientToken = new URLSearchParams(location.search).get("r");
             await Common.api.post(`/api/public/surveys/${encodeURIComponent(state.slug)}/responses`, {
                 answers: visibleAnswers,
-                respondentKey: oneResponse ? respondentKey() : undefined,
+                respondentKey: recipientToken || (oneResponse ? respondentKey() : undefined),
                 client: { language: state.locale, viewport: `${innerWidth}x${innerHeight}` }
             }, { headers: { "Idempotency-Key": state.idempotencyKey } });
             sessionStorage.removeItem(`surveyone:draft:${state.slug}`);

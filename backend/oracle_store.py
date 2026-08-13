@@ -18,6 +18,8 @@ from backend.delivery_security import (
     encrypt_contact,
     is_masked_contact,
     mask_contact,
+    recipient_access_token,
+    recipient_access_claims,
 )
 from backend.errors import (
     AuthenticationError,
@@ -52,11 +54,13 @@ from backend.models import (
     AdminPasswordResetView,
     AnswerItem,
     AuthSessionView,
+    DashboardTrendPoint,
     DashboardView,
     DeliveryChannel,
     DeliveryChannelResult,
     DeploymentDraftRequest,
     DeploymentDraftView,
+    DeploymentExecuteRequest,
     DeploymentExecuteResult,
     DeploymentExecutionView,
     GuestMode,
@@ -257,7 +261,7 @@ class OracleStore(MemoryStore):
         if mode != GuestMode.DATABASE:
             raise DomainValidationError("OracleStore only creates database guests.")
         now = utcnow()
-        expires_at = now + timedelta(hours=self.settings.guest_project_ttl_hours)
+        expires_at = now + timedelta(hours=self.settings.guest_unused_ttl_hours)
         tenant_id = new_id("tenant")
         user_id = new_id("user")
         initial_password = new_initial_password()
@@ -700,6 +704,7 @@ class OracleStore(MemoryStore):
             withdrawn_at=_as_aware(row.get("withdrawn_at")),
             created_at=_as_aware(row.get("created_at")) or utcnow(),
             last_login_at=_as_aware(row.get("last_login_at")),
+            project_count=int(row.get("project_count") or 0),
         )
 
     def admin_members(
@@ -714,7 +719,7 @@ class OracleStore(MemoryStore):
         self._require_system_admin(user)
         normalized = query.strip().lower()
         normalized_type = member_type.strip().lower()
-        if normalized_type not in {"all", "member", "guest"}:
+        if normalized_type not in {"all", "member", "guest", "guest_unused", "guest_expired"}:
             raise DomainValidationError("회원 분류가 올바르지 않습니다.")
         params = {
             "queryPattern": f"%{normalized}%" if normalized else None,
@@ -1162,6 +1167,11 @@ class OracleStore(MemoryStore):
             ),
             slug=slug,
             public_url=f"/s/{slug}" if slug else None,
+            deployment_status=(
+                str(row["deployment_status"]).upper()
+                if row.get("deployment_status")
+                else None
+            ),
             created_at=_as_aware(row.get("created_at")) or utcnow(),
             updated_at=_as_aware(row.get("updated_at")) or utcnow(),
             published_at=_as_aware(row.get("published_at")),
@@ -1301,6 +1311,26 @@ class OracleStore(MemoryStore):
                     raise DomainValidationError(
                         "DB guest question limit has been exceeded."
                     )
+                project_expires_at = utcnow() + timedelta(
+                    hours=self.settings.guest_project_ttl_hours
+                )
+                self.crud.execute(
+                    connection,
+                    "SURVEY_DB_GUEST_TENANT_EXTEND",
+                    {
+                        "tenantId": user.tenant_id,
+                        "expiresAt": project_expires_at,
+                    },
+                )
+                self.crud.execute(
+                    connection,
+                    "SURVEY_DB_GUEST_CAP_EXTEND",
+                    {
+                        "tenantId": user.tenant_id,
+                        "userId": user.id,
+                        "expiresAt": project_expires_at,
+                    },
+                )
             self.crud.execute(
                 connection,
                 "SURVEY_INSERT",
@@ -1331,7 +1361,11 @@ class OracleStore(MemoryStore):
         return self.get_survey(user, survey_id)
 
     def list_surveys(
-        self, user: UserRecord, status: SurveyStatus | None = None
+        self,
+        user: UserRecord,
+        status: SurveyStatus | None = None,
+        *,
+        stage: str | None = None,
     ) -> list[SurveySummary]:
         with self.pool.connection() as connection:
             rows = self.crud.fetch_all(
@@ -1341,6 +1375,7 @@ class OracleStore(MemoryStore):
                     "tenantId": user.tenant_id,
                     "ownerUserId": user.id,
                     "statusCode": status.value.upper() if status else None,
+                    "deploymentStage": stage.upper() if stage else None,
                 },
             )
         return [self._summary_from_row(row) for row in rows]
@@ -1352,6 +1387,7 @@ class OracleStore(MemoryStore):
         page: int,
         page_size: int,
         status: SurveyStatus | None = None,
+        stage: str | None = None,
         query: str = "",
         sort: str = "updated-desc",
     ) -> SurveyPage:
@@ -1360,6 +1396,7 @@ class OracleStore(MemoryStore):
             "tenantId": user.tenant_id,
             "ownerUserId": user.id,
             "statusCode": status.value.upper() if status else None,
+            "deploymentStage": stage.upper() if stage else None,
             "queryPattern": f"%{normalized_query}%" if normalized_query else None,
         }
         with self.pool.connection() as connection:
@@ -1532,7 +1569,7 @@ class OracleStore(MemoryStore):
             status = SurveyStatus(str(row["status_code"]).lower())
             if status == SurveyStatus.PUBLISHED:
                 raise ConflictError(
-                    "진행 중인 설문 프로젝트는 삭제할 수 없습니다. 먼저 배포를 종료해 주세요."
+                    "확정 또는 진행 중인 설문 프로젝트는 삭제할 수 없습니다. 먼저 배포를 종료해 주세요."
                 )
             affected = self.crud.execute(
                 connection,
@@ -1550,7 +1587,7 @@ class OracleStore(MemoryStore):
         with self.pool.transaction() as connection:
             row = self._survey_row(connection, user, survey_id, lock=True)
             if SurveyStatus(str(row["status_code"]).lower()) != SurveyStatus.PUBLISHED:
-                raise ConflictError("진행 중인 설문 프로젝트만 배포를 종료할 수 있습니다.")
+                raise ConflictError("확정 또는 진행 중인 설문 프로젝트만 배포를 종료할 수 있습니다.")
             affected = self.crud.execute(
                 connection,
                 "SURVEY_CLOSE_BY_OWNER",
@@ -1734,7 +1771,7 @@ class OracleStore(MemoryStore):
                 raise DomainValidationError(str(exc)) from exc
             existing_slug = str(row["public_slug"]) if row.get("public_slug") else None
             if existing_slug and request.slug and request.slug != existing_slug:
-                raise ConflictError("배포된 설문의 URL 식별자는 변경할 수 없습니다.")
+                raise ConflictError("확정된 설문의 URL 식별자는 변경할 수 없습니다.")
             slug = existing_slug or self._unique_slug(
                 connection, request.slug or detail.title, survey_id
             )
@@ -1798,7 +1835,7 @@ class OracleStore(MemoryStore):
                 },
             )
             if affected != 1:
-                raise ConflictError("설문 배포 중 소유권 또는 상태가 변경되었습니다.")
+                raise ConflictError("설문 확정 중 소유권 또는 상태가 변경되었습니다.")
             self.crud.execute(
                 connection,
                 "SURVEY_DEPLOYMENT_MERGE",
@@ -1864,6 +1901,18 @@ class OracleStore(MemoryStore):
         row = self._public_row(slug)
         public = self._public_from_row(row)
         now = utcnow()
+        if request.respondent_key and request.respondent_key.startswith("d1."):
+            claims = recipient_access_claims(
+                self.settings.delivery_secret,
+                request.respondent_key,
+                survey_id=public.survey_id,
+                survey_version=public.version,
+            )
+            if claims is None:
+                raise DomainValidationError("응답자별 배포 URL이 유효하지 않습니다.")
+            payload = request.model_dump(by_alias=True, mode="json")
+            payload["metadata"]["deliveryTargetId"] = claims[1]
+            request = SubmitResponseRequest.model_validate(payload)
         if public.settings.one_response_per_respondent and not request.respondent_key:
             raise DomainValidationError(
                 "This survey requires a stable respondentKey to enforce one response."
@@ -2518,7 +2567,7 @@ class OracleStore(MemoryStore):
         self,
         user: UserRecord,
         survey_id: str,
-        request: DeploymentDraftRequest,
+        request: DeploymentExecuteRequest,
     ) -> DeploymentExecuteResult:
         saved = self.save_deployment(user, survey_id, request)
         now = utcnow()
@@ -2586,6 +2635,13 @@ class OracleStore(MemoryStore):
                     raise ServiceUnavailableError(
                         "배포 대상자와 연락처를 연결할 수 없습니다."
                     )
+                access_token = recipient_access_token(
+                    self.settings.delivery_secret,
+                    survey_id=raw.survey_id,
+                    survey_version=raw.survey_version,
+                    deployment_id=raw.deployment_id,
+                    recipient_id=target_id,
+                )
                 for channel in available:
                     recipient_id = endpoints.get((target_id, channel.value))
                     if recipient_id is None:
@@ -2612,7 +2668,9 @@ class OracleStore(MemoryStore):
                             "messageTemplateJson": _json_dump(
                                 {
                                     "language": language,
-                                    "publicPath": f"/s/{raw.public_slug}?lang={language}",
+                                    "publicPath": (
+                                        f"/s/{raw.public_slug}?lang={language}&r={access_token}"
+                                    ),
                                     "messages": message.model_dump(
                                         by_alias=True, mode="json"
                                     ),
@@ -2680,18 +2738,42 @@ class OracleStore(MemoryStore):
 
     def dashboard(self, user: UserRecord) -> DashboardView:
         surveys = self.list_surveys(user)
+        kst = timezone(timedelta(hours=9))
+        today = datetime.now(kst).date()
+        trend_dates = [today - timedelta(days=offset) for offset in range(7, -1, -1)]
+        trend_start = datetime.combine(trend_dates[0], datetime.min.time(), tzinfo=kst)
+        trend_end = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=kst)
         with self.pool.connection() as connection:
             row = self.crud.fetch_one(
                 connection,
                 "RESPONSE_TOTAL_BY_OWNER",
                 {"tenantId": user.tenant_id, "ownerUserId": user.id},
             )
+            trend_rows = self.crud.fetch_all(
+                connection,
+                "RESPONSE_TREND_BY_OWNER",
+                {
+                    "tenantId": user.tenant_id,
+                    "ownerUserId": user.id,
+                    "trendStart": trend_start,
+                    "trendEnd": trend_end,
+                },
+            )
+        trend_counts = {
+            date.fromisoformat(str(item["response_date"])): int(item["response_count"] or 0)
+            for item in trend_rows
+        }
         return DashboardView(
             total_surveys=len(surveys),
             draft_surveys=sum(item.status == SurveyStatus.DRAFT for item in surveys),
             published_surveys=sum(item.status == SurveyStatus.PUBLISHED for item in surveys),
             closed_surveys=sum(item.status == SurveyStatus.CLOSED for item in surveys),
             total_responses=int(row["response_count"] or 0) if row else 0,
+            today_responses=trend_counts.get(today, 0),
+            response_trend=[
+                DashboardTrendPoint(date=trend_date, responses=trend_counts.get(trend_date, 0))
+                for trend_date in trend_dates
+            ],
             recent_surveys=surveys[:5],
         )
 

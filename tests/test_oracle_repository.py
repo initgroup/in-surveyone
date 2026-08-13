@@ -480,6 +480,7 @@ def test_every_owner_list_or_mutation_sql_binds_tenant_and_user() -> None:
         "RESPONSE_ANSWER_LIST_BY_OWNER",
         "RESPONSE_REPORT_LIST",
         "RESPONSE_TOTAL_BY_OWNER",
+        "RESPONSE_TREND_BY_OWNER",
     ):
         statement = sql_loader.get(sql_id).upper()
         assert ":TENANTID" in statement, sql_id
@@ -527,8 +528,9 @@ def test_oracle_project_page_is_bounded_and_server_sorted() -> None:
     assert crud.page_params == {
         "tenantId": "tenant-page",
         "ownerUserId": "user-page",
-        "statusCode": "DRAFT",
-        "queryPattern": "%만족도%",
+            "statusCode": "DRAFT",
+            "deploymentStage": None,
+            "queryPattern": "%만족도%",
         "sortCode": "title",
         "offsetRows": 24,
         "limitRows": 24,
@@ -916,6 +918,13 @@ def test_oracle_delivery_execution_only_records_queued_or_disabled_work() -> Non
         for row in queued
         if row["statusCode"] == "DISABLED"
     )
+    public_paths = {
+        json.loads(row["messageTemplateJson"])["publicPath"] for row in queued
+    }
+    assert len(public_paths) == 1
+    public_path = public_paths.pop()
+    assert public_path.startswith("/s/execute-survey?lang=ko&r=d1.")
+    assert "respondent-1" not in public_path
     marked = next(
         params
         for sql_id, params in crud.executes

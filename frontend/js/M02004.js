@@ -26,6 +26,7 @@
                 const skin = event.target.closest("[data-experience-skin-preset]");
                 if (skin) this.selectSkin(skin.dataset.experienceSkinPreset);
                 if (event.target.closest("[data-experience-basic]")) this.context.navigate("M02001", { editId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
+                if (event.target.closest("[data-experience-project-list]")) this.context.navigate("M02001");
                 if (event.target.closest("[data-experience-skin]")) this.context.navigate("M02005", { surveyId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
                 if (event.target.closest("[data-experience-editor]")) this.context.navigate("M02003", { surveyId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId, template: "1" } : {}) });
                 if (event.target.closest("[data-experience-next]")) void this.saveAndContinue();

@@ -47,7 +47,7 @@
             }
         },
         render() {
-            const typeLabel = { all: "전체 계정", member: "일반 회원", guest: "게스트" }[this.memberType];
+            const typeLabel = { all: "전체 계정", member: "일반 회원", guest: "게스트", guest_unused: "미사용 게스트", guest_expired: "만료 게스트" }[this.memberType];
             this.root.querySelector("[data-member-count]").textContent = this.query ? `${typeLabel} 검색 결과 ${Common.formatNumber(this.total)}명` : `${typeLabel} ${Common.formatNumber(this.total)}명 · 페이지당 ${this.pageSize}명`;
             this.root.querySelectorAll("[data-member-type]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.memberType === this.memberType)));
             const host = this.root.querySelector("[data-member-list]");
@@ -67,7 +67,7 @@
             const active = item.active !== false && !withdrawn && !expired;
             const statusLabel = withdrawn ? "탈퇴" : expired ? "만료" : active ? "이용 중" : "이용 중지";
             const statusClass = withdrawn ? "is-withdrawn" : active ? "is-active" : "is-stopped";
-            const typeLabel = item.isGuest ? "게스트" : "일반 회원";
+            const typeLabel = item.isGuest ? (Number(item.projectCount || 0) ? "게스트" : "미사용 게스트") : "일반 회원";
             const actions = withdrawn
                 ? '<span class="member-admin-withdrawn-note">복구할 수 없는 탈퇴 처리 완료</span>'
                 : `<div class="member-admin-actions"><button class="button button-small" type="button" data-member-password-reset="${Common.escapeHtml(item.id)}" ${self || !active ? "disabled" : ""}>비밀번호 초기화</button><button class="button button-small ${active ? "button-danger" : ""}" type="button" data-member-status="${Common.escapeHtml(item.id)}" data-next-active="${!active}" ${self || expired ? "disabled" : ""}>${active ? "이용 중지" : "이용 재개"}</button><button class="button button-small button-danger" type="button" data-member-withdraw="${Common.escapeHtml(item.id)}" ${self ? "disabled" : ""}>회원 탈퇴</button></div>`;

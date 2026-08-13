@@ -73,7 +73,11 @@
             this.root.querySelectorAll("[data-builder-template-library]").forEach((button) => { button.hidden = this.templateAdmin; });
             this.root.querySelectorAll("[data-builder-distribute]").forEach((button) => { button.hidden = this.templateAdmin; });
             this.root.querySelector("[data-builder-publish]").hidden = this.templateAdmin;
-            if (this.templateAdmin) this.root.querySelector("[data-builder-back]").setAttribute("aria-label", "공용 템플릿 관리로 돌아가기");
+            if (this.templateAdmin) {
+                this.root.querySelector("[data-builder-back]").setAttribute("aria-label", "공용 템플릿 목록으로 돌아가기");
+                this.root.querySelector("[data-builder-back]").setAttribute("title", "공용 템플릿 목록");
+                this.root.querySelector("[data-builder-back-label]").textContent = "공용 템플릿 목록";
+            }
             this.bind();
             this.renderTools();
             this.renderSkins();
@@ -183,7 +187,8 @@
                 this.persistedSourceLocale = this.survey.languages.sourceLocale;
                 this.renderSurvey();
             } catch (error) {
-                this.root.querySelector(".builder-canvas").innerHTML = `<section class="empty-state error-state"><span class="empty-icon">!</span><h2>설문을 열 수 없습니다</h2><p>${Common.escapeHtml(error.message)}</p><button class="button button-primary" data-builder-back>프로젝트 목록</button></section>`;
+                const backLabel = this.templateAdmin ? "공용 템플릿 목록" : "프로젝트 목록";
+                this.root.querySelector(".builder-canvas").innerHTML = `<section class="empty-state error-state"><span class="empty-icon">!</span><h2>설문을 열 수 없습니다</h2><p>${Common.escapeHtml(error.message)}</p><button class="button workspace-list-button" data-builder-back><span class="workspace-list-button-icon" aria-hidden="true">←</span><span>${backLabel}</span></button></section>`;
             }
         },
         normalizeSurvey() {

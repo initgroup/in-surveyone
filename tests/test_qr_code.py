@@ -76,4 +76,4 @@ def test_draft_survey_does_not_create_misleading_qr() -> None:
         response = owner.get(f"/api/surveys/{survey_id}/qr.svg")
 
     assert response.status_code == 409
-    assert "배포한 후" in response.json()["detail"]
+    assert "확정한 후" in response.json()["detail"]

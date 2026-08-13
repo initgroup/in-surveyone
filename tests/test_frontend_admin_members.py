@@ -20,6 +20,8 @@ def test_member_admin_menu_is_role_scoped_and_server_paged() -> None:
     assert 'roles: ["SYSTEM_ADMIN"]' in menu
     assert "data-member-search" in page
     assert 'data-member-type="guest"' in page
+    assert 'data-member-type="guest_unused"' in page
+    assert 'data-member-type="guest_expired"' in page
     assert "data-member-pagination" in page
     assert "임시 비밀번호는 한 번만 표시됩니다." in page
     assert "!context.user?.systemAdmin" in script
@@ -28,6 +30,9 @@ def test_member_admin_menu_is_role_scoped_and_server_paged() -> None:
     assert "/password-reset" in script
     assert "/status" in script
     assert "memberType: this.memberType" in script
+    assert 'guest_unused: "미사용 게스트"' in script
+    assert 'guest_expired: "만료 게스트"' in script
+    assert "item.projectCount" in script
     assert "data-member-withdraw" in script
     assert "withdrawMember(memberId, button)" in script
     assert "this.context.api.delete(`/api/admin/members/${encodeURIComponent(memberId)}`)" in script
@@ -59,5 +64,8 @@ def test_admin_member_api_uses_masking_sessions_and_owner_guards() -> None:
     assert "-- [ADMIN_MEMBER_PAGE]" in sql
     assert "OFFSET :offsetRows ROWS FETCH NEXT :limitRows ROWS ONLY" in sql
     assert ":memberType = 'GUEST' AND U.GUEST_YN = 'Y'" in sql
+    assert ":memberType = 'GUEST_UNUSED' AND U.GUEST_YN = 'Y'" in sql
+    assert "AS PROJECT_COUNT" in sql
+    assert "'GUEST_EXPIRED'" in sql
     assert "-- [ADMIN_MEMBER_WITHDRAW]" in sql
     assert "WITHDRAWN_AT = SYSTIMESTAMP" in sql

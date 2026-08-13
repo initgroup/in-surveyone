@@ -117,6 +117,13 @@ def test_guest_entry_is_single_database_account_issuance() -> None:
     assert "로컬 체험" not in index_source
     assert 'Common.api.get("/api/auth/guest/capabilities?mode=database")' in app_source
     assert 'Common.api.post("/api/auth/guest", { mode: "database" })' in app_source
+    start_block = app_source.split("async function startGuest()", 1)[1].split(
+        "async function activateGuestForWork()", 1
+    )[0]
+    assert 'Common.api.post("/api/auth/guest"' not in start_block
+    assert 'navigate(target.route || "M02001", target.params || { create: "1" })' in start_block
+    assert "state.guestStartTarget" in start_block
+    assert "state.guestActivationPromise" in app_source
     assert 'selectedMode: "database"' in app_source
 
 
@@ -142,7 +149,9 @@ def test_anonymous_visit_routes_to_dashboard_without_opening_auth_dialog() -> No
     assert "await route();" in init_block
     assert 'openAuth("guest")' not in init_block
     assert 'openAuth("guest")' not in restore_block
-    assert 'if (!state.user && code !== "M01001")' in app_source
+    assert 'const anonymousGuestDraft = !state.user && code === "M02001"' in app_source
+    assert 'if (!state.user && code !== "M01001" && !anonymousGuestDraft)' in app_source
+    assert 'if (requestedPage && !anonymousGuestDraft && !canAccessMenu(requestedPage))' in app_source
     assert "읽기 전용 둘러보기" in app_source
 
 
@@ -197,16 +206,20 @@ def test_dashboard_actions_have_retry_and_refresh_feedback() -> None:
     assert 'this.load({ announce: true, refreshGuest: true })' in page_script
     assert 'refreshButton.textContent = "새로고침 중…"' in page_script
     assert 'loadGuestCapabilities({ force: true })' in app_source
+    assert "data-response-trend" in page_source
+    assert "responseTrend: dashboard.responseTrend" in page_script
+    assert 'start: "template"' in page_script
+    assert 'this.context.openAuth("guest", { route, params })' in page_script
 
 
 def test_auth_dialog_busy_state_is_reset_before_reopening_and_after_success() -> None:
     app_source = (PROJECT_ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
 
-    open_auth_block = app_source.split('function openAuth(mode = "guest")', 1)[1].split(
+    open_auth_block = app_source.split('function openAuth(mode = "guest", guestStartTarget = null)', 1)[1].split(
         "function selectAuthTab", 1
     )[0]
     assert 'setAuthBusy(false, "");' in open_auth_block
-    assert app_source.count('setAuthBusy(false, "");') >= 4
+    assert app_source.count('setAuthBusy(false, "");') >= 3
 
 
 def test_issued_guest_secret_is_only_handed_to_normal_login_form() -> None:
@@ -270,46 +283,25 @@ def test_unavailable_guest_capability_is_retried_and_pending_requests_are_dedupl
     )
 
 
-def test_guest_post_failure_replaces_stale_available_capability() -> None:
-    _run_guest_state_scenario(
-        """
-    hooks.state.guestCapabilities = capability(true);
-    context.Common.api.post = async () => {
-        const error = new Error("Oracle connection is unavailable");
-        error.status = 503;
-        throw error;
-    };
+def test_guest_account_is_activated_only_from_first_project_save() -> None:
+    app_source = (PROJECT_ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    project_source = (PROJECT_ROOT / "frontend" / "js" / "M02001.js").read_text(encoding="utf-8")
+    index_source = (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
 
-    await hooks.startGuest();
-    assert.equal(hooks.state.guestCapabilities.modes[0].available, false);
-    assert.equal(guestButton.disabled, true, "a failed POST must not re-enable from stale state");
-    assert.equal(guestCard.classList.contains("is-disabled"), true);
-    assert.match(guestStatus.textContent, /Oracle connection is unavailable/);
-    assert.equal(authMessage.textContent, "Oracle connection is unavailable");
-    assert.equal(authMessage.classList.contains("is-error"), true);
-
-    let recoveryCalls = 0;
-    context.Common.api.get = async () => {
-        recoveryCalls += 1;
-        return capability(true);
-    };
-    const recovered = await hooks.loadGuestCapabilities();
-    assert.equal(recoveryCalls, 1, "the next explicit capability load must retry after POST failure");
-    assert.equal(recovered.modes[0].available, true);
-    assert.equal(guestButton.disabled, false);
-
-    context.Common.api.post = async () => {
-        const error = new Error("요청 값을 확인해 주세요");
-        error.status = 422;
-        throw error;
-    };
-    await hooks.startGuest();
-    assert.equal(hooks.state.guestCapabilities.modes[0].available, true,
-        "a client error must not relabel Oracle capability as unavailable");
-    assert.equal(guestButton.disabled, false);
-    assert.equal(authMessage.textContent, "요청 값을 확인해 주세요");
-        """
-    )
+    start_block = app_source.split("async function startGuest()", 1)[1].split(
+        "async function activateGuestForWork()", 1
+    )[0]
+    activation_block = app_source.split("async function activateGuestForWork()", 1)[1].split(
+        "function normalizeIssuedGuest", 1
+    )[0]
+    assert 'Common.api.post("/api/auth/guest"' not in start_block
+    assert 'navigate(target.route || "M02001", target.params || { create: "1" })' in start_block
+    assert 'Common.api.post("/api/auth/guest", { mode: "database" })' in activation_block
+    assert "if (state.guestActivationPromise) return state.guestActivationPromise" in activation_block
+    assert "await this.context.activateGuestForWork()" in project_source
+    assert project_source.index("await this.context.activateGuestForWork()") < project_source.index('this.context.api.post("/api/surveys", body)')
+    assert "처음 저장할 때" in index_source
+    assert "프로젝트 작성 시작" in index_source
 
 
 def test_signup_exposes_admin_key_and_readable_required_agreements() -> None:

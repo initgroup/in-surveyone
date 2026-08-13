@@ -61,6 +61,9 @@
             this.dirty = false;
             this.saving = false;
             this.executionResult = null;
+            this.recipientPage = 1;
+            this.recipientPageSize = 25;
+            this.importingRecipients = false;
             this.bind();
             await this.load();
         },
@@ -75,6 +78,9 @@
                 if (event.target.closest("[data-add-recipient]")) return this.addRecipient();
                 if (event.target.closest("[data-import-recipient]")) return this.root.querySelector("[data-recipient-file]").click();
                 if (event.target.closest("[data-download-recipient-sample]")) return this.downloadRecipientSample();
+                if (event.target.closest("[data-download-recipient-xlsx]")) return this.downloadRecipientExcelSample();
+                const recipientPage = event.target.closest("[data-recipient-page]");
+                if (recipientPage && !recipientPage.disabled) return this.changeRecipientPage(Number(recipientPage.dataset.recipientPage));
                 const remove = event.target.closest("[data-remove-recipient]");
                 if (remove) return this.removeRecipient(remove.dataset.removeRecipient);
                 const target = event.target.closest("[data-distribution-step-target]");
@@ -215,6 +221,7 @@
                 this.current = detailPayload?.survey || detailPayload;
                 if (!this.current || !this.isFinalized(this.current)) throw new Error("확정된 프로젝트만 배포할 수 있습니다.");
                 this.draft = this.normalizeDraft(deploymentPayload?.deployment || deploymentPayload);
+                this.recipientPage = 1;
                 this.step = 1;
                 this.maxStep = this.draft.revision || this.draft.recipients.some((item) => item.name || item.channels.length) ? 4 : 1;
                 this.dirty = false;
@@ -351,8 +358,34 @@
 
         renderRecipients() {
             const host = this.root.querySelector("[data-recipient-list]");
-            host.innerHTML = this.draft.recipients.map((recipient, index) => this.recipientMarkup(recipient, index)).join("");
+            const total = this.draft.recipients.length;
+            const pageCount = Math.max(1, Math.ceil(total / this.recipientPageSize));
+            this.recipientPage = Math.min(Math.max(1, this.recipientPage), pageCount);
+            const offset = (this.recipientPage - 1) * this.recipientPageSize;
+            host.innerHTML = this.draft.recipients.slice(offset, offset + this.recipientPageSize).map((recipient, index) => this.recipientMarkup(recipient, offset + index)).join("");
             host.querySelectorAll("[data-recipient-row]").forEach((row) => this.syncRecipientChannelAvailability(row));
+            this.renderRecipientPagination(total, pageCount);
+        },
+
+        renderRecipientPagination(total, pageCount) {
+            const host = this.root.querySelector("[data-recipient-pagination]");
+            host.hidden = pageCount <= 1;
+            if (pageCount <= 1) { host.innerHTML = ""; return; }
+            const start = Math.max(1, Math.min(this.recipientPage - 2, pageCount - 4));
+            const end = Math.min(pageCount, start + 4);
+            const pages = [];
+            for (let page = start; page <= end; page += 1) {
+                pages.push(`<button class="button button-small" type="button" data-recipient-page="${page}" ${page === this.recipientPage ? 'aria-current="page"' : ""}>${page}</button>`);
+            }
+            const first = (this.recipientPage - 1) * this.recipientPageSize + 1;
+            const last = Math.min(this.recipientPage * this.recipientPageSize, total);
+            host.innerHTML = `<span>전체 ${Common.formatNumber(total)}명 · ${Common.formatNumber(first)}–${Common.formatNumber(last)}명 표시</span><div><button class="button button-small" type="button" data-recipient-page="${this.recipientPage - 1}" ${this.recipientPage === 1 ? "disabled" : ""}>이전</button>${pages.join("")}<button class="button button-small" type="button" data-recipient-page="${this.recipientPage + 1}" ${this.recipientPage === pageCount ? "disabled" : ""}>다음</button></div>`;
+        },
+
+        changeRecipientPage(page) {
+            this.recipientPage = page;
+            this.renderRecipients();
+            this.root.querySelector("[data-recipient-list]")?.scrollIntoView({ block: "start", behavior: "smooth" });
         },
 
         recipientMarkup(recipient, index) {
@@ -416,6 +449,7 @@
         addRecipient() {
             const recipient = this.blankRecipient();
             this.draft.recipients.push(recipient);
+            this.recipientPage = Math.ceil(this.draft.recipients.length / this.recipientPageSize);
             this.renderRecipients();
             this.markDirty();
             this.root.querySelector(`[data-recipient-row="${CSS.escape(recipient.id)}"] [data-recipient-field="name"]`)?.focus();
@@ -435,33 +469,77 @@
             ]);
         },
 
+        downloadRecipientExcelSample() {
+            const anchor = document.createElement("a");
+            anchor.href = `${window.SURVEYONE_CONFIG.apiBaseUrl}/api/deployments/recipients/sample.xlsx`;
+            anchor.download = "in-surveyone-recipients.xlsx";
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+        },
+
         async importRecipients(file) {
             const input = this.root.querySelector("[data-recipient-file]");
             try {
                 if (!file) return;
-                if (!file.name.toLowerCase().endsWith(".csv")) throw new Error("CSV 파일만 가져올 수 있습니다.");
-                if (file.size > 2 * 1024 * 1024) throw new Error("수신자 CSV는 2MB 이하여야 합니다.");
-                const rows = this.parseCsv(await file.text());
-                if (rows.length < 2) throw new Error("CSV에 대상자 데이터가 없습니다.");
-                const header = rows[0].map((value) => value.trim());
-                const required = ["name", "countryCode", "preferredLanguage"];
-                if (required.some((field) => !header.includes(field))) throw new Error(`필수 열이 없습니다: ${required.join(", ")}`);
-                const imported = rows.slice(1).filter((row) => row.some((cell) => cell.trim())).map((row) => {
-                    const value = Object.fromEntries(header.map((key, index) => [key, row[index] || ""]));
-                    return this.normalizeRecipient({ ...value, channels: String(value.channels || "").split(/[|,]/).filter(Boolean) });
-                });
-                if (!imported.length) throw new Error("가져올 대상자 행이 없습니다.");
-                if (imported.length > 2000) throw new Error("한 번에 가져올 수 있는 대상자는 최대 2,000명입니다. 대량 발송은 파일을 나누어 등록해 주세요.");
+                if (this.importingRecipients) return;
+                if (!/\.(csv|txt|xlsx)$/i.test(file.name)) throw new Error("CSV, TXT 또는 XLSX 파일만 가져올 수 있습니다.");
+                if (file.size > 4 * 1024 * 1024) throw new Error("대상자 파일은 4MB 이하여야 합니다.");
+                this.importingRecipients = true;
+                this.setImportProgress(true, 0, `${file.name} 업로드 준비 중`);
+                const result = await this.uploadRecipientFile(file);
+                const imported = (result.recipients || []).map((item) => this.normalizeRecipient(item));
+                const currentCount = this.draft.recipients.filter((item) => this.recipientHasInput(item)).length;
+                if (currentCount + imported.length > 2000) throw new Error("배포 초안에는 대상자를 최대 2,000명까지 등록할 수 있습니다.");
                 if (this.draft.recipients.length === 1 && !this.draft.recipients[0].name && !this.draft.recipients[0].channels.length) this.draft.recipients = [];
                 this.draft.recipients.push(...imported);
+                this.recipientPage = Math.max(1, Math.ceil((this.draft.recipients.length - imported.length + 1) / this.recipientPageSize));
                 this.renderRecipients();
                 this.markDirty();
-                this.context.toast(`${Common.formatNumber(imported.length)}명의 대상자를 가져왔습니다.`, "success");
+                const encoding = result.encoding ? ` · ${result.encoding}` : "";
+                this.context.toast(`${Common.formatNumber(imported.length)}명의 대상자를 가져왔습니다.${encoding}`, "success");
             } catch (error) {
                 this.context.toast(error.message, "error");
             } finally {
+                this.importingRecipients = false;
+                this.setImportProgress(false);
                 input.value = "";
             }
+        },
+
+        uploadRecipientFile(file) {
+            return new Promise((resolve, reject) => {
+                const form = new FormData();
+                form.append("upload", file, file.name);
+                const request = new XMLHttpRequest();
+                request.open("POST", `${window.SURVEYONE_CONFIG.apiBaseUrl}/api/deployments/recipients/import`);
+                request.responseType = "json";
+                request.withCredentials = true;
+                request.upload.addEventListener("progress", (event) => {
+                    if (!event.lengthComputable) return this.setImportProgress(true, null, `${file.name} 업로드 중`);
+                    this.setImportProgress(true, Math.round(event.loaded / event.total * 100), `${file.name} 업로드 중`);
+                });
+                request.upload.addEventListener("load", () => this.setImportProgress(true, null, "파일 분석과 대상자 검증 중"));
+                request.addEventListener("load", () => {
+                    const payload = request.response || {};
+                    if (request.status >= 200 && request.status < 300) return resolve(payload.data || payload);
+                    const detail = payload.detail || payload.message || `파일을 가져오지 못했습니다. (${request.status})`;
+                    reject(new Error(Array.isArray(detail) ? detail.map((item) => item.msg || String(item)).join(" / ") : String(detail)));
+                });
+                request.addEventListener("error", () => reject(new Error("파일 업로드 중 네트워크 오류가 발생했습니다.")));
+                request.addEventListener("abort", () => reject(new Error("파일 업로드가 취소되었습니다.")));
+                request.send(form);
+            });
+        },
+
+        setImportProgress(visible, percent = null, label = "") {
+            const host = this.root?.querySelector("[data-recipient-import-progress]");
+            if (!host) return;
+            host.hidden = !visible;
+            if (!visible) return;
+            host.querySelector("[data-recipient-import-label]").textContent = label;
+            const meter = host.querySelector("[data-recipient-import-meter]");
+            if (percent === null) meter.removeAttribute("value"); else meter.value = percent;
         },
 
         parseCsv(text) {
@@ -725,9 +803,10 @@
         buildPayload() {
             this.ensureMessages();
             const messagesByLanguage = Object.fromEntries(this.recipientLocales().map((locale) => [locale, structuredClone(this.draft.messagesByLanguage[locale])]));
+            const recipients = this.draft.recipients.filter((recipient) => this.recipientHasInput(recipient));
             const payload = {
                 revision: this.draft.revision,
-                recipients: this.draft.recipients.map((recipient) => ({
+                recipients: recipients.map((recipient) => ({
                     id: recipient.id,
                     name: recipient.name.trim(),
                     countryCode: recipient.countryCode,
@@ -747,6 +826,14 @@
             return payload;
         },
 
+        recipientHasInput(recipient) {
+            return Boolean(
+                String(recipient?.name || "").trim()
+                || CHANNELS.some((channel) => String(recipient?.[channel.field] || "").trim())
+                || (Array.isArray(recipient?.channels) && recipient.channels.length)
+            );
+        },
+
         async saveDraft(options = {}) {
             if (this.saving || !this.current) return null;
             this.saving = true;
@@ -764,7 +851,10 @@
                 return saved;
             } catch (error) {
                 this.updateSaveState("저장 실패");
-                this.context.toast(error.message, "error");
+                const message = Number(error?.status) === 422
+                    ? "초안 입력값을 확인해 주세요. 입력을 시작한 대상자는 대상자명과 선택한 채널의 연락처가 필요합니다."
+                    : error.message;
+                this.context.toast(message, "error");
                 return null;
             } finally {
                 this.saving = false;
@@ -889,7 +979,18 @@
                 "저장하지 않은 배포 변경사항이 있습니다. 프로젝트 목록으로 돌아갈까요?",
                 { title: "저장하지 않은 변경사항", confirmLabel: "변경 버리고 이동", tone: "warning", destructive: true }
             ))) return;
-            this.context.navigate("M03001");
+            this.dirty = false;
+            this.current = null;
+            this.draft = null;
+            this.executionResult = null;
+            this.step = 1;
+            this.maxStep = 1;
+            this.root.querySelector("[data-distribution-workflow]").hidden = true;
+            this.root.querySelector("[data-distribution-project-view]").hidden = false;
+            this.renderProjects();
+            const base = location.href.split("#", 1)[0];
+            history.replaceState(null, "", `${base}#/M03001`);
+            this.root.querySelector("[data-distribution-search]")?.focus({ preventScroll: true });
         },
 
         async beforeRefresh() {

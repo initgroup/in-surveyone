@@ -13,6 +13,7 @@
 .distribution-project-main { flex: 1; width: 100%; padding: 15px 17px; text-align: left; background: transparent; border: 0; cursor: pointer; }
 .distribution-project-main h3 { min-height: 44px; margin: 5px 0 7px; font-size: 17px; line-height: 1.35; }
 .distribution-project-main p { display: -webkit-box; margin: 9px 0 0; overflow: hidden; color: var(--muted); font-size: 11px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.distribution-project-main .project-id code, .distribution-workflow-head code { font-family: inherit; font-size: inherit; font-weight: 650; letter-spacing: .005em; overflow-wrap: anywhere; }
 .distribution-project-card > dl { display: grid; grid-template-columns: repeat(3,1fr); margin: 0 17px 15px; padding: 12px 0; background: #f7f9fc; border-radius: 10px; }
 .distribution-project-card > dl div { display: grid; gap: 2px; text-align: center; border-right: 1px solid #e2e7ef; }
 .distribution-project-card > dl div:last-child { border-right: 0; }
@@ -54,8 +55,15 @@
 .distribution-panel-head h3 { margin: 3px 0; font-size: 20px; }
 .distribution-panel-head p { margin: 0; color: var(--muted); font-size: 10px; }
 .distribution-panel-actions { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.recipient-import-progress { display: grid; gap: 7px; margin-bottom: 13px; padding: 11px 13px; color: #244c91; background: #eef4ff; border: 1px solid #d4e0f8; border-radius: 9px; font-size: 10px; font-weight: 750; }
+.recipient-import-progress[hidden] { display: none; }
+.recipient-import-progress progress { width: 100%; height: 8px; accent-color: var(--blue); }
 .recipient-list-heading { display: grid; grid-template-columns: minmax(210px,1fr) 150px minmax(230px,1.25fr) minmax(210px,1fr) 34px; gap: 12px; padding: 0 14px 8px; color: var(--muted); font-size: 9px; font-weight: 800; }
 .distribution-recipient-list { display: grid; gap: 10px; }
+.recipient-pagination { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-top: 12px; padding: 10px 12px; background: #f8faff; border: 1px solid #dde6f5; border-radius: 9px; }
+.recipient-pagination > span { color: var(--muted); font-size: 9px; font-weight: 750; }
+.recipient-pagination > div { display: flex; gap: 5px; align-items: center; }
+.recipient-pagination [aria-current="page"] { color: #fff; background: var(--blue); border-color: var(--blue); }
 .distribution-recipient { position: relative; display: grid; grid-template-columns: minmax(210px,1fr) 150px minmax(230px,1.25fr) minmax(210px,1fr) 34px; gap: 12px; align-items: start; padding: 14px; background: #f8faff; border: 1px solid #dde6f5; border-radius: 12px; }
 .recipient-identity { display: grid; grid-template-columns: 32px minmax(0,1fr); gap: 7px; }
 .recipient-identity label:last-child { grid-column: 2; }
@@ -106,8 +114,8 @@
 .distribution-message-card summary small { color: var(--muted); font-size: 9px; }
 .distribution-message-card summary b { color: #176b55; font-size: 9px; }
 .distribution-language-url { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: end; padding: 14px 16px 0; }
-.distribution-language-url label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
-.distribution-language-url input { font-family: Consolas,monospace; font-size: 10px; }
+.distribution-language-url label { display: grid; gap: 5px; color: var(--muted); font-size: 10px; }
+.distribution-language-url input { min-height: 42px; font-family: inherit; font-size: 13px; font-weight: 650; letter-spacing: 0; }
 .distribution-message-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px 16px 16px; }
 .distribution-message-fields label:has(textarea) { grid-column: span 1; }
 
@@ -128,7 +136,7 @@
 .distribution-review-languages > div { display: grid; grid-template-columns: 170px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 9px 11px; background: #f8faff; border-radius: 9px; }
 .distribution-review-languages span { display: grid; }
 .distribution-review-languages small { color: var(--muted); font-size: 8px; }
-.distribution-review-languages code { overflow: hidden; color: #315383; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.distribution-review-languages code { overflow: hidden; color: #315383; font-family: inherit; font-size: 13px; font-weight: 650; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
 .distribution-execute-note { margin-top: 17px; }
 .distribution-final-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px; }
 .distribution-step-actions { position: sticky; z-index: 4; bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: rgba(255,255,255,.94); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(20,39,72,.12); backdrop-filter: blur(9px); }
@@ -155,6 +163,7 @@
     .distribution-project-grid.is-list .distribution-project-card > footer { display: flex; border-top: 1px solid #e7ebf1; border-left: 0; }
     .distribution-head-actions, .distribution-panel-actions { justify-content: stretch; }
     .distribution-head-actions .button, .distribution-panel-actions .button { flex: 1; }
+    .distribution-head-actions .workspace-list-button { flex: 0 0 auto; margin-left: auto; }
     .distribution-provider-alert, .distribution-execute-note { display: grid; }
     .distribution-recipient { grid-template-columns: 1fr 34px; }
     .recipient-identity, .recipient-language, .recipient-contacts, .recipient-channels { grid-column: 1; }
@@ -164,5 +173,7 @@
     .distribution-review-languages > div { grid-template-columns: 1fr auto; }
     .distribution-review-languages code { grid-column: 1/-1; grid-row: 2; }
     .distribution-final-actions { align-items: stretch; flex-direction: column; }
+    .recipient-pagination { align-items: stretch; flex-direction: column; }
+    .recipient-pagination > div { overflow-x: auto; }
     .distribution-step-actions .button { min-height: 44px; }
 }

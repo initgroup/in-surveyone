@@ -34,6 +34,10 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     assert "언어별 설문 URL·메시지" not in html  # compact step labels stay scannable
     assert "언어별 URL과 안내문" in html
     assert "저장하고 발송 실행 요청" in html
+    assert "Excel 양식" in html
+    assert '.csv,.txt,.xlsx' in html
+    assert "data-recipient-import-progress" in html
+    assert "data-recipient-pagination" in html
 
     assert 'get("/api/surveys?status=published")' in script
     assert 'get("/api/deployments/providers")' in script
@@ -50,14 +54,35 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     assert 'executionStatus === "DISABLED"' in script
     assert 'if (event.target.closest("[data-new-distribution-batch]"))' in script
     assert 'this.draft.recipients = [this.blankRecipient()]' in script
+    assert "초안 입력값을 확인해 주세요." in script
     assert 'this.root.querySelectorAll("[data-distribution-step] input' in script
     assert "this.syncExecutionLock();" in script
+    assert "uploadRecipientFile(file)" in script
+    assert "XMLHttpRequest" in script
+    assert "this.draft.recipients.slice(offset, offset + this.recipientPageSize)" in script
+    assert 'history.replaceState(null, "", `${base}#/M03001`);' in script
+    for action in (
+        "data-distribution-project-back",
+        "data-add-recipient",
+        "data-import-recipient",
+        "data-download-recipient-sample",
+        "data-download-recipient-xlsx",
+        "data-distribution-save",
+        "data-distribution-previous",
+        "data-distribution-next",
+        "data-distribution-execute",
+        "data-edit-survey-languages",
+    ):
+        assert action in script
 
     assert ".distribution-project-grid.is-list" in css
     assert ".distribution-recipient" in css
     assert ".distribution-channel-grid" in css
     assert ".distribution-message-card" in css
     assert ".distribution-review-summary" in css
+    assert ".recipient-import-progress" in css
+    assert ".recipient-pagination" in css
+    assert "font-family: inherit" in css
     assert "@media (max-width: 52rem)" in css
 
 
@@ -139,6 +164,14 @@ assert.deepEqual(Array.from(payload.recipients[0].channels), ["EMAIL", "SMS"]);
 assert.match(payload.messagesByLanguage.vi.emailBody, /lang=vi/);
 assert.match(payload.messagesByLanguage.vi.emailSubject, /Khảo sát gia đình đa văn hóa/);
 
+page.draft.recipients.push(page.blankRecipient());
+const payloadWithPlaceholder = page.buildPayload();
+assert.equal(payloadWithPlaceholder.recipients.length, 1);
+page.draft = page.normalizeDraft({{}});
+const emptyDraftPayload = page.buildPayload();
+assert.equal(emptyDraftPayload.recipients.length, 0);
+assert.deepEqual(Array.from(emptyDraftPayload.channels), []);
+
 const url = page.languageUrl("fil");
 assert.equal(url, "https://survey.example.test/s/multicultural-family?lang=fil");
 const card = page.projectCardMarkup({{
@@ -167,7 +200,7 @@ page.updateWorkflow = () => {{}};
 page.syncExecutionLock = () => {{}};
 page.updateSaveState = () => {{}};
 page.root = {{ querySelector() {{ return {{ focus() {{}} }}; }} }};
-page.draft.executionStatus = "QUEUED";
+page.draft = page.normalizeDraft({{ channels: ["EMAIL", "SMS"], executionStatus: "QUEUED" }});
 page.startNewBatch().then(() => {{
     assert.equal(page.draft.revision, null);
     assert.equal(page.draft.executionStatus, null);

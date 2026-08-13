@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Annotated, Any, Generic, Literal, TypeVar
 from uuid import uuid4
@@ -169,6 +169,7 @@ class AdminMemberView(ApiModel):
     withdrawn_at: datetime | None = None
     created_at: datetime
     last_login_at: datetime | None = None
+    project_count: int = 0
 
 
 class AdminMemberPage(ApiModel):
@@ -282,6 +283,7 @@ class GuestProvisionView(ApiModel):
     user: UserView
     expires_at: datetime
     guest_credential: GuestCredentialView
+    session: AuthSessionView | None = None
 
 
 class QuestionType(str, Enum):
@@ -1120,6 +1122,13 @@ class DeliveryMessages(ApiModel):
     fax_body: str = Field(default="", max_length=10000)
 
 
+class DeliveryRecipientImportView(ApiModel):
+    recipients: list[DeliveryRecipientInput]
+    total: int = Field(ge=1, le=2000)
+    file_type: Literal["csv", "txt", "xlsx"]
+    encoding: str | None = None
+
+
 class DeliverySchedule(ApiModel):
     mode: Literal["NOW", "SCHEDULED"] = "NOW"
     scheduled_at: datetime | None = None
@@ -1154,10 +1163,10 @@ class DeliverySchedule(ApiModel):
 
 class DeploymentDraftRequest(ApiModel):
     revision: int | None = Field(default=None, ge=1)
-    recipients: list[DeliveryRecipientInput] = Field(min_length=1, max_length=2000)
-    channels: list[DeliveryChannel] = Field(min_length=1, max_length=4)
+    recipients: list[DeliveryRecipientInput] = Field(default_factory=list, max_length=2000)
+    channels: list[DeliveryChannel] = Field(default_factory=list, max_length=4)
     messages_by_language: dict[str, DeliveryMessages] = Field(
-        min_length=1, max_length=20
+        default_factory=dict, max_length=20
     )
     schedule: DeliverySchedule = Field(default_factory=DeliverySchedule)
     status: Literal["DRAFT"] = "DRAFT"
@@ -1176,6 +1185,11 @@ class DeploymentDraftRequest(ApiModel):
             raise ValueError("배포 대상자 ID는 배포 계획 안에서 고유해야 합니다.")
         if len(self.channels) != len(set(self.channels)):
             raise ValueError("배포 채널은 중복해서 선택할 수 없습니다.")
+        # A draft can be saved before STEP 01 recipients or STEP 02 channels are
+        # complete. Recipient rows that are present are still individually valid;
+        # execution uses DeploymentExecuteRequest below to require the full plan.
+        if not self.recipients or not self.channels:
+            return self
         selected = set(self.channels)
         unreachable = [
             recipient.id
@@ -1231,6 +1245,14 @@ class DeploymentDraftRequest(ApiModel):
             ):
                 raise ValueError("대체 발송 우선순위에는 선택한 채널을 모두 한 번씩 포함해 주세요.")
         return self
+
+
+class DeploymentExecuteRequest(DeploymentDraftRequest):
+    recipients: list[DeliveryRecipientInput] = Field(min_length=1, max_length=2000)
+    channels: list[DeliveryChannel] = Field(min_length=1, max_length=4)
+    messages_by_language: dict[str, DeliveryMessages] = Field(
+        min_length=1, max_length=20
+    )
 
 
 class DeploymentDraftView(DeploymentDraftRequest):
@@ -1430,6 +1452,7 @@ class SurveySummary(ApiModel):
     published_version: int | None = None
     slug: str | None = None
     public_url: str | None = None
+    deployment_status: Literal["READY", "ACTIVE"] | None = None
     created_at: datetime
     updated_at: datetime
     published_at: datetime | None = None
@@ -1638,12 +1661,19 @@ class SurveyReport(ApiModel):
     questions: list[QuestionReport]
 
 
+class DashboardTrendPoint(ApiModel):
+    date: date
+    responses: int = Field(ge=0)
+
+
 class DashboardView(ApiModel):
     total_surveys: int
     draft_surveys: int
     published_surveys: int
     closed_surveys: int
     total_responses: int
+    today_responses: int = Field(default=0, ge=0)
+    response_trend: list[DashboardTrendPoint] = Field(default_factory=list)
     recent_surveys: list[SurveySummary]
 
     @computed_field

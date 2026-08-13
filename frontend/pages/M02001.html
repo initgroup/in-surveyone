@@ -12,7 +12,8 @@
         <div class="toolbar-group project-status-tabs" role="tablist">
             <button type="button" role="tab" aria-selected="true" data-status-filter="all">전체 <span data-count-all>0</span></button>
             <button type="button" role="tab" aria-selected="false" data-status-filter="draft">작성 중</button>
-            <button type="button" role="tab" aria-selected="false" data-status-filter="published">진행 중</button>
+            <button type="button" role="tab" aria-selected="false" data-status-filter="confirmed">확정</button>
+            <button type="button" role="tab" aria-selected="false" data-status-filter="active">진행 중</button>
             <button type="button" role="tab" aria-selected="false" data-status-filter="closed">종료</button>
         </div>
         <div class="toolbar-group">
@@ -57,7 +58,7 @@
 
     <section class="project-form-heading page-section">
         <div><span class="eyebrow" data-project-form-kicker>NEW SURVEY PROJECT</span><h2 id="projectFormTitle" data-project-form-title>프로젝트 기본정보를 입력하세요.</h2><p>이 정보는 조사 운영 기준과 응답 화면 설정에 함께 사용됩니다.</p></div>
-        <button class="button" type="button" data-project-form-cancel>목록으로</button>
+        <button class="button workspace-list-button" type="button" data-project-form-cancel><span class="workspace-list-button-icon" aria-hidden="true">←</span><span>프로젝트 목록</span></button>
     </section>
 
     <form class="project-form card" data-project-form novalidate>

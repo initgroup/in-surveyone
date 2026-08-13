@@ -156,6 +156,16 @@ SELECT COUNT(*) AS MEMBER_COUNT
        WHEN :memberType = 'ALL' THEN 1
        WHEN :memberType = 'MEMBER' AND U.GUEST_YN = 'N' THEN 1
        WHEN :memberType = 'GUEST' AND U.GUEST_YN = 'Y' THEN 1
+       WHEN :memberType = 'GUEST_EXPIRED' AND U.GUEST_YN = 'Y'
+            AND T.EXPIRES_AT IS NOT NULL AND T.EXPIRES_AT <= SYSTIMESTAMP THEN 1
+       WHEN :memberType = 'GUEST_UNUSED' AND U.GUEST_YN = 'Y'
+            AND NOT EXISTS (
+                SELECT 1
+                  FROM "INIT$SVY_TB_SURVEY" SV
+                 WHERE SV.TENANT_ID = U.TENANT_ID
+                   AND SV.OWNER_USER_ID = U.USER_ID
+                   AND SV.STATUS_CODE <> 'DELETED'
+            ) THEN 1
        ELSE 0
    END
    AND (
@@ -183,12 +193,23 @@ SELECT U.USER_ID
      , T.TENANT_NAME
      , T.EXPIRES_AT AS TENANT_EXPIRES_AT
      , (SELECT MAX(S.CREATED_AT) FROM "INIT$SVY_TB_AUTH_SESSION" S WHERE S.USER_ID = U.USER_ID) AS LAST_LOGIN_AT
+     , (SELECT COUNT(*) FROM "INIT$SVY_TB_SURVEY" SV WHERE SV.TENANT_ID = U.TENANT_ID AND SV.OWNER_USER_ID = U.USER_ID AND SV.STATUS_CODE <> 'DELETED') AS PROJECT_COUNT
   FROM "INIT$SVY_TB_USER" U
   JOIN "INIT$SVY_TB_TENANT" T ON T.TENANT_ID = U.TENANT_ID
  WHERE 1 = CASE
        WHEN :memberType = 'ALL' THEN 1
        WHEN :memberType = 'MEMBER' AND U.GUEST_YN = 'N' THEN 1
        WHEN :memberType = 'GUEST' AND U.GUEST_YN = 'Y' THEN 1
+       WHEN :memberType = 'GUEST_EXPIRED' AND U.GUEST_YN = 'Y'
+            AND T.EXPIRES_AT IS NOT NULL AND T.EXPIRES_AT <= SYSTIMESTAMP THEN 1
+       WHEN :memberType = 'GUEST_UNUSED' AND U.GUEST_YN = 'Y'
+            AND NOT EXISTS (
+                SELECT 1
+                  FROM "INIT$SVY_TB_SURVEY" SV
+                 WHERE SV.TENANT_ID = U.TENANT_ID
+                   AND SV.OWNER_USER_ID = U.USER_ID
+                   AND SV.STATUS_CODE <> 'DELETED'
+            ) THEN 1
        ELSE 0
    END
    AND (

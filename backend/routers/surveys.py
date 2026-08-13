@@ -44,10 +44,11 @@ router = APIRouter()
 @router.get("", response_model=ApiResponse[list[SurveySummary]])
 def list_surveys(
     status: SurveyStatus | None = None,
+    stage: Literal["confirmed", "active"] | None = None,
     user: UserRecord = Depends(current_user),
     store: SurveyStore = Depends(current_store),
 ) -> ApiResponse[list[SurveySummary]]:
-    return ApiResponse(data=store.list_surveys(user, status))
+    return ApiResponse(data=store.list_surveys(user, status, stage=stage))
 
 
 @router.get("/page", response_model=ApiResponse[SurveyPage])
@@ -55,6 +56,7 @@ def page_surveys(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=24, alias="pageSize", ge=1, le=100),
     status: SurveyStatus | None = None,
+    stage: Literal["confirmed", "active"] | None = None,
     query: str = Query(default="", max_length=100),
     sort: Literal[
         "updated-desc", "updated-asc", "created-desc", "responses", "title"
@@ -68,6 +70,7 @@ def page_surveys(
             page=page,
             page_size=page_size,
             status=status,
+            stage=stage,
             query=query,
             sort=sort,
         )
@@ -124,7 +127,7 @@ def survey_qr_code(
 ) -> Response:
     survey = store.get_survey(user, survey_id)
     if not survey.public_url:
-        raise ConflictError("설문을 배포한 후 QR 코드를 생성할 수 있습니다.")
+        raise ConflictError("설문을 확정한 후 QR 코드를 생성할 수 있습니다.")
     target = urljoin(f"{get_settings().base_url}/", survey.public_url)
     return Response(
         content=create_qr_svg(target),

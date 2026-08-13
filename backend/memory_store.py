@@ -35,6 +35,7 @@ from backend.models import (
     AdminPasswordResetView,
     AnswerItem,
     AuthSessionView,
+    DashboardTrendPoint,
     DashboardView,
     DeliveryChannel,
     DeliveryChannelResult,
@@ -42,6 +43,7 @@ from backend.models import (
     DeliveryProvidersView,
     DeploymentDraftRequest,
     DeploymentDraftView,
+    DeploymentExecuteRequest,
     DeploymentExecuteResult,
     DeploymentExecutionView,
     GuestMode,
@@ -91,7 +93,12 @@ from backend.security import (
     validate_idempotency_key,
     verify_password,
 )
-from backend.delivery_security import contact_hash, is_masked_contact, mask_contact
+from backend.delivery_security import (
+    contact_hash,
+    is_masked_contact,
+    mask_contact,
+    recipient_access_claims,
+)
 
 
 REPORT_TIMEZONE = timezone(timedelta(hours=9), name="Asia/Seoul")
@@ -489,7 +496,7 @@ class MemoryStore:
         self._require_system_admin(user)
         normalized = query.strip().lower()
         normalized_type = member_type.strip().lower()
-        if normalized_type not in {"all", "member", "guest"}:
+        if normalized_type not in {"all", "member", "guest", "guest_unused", "guest_expired"}:
             raise DomainValidationError("회원 분류가 올바르지 않습니다.")
         with self._lock:
             members = [
@@ -499,6 +506,22 @@ class MemoryStore:
                     normalized_type == "all"
                     or (normalized_type == "guest" and candidate.is_guest)
                     or (normalized_type == "member" and not candidate.is_guest)
+                    or (
+                        normalized_type == "guest_expired"
+                        and candidate.is_guest
+                        and candidate.tenant_expires_at is not None
+                        and candidate.tenant_expires_at <= utcnow()
+                    )
+                    or (
+                        normalized_type == "guest_unused"
+                        and candidate.is_guest
+                        and not any(
+                            survey.tenant_id == candidate.tenant_id
+                            and survey.owner_id == candidate.id
+                            and survey.status != SurveyStatus.DELETED
+                            for survey in self._surveys.values()
+                        )
+                    )
                 )
                 and (
                     not normalized
@@ -535,6 +558,12 @@ class MemoryStore:
                             if session.user_id == candidate.id
                         ),
                         default=None,
+                    ),
+                    project_count=sum(
+                        survey.tenant_id == candidate.tenant_id
+                        and survey.owner_id == candidate.id
+                        and survey.status != SurveyStatus.DELETED
+                        for survey in self._surveys.values()
                     ),
                 )
                 for candidate in items
@@ -876,7 +905,7 @@ class MemoryStore:
             raise DomainValidationError("Only database guest mode is supported.")
         with self._lock:
             now = utcnow()
-            expires_at = now + timedelta(hours=self.settings.guest_project_ttl_hours)
+            expires_at = now + timedelta(hours=self.settings.guest_unused_ttl_hours)
             self._guest_login_sequence += 1
             login_id = f"quest{self._guest_login_sequence:03d}"
             initial_password = new_initial_password()
@@ -1094,6 +1123,13 @@ class MemoryStore:
                 )
 
             now = utcnow()
+            if user.is_guest:
+                project_expires_at = now + timedelta(hours=self.settings.guest_project_ttl_hours)
+                tenant = self._tenants.get(user.tenant_id)
+                if tenant is not None and (tenant.expires_at is None or tenant.expires_at < project_expires_at):
+                    self._tenants[user.tenant_id] = replace(tenant, expires_at=project_expires_at)
+                    user = replace(user, tenant_expires_at=project_expires_at)
+                    self._users[user.id] = user
             survey = SurveyRecord(
                 id=new_id("survey"),
                 tenant_id=user.tenant_id,
@@ -1194,6 +1230,8 @@ class MemoryStore:
         self,
         user: UserRecord,
         status: SurveyStatus | None = None,
+        *,
+        stage: str | None = None,
     ) -> list[SurveySummary]:
         with self._lock:
             surveys = [
@@ -1204,6 +1242,7 @@ class MemoryStore:
                 and survey.status != SurveyStatus.DELETED
                 and not survey.admin_template
                 and (status is None or survey.status == status)
+                and self._matches_distribution_stage_locked(survey, stage)
             ]
             surveys.sort(key=lambda item: item.updated_at, reverse=True)
             return [self._summary_locked(survey) for survey in surveys]
@@ -1215,6 +1254,7 @@ class MemoryStore:
         page: int,
         page_size: int,
         status: SurveyStatus | None = None,
+        stage: str | None = None,
         query: str = "",
         sort: str = "updated-desc",
     ) -> SurveyPage:
@@ -1232,6 +1272,7 @@ class MemoryStore:
                 survey
                 for survey in owned
                 if (status is None or survey.status == status)
+                and self._matches_distribution_stage_locked(survey, stage)
                 and (
                     not normalized_query
                     or normalized_query
@@ -1440,7 +1481,7 @@ class MemoryStore:
         self,
         user: UserRecord,
         survey_id: str,
-        request: DeploymentDraftRequest,
+        request: DeploymentExecuteRequest,
     ) -> DeploymentExecuteResult:
         saved = self.save_deployment(user, survey_id, request)
         with self._lock:
@@ -1592,7 +1633,7 @@ class MemoryStore:
             survey = self._owned_survey_locked(user, survey_id)
             if survey.status == SurveyStatus.PUBLISHED:
                 raise ConflictError(
-                    "진행 중인 설문 프로젝트는 삭제할 수 없습니다. 먼저 배포를 종료해 주세요."
+                    "확정 또는 진행 중인 설문 프로젝트는 삭제할 수 없습니다. 먼저 배포를 종료해 주세요."
                 )
             if survey.slug:
                 self._slug_routes.pop(survey.slug, None)
@@ -1603,7 +1644,7 @@ class MemoryStore:
         with self._lock:
             survey = self._owned_survey_locked(user, survey_id)
             if survey.status != SurveyStatus.PUBLISHED:
-                raise ConflictError("진행 중인 설문 프로젝트만 배포를 종료할 수 있습니다.")
+                raise ConflictError("확정 또는 진행 중인 설문 프로젝트만 배포를 종료할 수 있습니다.")
             if survey.slug:
                 self._slug_routes.pop(survey.slug, None)
             current_delivery = self._deployment_drafts.pop(survey_id, None)
@@ -1894,7 +1935,7 @@ class MemoryStore:
 
         if survey.slug:
             if requested_slug and requested_slug != survey.slug:
-                raise ConflictError("배포된 설문의 URL 식별자는 변경할 수 없습니다.")
+                raise ConflictError("확정된 설문의 URL 식별자는 변경할 수 없습니다.")
             slug = survey.slug
         else:
             slug_base = requested_slug or survey.title
@@ -1969,6 +2010,18 @@ class MemoryStore:
         with self._lock:
             survey, version = self._public_version_locked(slug)
             public_survey = PublicSurvey.model_validate_json(version.snapshot_json)
+            if request.respondent_key and request.respondent_key.startswith("d1."):
+                claims = recipient_access_claims(
+                    self.settings.delivery_secret,
+                    request.respondent_key,
+                    survey_id=survey.id,
+                    survey_version=version.version,
+                )
+                if claims is None:
+                    raise DomainValidationError("응답자별 배포 URL이 유효하지 않습니다.")
+                payload = request.model_dump(by_alias=True, mode="json")
+                payload["metadata"]["deliveryTargetId"] = claims[1]
+                request = SubmitResponseRequest.model_validate(payload)
             if (
                 public_survey.settings.one_response_per_respondent
                 and not request.respondent_key
@@ -2139,6 +2192,16 @@ class MemoryStore:
                 and not survey.admin_template
             ]
             surveys.sort(key=lambda item: item.updated_at, reverse=True)
+            kst = timezone(timedelta(hours=9))
+            today = datetime.now(kst).date()
+            trend_dates = [today - timedelta(days=offset) for offset in range(7, -1, -1)]
+            owned_ids = {survey.id for survey in surveys}
+            response_counts = Counter(
+                response.submitted_at.astimezone(kst).date()
+                for survey_id, responses in self._responses.items()
+                if survey_id in owned_ids
+                for response in responses
+            )
             return DashboardView(
                 total_surveys=len(surveys),
                 draft_surveys=sum(survey.status == SurveyStatus.DRAFT for survey in surveys),
@@ -2147,6 +2210,11 @@ class MemoryStore:
                 ),
                 closed_surveys=sum(survey.status == SurveyStatus.CLOSED for survey in surveys),
                 total_responses=sum(len(self._responses.get(survey.id, [])) for survey in surveys),
+                today_responses=response_counts[today],
+                response_trend=[
+                    DashboardTrendPoint(date=trend_date, responses=response_counts[trend_date])
+                    for trend_date in trend_dates
+                ],
                 recent_surveys=[self._summary_locked(survey) for survey in surveys[:5]],
             )
 
@@ -2189,6 +2257,15 @@ class MemoryStore:
         return survey, version
 
     def _summary_locked(self, survey: SurveyRecord) -> SurveySummary:
+        active = self._has_executed_distribution_locked(survey)
+        deployment_status = (
+            "ACTIVE"
+            if survey.status == SurveyStatus.PUBLISHED
+            and active
+            else "READY"
+            if survey.status == SurveyStatus.PUBLISHED
+            else None
+        )
         return SurveySummary(
             id=survey.id,
             title=survey.title,
@@ -2199,9 +2276,33 @@ class MemoryStore:
             published_version=len(survey.versions) or None,
             slug=survey.slug,
             public_url=f"/s/{survey.slug}" if survey.slug else None,
+            deployment_status=deployment_status,
             created_at=survey.created_at,
             updated_at=survey.updated_at,
             published_at=survey.published_at,
+        )
+
+    def _matches_distribution_stage_locked(
+        self, survey: SurveyRecord, stage: str | None
+    ) -> bool:
+        if stage is None:
+            return True
+        if survey.status != SurveyStatus.PUBLISHED:
+            return False
+        active = self._has_executed_distribution_locked(survey)
+        return active if stage == "active" else not active
+
+    def _has_executed_distribution_locked(self, survey: SurveyRecord) -> bool:
+        version = len(survey.versions)
+        deployments = [
+            self._deployment_drafts.get(survey.id),
+            *self._deployment_history.get(survey.id, []),
+        ]
+        return any(
+            item is not None
+            and item.survey_version == version
+            and item.execution_status is not None
+            for item in deployments
         )
 
     def _detail_locked(self, survey: SurveyRecord) -> SurveyDetail:

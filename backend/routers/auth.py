@@ -78,8 +78,14 @@ def start_guest_session(
         request_payload.display_name,
         request_payload.mode,
     )
-    _prevent_auth_caching(response)
-    return ApiResponse(data=provisioned)
+    token, session = store.login(
+        LoginRequest(
+            login_id=provisioned.guest_credential.login_id,
+            password=provisioned.guest_credential.initial_password,
+        )
+    )
+    _set_session_cookie(response, token, session)
+    return ApiResponse(data=provisioned.model_copy(update={"session": session}))
 
 
 @router.post("/signup", response_model=ApiResponse[AuthSessionView], status_code=201)

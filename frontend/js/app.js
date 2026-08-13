@@ -27,6 +27,8 @@
         refreshing: false,
         guestCapabilities: null,
         guestCapabilitiesPromise: null,
+        guestActivationPromise: null,
+        guestStartTarget: null,
         issuedGuest: null,
         sessionInvalidHandling: false,
         modalReturnFocus: null,
@@ -195,7 +197,10 @@
             if (dom.modal.open) resetModalPosition();
             if (dom.messageDialog.open) resetMessagePosition();
         });
-        dom.authDialog.addEventListener("close", clearIssuedGuest);
+        dom.authDialog.addEventListener("close", () => {
+            clearIssuedGuest();
+            state.guestStartTarget = null;
+        });
     }
 
     function handleInvalidSession() {
@@ -270,13 +275,14 @@
 
     async function performRoute(requestedCode, generation, controller, { refresh = false } = {}) {
         let code = requestedCode;
-        if (!state.user && code !== "M01001") {
+        const anonymousGuestDraft = !state.user && code === "M02001" && queryParams().get("create") === "1";
+        if (!state.user && code !== "M01001" && !anonymousGuestDraft) {
             code = "M01001";
             history.replaceState(null, "", "#/M01001");
             toast("둘러보기에서는 메인 대시보드를 볼 수 있습니다. 설문 작업은 메인에서 시작 방식을 선택해 주세요.");
         }
         const requestedPage = window.PAGE_CONFIG[code];
-        if (requestedPage && !canAccessMenu(requestedPage)) {
+        if (requestedPage && !anonymousGuestDraft && !canAccessMenu(requestedPage)) {
             code = "M01001";
             history.replaceState(null, "", "#/M01001");
             toast("이 메뉴는 플랫폼 관리자만 사용할 수 있습니다.", "error");
@@ -349,6 +355,7 @@
                     openModal: (...args) => { if (active()) return openModal(...args); },
                     confirmMessage: (...args) => active() ? confirmMessage(...args) : Promise.resolve(false),
                     openAuth: (...args) => { if (active()) return openAuth(...args); },
+                    activateGuestForWork: (...args) => active() ? activateGuestForWork(...args) : Promise.reject(abortError()),
                     loadGuestCapabilities: (...args) => active() ? loadGuestCapabilities(...args) : Promise.reject(abortError()),
                     user: state.user,
                     appState: state
@@ -579,24 +586,34 @@
             setAuthBusy(false, capability?.reason || "게스트 계정을 현재 발급할 수 없습니다.", true);
             return;
         }
-        setAuthBusy(true, "게스트 계정을 발급하고 있습니다.");
-        try {
+        const target = state.guestStartTarget || { route: "M02001", params: { create: "1" } };
+        state.guestStartTarget = null;
+        setAuthBusy(false, "계정은 프로젝트를 처음 저장할 때 발급됩니다.");
+        if (dom.authDialog.open) dom.authDialog.close();
+        navigate(target.route || "M02001", target.params || { create: "1" });
+    }
+
+    async function activateGuestForWork() {
+        if (state.user) return { user: state.user, issuedGuest: state.issuedGuest };
+        if (state.guestActivationPromise) return state.guestActivationPromise;
+        state.guestActivationPromise = (async () => {
             const payload = await Common.api.post("/api/auth/guest", { mode: "database" });
-            const issued = normalizeIssuedGuest(payload);
-            if (!issued.loginId || !issued.initialPassword) {
-                throw new Error("계정은 발급되었지만 일회용 자격정보를 확인하지 못했습니다. 새로고침하지 말고 관리자에게 문의해 주세요.");
+            const source = payload?.data || payload || {};
+            const session = source.session?.data || source.session || source.authSession || source.auth_session;
+            const issued = normalizeIssuedGuest(source);
+            if (!session?.user || !issued.loginId || !issued.initialPassword) {
+                throw new Error("게스트 작업공간은 준비되었지만 세션 또는 일회용 자격정보를 확인하지 못했습니다.");
             }
+            state.user = session.user;
             state.issuedGuest = issued;
-            setAuthBusy(false, "");
+            updateUserUi();
             renderIssuedGuest();
-        } catch (error) {
-            const message = error?.message || "게스트 계정을 현재 발급할 수 없습니다.";
-            const status = Number(error?.status);
-            if (!Number.isFinite(status) || status >= 500) {
-                state.guestCapabilities = fallbackGuestCapabilities(message);
-            }
-            setAuthBusy(false, message, true);
-        }
+            document.querySelector("[data-guest-login]").textContent = "작업 계속하기";
+            dom.authMessage.textContent = "첫 프로젝트 저장 시점에 게스트 계정이 발급되었습니다. 공용 PC에서는 자격정보를 안전하게 보관하고 작업 후 로그아웃하세요.";
+            if (!dom.authDialog.open) dom.authDialog.showModal();
+            return { user: state.user, issuedGuest: issued };
+        })().finally(() => { state.guestActivationPromise = null; });
+        return state.guestActivationPromise;
     }
 
     function normalizeIssuedGuest(payload) {
@@ -619,7 +636,9 @@
         dom.guestCredentials.querySelector("[data-guest-login-id]").textContent = issued.loginId;
         dom.guestCredentials.querySelector("[data-guest-initial-password]").textContent = issued.initialPassword;
         dom.guestCredentials.querySelector("[data-guest-expires-at]").textContent = formatGuestExpiry(issued.expiresAt);
-        dom.authMessage.textContent = "자격정보를 먼저 복사한 뒤 로그인 화면에서 게스트 계정으로 로그인해 주세요.";
+        dom.authMessage.textContent = state.user
+            ? "현재 게스트 세션으로 프로젝트 저장을 계속합니다. 공용 PC에서는 자격정보를 보관한 뒤 작업 종료 시 로그아웃하세요."
+            : "자격정보를 먼저 복사한 뒤 로그인 화면에서 게스트 계정으로 로그인해 주세요.";
         dom.authMessage.classList.remove("is-error");
         requestAnimationFrame(() => dom.guestCredentials.querySelector("[data-guest-credential-title]")?.focus({ preventScroll: true }));
     }
@@ -641,7 +660,7 @@
         const values = {
             loginId: issued.loginId,
             initialPassword: issued.initialPassword,
-            all: `IN-SURVEYONE 게스트 계정\n아이디: ${issued.loginId}\n초기 비밀번호: ${issued.initialPassword}\n유효기간: ${formatGuestExpiry(issued.expiresAt)}`
+            all: `IN-SURVEYONE 게스트 계정\n아이디: ${issued.loginId}\n초기 비밀번호: ${issued.initialPassword}\n최초 발급 기준: ${formatGuestExpiry(issued.expiresAt)}\n프로젝트 저장 후에는 체험 프로젝트 보존 정책에 따라 연장됩니다.`
         };
         const value = values[field];
         if (!value) return;
@@ -656,6 +675,11 @@
     function showIssuedGuestLogin() {
         const issued = state.issuedGuest;
         if (!issued) return;
+        if (state.user) {
+            clearIssuedGuest();
+            if (dom.authDialog.open) dom.authDialog.close();
+            return;
+        }
         const form = document.querySelector("[data-login-form]");
         form.elements.loginId.value = issued.loginId;
         form.elements.password.value = issued.initialPassword;
@@ -766,8 +790,9 @@
         document.querySelectorAll('[data-auth-action="login"], [data-auth-action="signup"]').forEach((button) => { button.hidden = Boolean(user && !guest); });
     }
 
-    function openAuth(mode = "guest") {
+    function openAuth(mode = "guest", guestStartTarget = null) {
         clearIssuedGuest();
+        state.guestStartTarget = mode === "guest" ? guestStartTarget : null;
         setAuthBusy(false, "");
         selectAuthTab(mode);
         if (!dom.authDialog.open) dom.authDialog.showModal();
@@ -781,9 +806,9 @@
             tab.tabIndex = selected ? 0 : -1;
         });
         document.querySelectorAll("[data-auth-panel]").forEach((panel) => { panel.hidden = panel.dataset.authPanel !== mode; });
-        const titles = { guest: "게스트 체험 계정 발급", login: "작업공간으로 돌아오기", signup: "기관 설문 작업공간 만들기" };
+        const titles = { guest: "게스트 체험 프로젝트 시작", login: "작업공간으로 돌아오기", signup: "기관 설문 작업공간 만들기" };
         const intros = {
-            guest: "만료형 게스트 계정을 발급받아 안전하게 분리된 작업공간에서 제품 흐름을 체험할 수 있습니다.",
+            guest: "계정 없이 프로젝트를 작성하고 첫 저장 시에만 분리된 만료형 작업공간을 발급받습니다.",
             login: "회원 아이디 또는 발급받은 게스트 계정으로 로그인하세요.",
             signup: "기관 전용 설문 작업공간을 만들고 지속적으로 운영하세요."
         };

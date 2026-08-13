@@ -110,6 +110,7 @@ class Settings:
     db_retry_count: int
     db_retry_delay: int
     db_pool_acquire_warn_seconds: float
+    guest_unused_ttl_hours: int
     guest_project_ttl_hours: int
     email_provider: str
     sms_provider: str
@@ -352,8 +353,11 @@ def get_settings() -> Settings:
         db_pool_acquire_warn_seconds=float(
             os.getenv("DB_POOL_ACQUIRE_WARN_SECONDS", "3")
         ),
+        guest_unused_ttl_hours=_env_int(
+            "SURVEYONE_GUEST_UNUSED_TTL_HOURS", 24, minimum=1
+        ),
         guest_project_ttl_hours=_env_int(
-            "SURVEYONE_GUEST_PROJECT_TTL_HOURS", 24, minimum=1
+            "SURVEYONE_GUEST_PROJECT_TTL_HOURS", 168, minimum=1
         ),
         email_provider=str(os.getenv("SURVEYONE_EMAIL_PROVIDER", "disabled")).strip().lower(),
         sms_provider=str(os.getenv("SURVEYONE_SMS_PROVIDER", "disabled")).strip().lower(),

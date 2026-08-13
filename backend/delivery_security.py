@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -31,6 +32,64 @@ def contact_hash(secret: str, channel: str, value: str) -> str:
         f"{channel.upper()}:{normalized}".encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
+
+
+def recipient_access_token(
+    secret: str,
+    *,
+    survey_id: str,
+    survey_version: int,
+    deployment_id: str,
+    recipient_id: str,
+) -> str:
+    payload = json.dumps(
+        [survey_id, survey_version, deployment_id, recipient_id],
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    encrypted = _fernet(secret).encrypt(payload).decode("ascii")
+    return f"d1.{encrypted}"
+
+
+def recipient_access_claims(
+    secret: str,
+    token: str,
+    *,
+    survey_id: str,
+    survey_version: int,
+) -> tuple[str, str] | None:
+    try:
+        prefix, encrypted = token.split(".", 1)
+        if prefix != "d1":
+            return None
+        payload = json.loads(
+            _fernet(secret).decrypt(encrypted.encode("ascii")).decode("utf-8")
+        )
+        valid = (
+            isinstance(payload, list)
+            and len(payload) == 4
+            and payload[0] == survey_id
+            and payload[1] == survey_version
+            and all(isinstance(value, str) and value for value in payload[2:])
+        )
+        return (payload[2], payload[3]) if valid else None
+    except (InvalidToken, UnicodeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def validate_recipient_access_token(
+    secret: str,
+    token: str,
+    *,
+    survey_id: str,
+    survey_version: int,
+) -> bool:
+    return recipient_access_claims(
+        secret,
+        token,
+        survey_id=survey_id,
+        survey_version=survey_version,
+    ) is not None
 
 
 def encrypt_contact(secret: str, value: str) -> str:

@@ -5,12 +5,12 @@
         <p>설계부터 배포, 응답 수집, 보고서까지 한 작업공간에서 이어집니다.</p>
         <div class="hero-actions">
             <button class="button button-primary" type="button" data-dashboard-create>새 설문 만들기</button>
-            <button class="button button-ghost" type="button" data-dashboard-templates>템플릿 둘러보기 <span aria-hidden="true">→</span></button>
+            <button class="button button-ghost" type="button" data-dashboard-templates>템플릿으로 시작 <span aria-hidden="true">→</span></button>
         </div>
     </div>
-    <div class="dashboard-signal" aria-label="실시간 운영 요약">
-        <div class="signal-head"><span><i></i> LIVE WORKSPACE</span><small>오늘 기준</small></div>
-        <div class="signal-chart" aria-hidden="true"><i style="--h:36%"></i><i style="--h:52%"></i><i style="--h:46%"></i><i style="--h:68%"></i><i style="--h:58%"></i><i style="--h:83%"></i><i style="--h:74%"></i><i style="--h:92%"></i></div>
+    <div class="dashboard-signal" aria-label="최근 8일 응답 요약">
+        <div class="signal-head"><span><i></i> RECENT RESPONSES</span><small>최근 8일</small></div>
+        <div class="signal-chart" data-response-trend role="img" aria-label="최근 8일 응답이 없습니다."></div>
         <div class="signal-bottom"><span>응답 흐름</span><strong data-live-responses>+0</strong></div>
     </div>
 </section>
@@ -28,11 +28,11 @@
         <article class="visitor-start-card visitor-database-card" data-visitor-database-card aria-describedby="visitorDatabaseStatus">
             <span class="visitor-card-kicker">GUEST EXPERIENCE</span>
             <h3>게스트(손님) 체험</h3>
-            <p>만료형 게스트 아이디와 독립 작업공간을 발급받아 설문 제작·배포·응답·분석 흐름을 안전한 저장 환경에서 체험합니다.</p>
-            <ul><li>계정별 완전 분리</li><li>유효기간 동안 Oracle 저장</li><li>초기 비밀번호 1회 표시</li></ul>
+            <p>프로젝트 기본정보를 먼저 작성하고 처음 저장할 때만 만료형 게스트 아이디와 독립 작업공간을 발급합니다.</p>
+            <ul><li>작성만으로는 계정 미생성</li><li>첫 저장 시 Oracle 작업공간 발급</li><li>초기 비밀번호 1회 표시</li></ul>
             <p class="visitor-database-status" id="visitorDatabaseStatus" data-visitor-database-status role="status">발급 상태를 확인하고 있습니다.</p>
             <div class="visitor-database-actions">
-                <button class="button button-primary" type="button" data-start-guest data-visitor-database-button disabled>게스트 계정 발급</button>
+                <button class="button button-primary" type="button" data-start-guest data-visitor-database-button disabled>프로젝트 작성 시작</button>
                 <button class="button button-secondary" type="button" data-visitor-database-retry hidden>발급 상태 다시 확인</button>
             </div>
         </article>
@@ -57,7 +57,7 @@
     <div class="metric-grid" data-dashboard-metrics>
         <article class="card metric-card"><span class="metric-label">작성 중</span><strong class="metric-value skeleton">00</strong><span class="metric-trend">초안을 이어서 완성하세요</span></article>
         <article class="card metric-card"><span class="metric-label">진행 중</span><strong class="metric-value skeleton">00</strong><span class="metric-trend">현재 응답 수집 중</span></article>
-        <article class="card metric-card"><span class="metric-label">누적 응답</span><strong class="metric-value skeleton">000</strong><span class="metric-trend">실시간으로 반영됩니다</span></article>
+        <article class="card metric-card"><span class="metric-label">누적 응답</span><strong class="metric-value skeleton">000</strong><span class="metric-trend">새로고침 시 반영됩니다</span></article>
         <article class="card metric-card"><span class="metric-label">완료 설문</span><strong class="metric-value skeleton">00</strong><span class="metric-trend">보고서를 만들 수 있어요</span></article>
     </div>
 </section>
@@ -100,7 +100,7 @@
 <section class="page-section dashboard-template-section" aria-labelledby="recommendedTitle">
     <div class="section-heading">
         <div><span class="section-kicker">NEW SURVEY</span><h2 id="recommendedTitle">새 설문 프로젝트 시작</h2><p>회원 공개 템플릿은 프로젝트의 STEP 04 설문 편집 레이어에서만 선택합니다.</p></div>
-        <button class="button button-small" type="button" data-dashboard-templates>새 설문 시작</button>
+        <button class="button button-small" type="button" data-dashboard-templates>템플릿으로 시작</button>
     </div>
     <div class="dashboard-template-grid" data-dashboard-template-list>
         <article class="template-mini-card skeleton"></article>

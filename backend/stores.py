@@ -26,6 +26,7 @@ from backend.models import (
     DeliveryProvidersView,
     DeploymentDraftRequest,
     DeploymentDraftView,
+    DeploymentExecuteRequest,
     DeploymentExecuteResult,
     GuestCapabilitiesView,
     GuestFeatures,
@@ -145,7 +146,11 @@ class SurveyStore(Protocol):
         admin_template: bool = False,
     ) -> SurveyDetail: ...
     def list_surveys(
-        self, user: UserRecord, status: SurveyStatus | None = None
+        self,
+        user: UserRecord,
+        status: SurveyStatus | None = None,
+        *,
+        stage: str | None = None,
     ) -> list[SurveySummary]: ...
     def survey_page(
         self,
@@ -154,6 +159,7 @@ class SurveyStore(Protocol):
         page: int,
         page_size: int,
         status: SurveyStatus | None = None,
+        stage: str | None = None,
         query: str = "",
         sort: str = "updated-desc",
     ) -> SurveyPage: ...
@@ -198,7 +204,7 @@ class SurveyStore(Protocol):
         self, user: UserRecord, survey_id: str, request: DeploymentDraftRequest
     ) -> DeploymentDraftView: ...
     def execute_deployment(
-        self, user: UserRecord, survey_id: str, request: DeploymentDraftRequest
+        self, user: UserRecord, survey_id: str, request: DeploymentExecuteRequest
     ) -> DeploymentExecuteResult: ...
     def page_help(self, menu_id: str, language: str) -> dict[str, object]: ...
 
@@ -275,13 +281,13 @@ def guest_capabilities(
         title="게스트(손님)",
         available=database_configured,
         reason=(
-            f"Oracle에 {selected.guest_project_ttl_hours}시간 접근 가능한 설문 제작·배포·응답 체험 공간입니다. "
+            f"첫 저장 전에는 계정을 만들지 않으며, 발급 후 미사용 계정은 {selected.guest_unused_ttl_hours}시간, 프로젝트 저장 계정은 {selected.guest_project_ttl_hours}시간 접근 가능한 Oracle 체험 공간입니다. "
             "외부 발송과 맞춤 보고서 영구 저장은 미리보기만 제공됩니다."
             if database_configured
             else database_reason
         ),
         persistence="oracle-temporary-tenant",
-        expires_in_hours=selected.guest_project_ttl_hours,
+        expires_in_hours=selected.guest_unused_ttl_hours,
         limits=GuestLimits(
             max_projects=selected.db_guest_max_projects,
             max_questions_per_survey=selected.db_guest_max_questions,

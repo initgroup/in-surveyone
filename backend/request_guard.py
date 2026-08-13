@@ -94,6 +94,8 @@ class PublicRequestGuardMiddleware:
 
     @staticmethod
     def _is_delivery_write(path: str, method: str) -> bool:
+        if method == "POST" and path == "/api/deployments/recipients/import":
+            return True
         prefix = "/api/deployments/by-survey/"
         if method not in {"PUT", "POST"} or not path.startswith(prefix):
             return False

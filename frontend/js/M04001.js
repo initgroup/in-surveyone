@@ -82,6 +82,9 @@
                 const preset = event.target.closest("[data-column-preset]");
                 if (preset) this.applyColumnPreset(preset.dataset.columnPreset);
                 if (event.target.closest("[data-export-responses]")) this.showExportOptions();
+                if (event.target.closest("[data-response-query]")) this.applyResponseFilters();
+                const refresh = event.target.closest("[data-response-refresh]");
+                if (refresh) void this.refreshResponses(refresh);
                 if (event.target.closest("[data-response-reset]")) this.resetFilters();
                 if (event.target.closest("[data-toggle-columns]")) this.showColumns();
                 if (event.target.closest("[data-privacy-guide]")) this.showPrivacyGuide();
@@ -169,6 +172,8 @@
             this.root.querySelector("[data-response-workspace]").hidden = true;
             this.selectedSurveyId = "";
             this.currentSurvey = null;
+            this.setEnabled(false);
+            this.root.querySelector("[data-response-refresh]").disabled = true;
             const route = window.location.hash.split("?")[0] || "#/M04001";
             window.history.replaceState(null, "", route);
             this.renderProjects();
@@ -177,6 +182,8 @@
         showWorkspace(survey) {
             this.root.querySelector("[data-response-project-view]").hidden = true;
             this.root.querySelector("[data-response-workspace]").hidden = false;
+            this.setEnabled(false);
+            this.root.querySelector("[data-response-refresh]").disabled = !this.selectedSurveyId;
             this.root.querySelector("[data-workspace-project-title]").textContent = survey.title || "제목 없는 설문";
             this.root.querySelector("[data-workspace-project-status]").textContent = this.surveyStatus(survey);
             this.root.querySelector("[data-workspace-project-id]").textContent = survey.id;
@@ -211,9 +218,10 @@
             const optional = this.questionEntries.filter((entry) => !entry.question.required);
             return [...required, ...optional].slice(0, DEFAULT_COLUMN_COUNT);
         },
-        async loadResponses(id) {
-            if (!id) { this.responses = []; this.questionEntries = []; this.questions = []; this.setEnabled(false); this.renderEmpty(); return; }
+        async loadResponses(id, { preserveView = false } = {}) {
+            if (!id) { this.responses = []; this.questionEntries = []; this.questions = []; this.setEnabled(false); this.renderEmpty(); return false; }
             const requestToken = ++this.responseLoadToken;
+            const previousColumns = preserveView ? new Set(this.visibleColumns) : new Set();
             this.renderLoading();
             try {
                 const [surveyPayload, responsePayload] = await Promise.all([
@@ -227,18 +235,22 @@
                 this.questions = this.questionEntries.map((entry) => entry.question);
                 this.responses = responsePayload?.items || responsePayload?.responses || responsePayload || [];
                 if (!Array.isArray(this.responses)) throw new Error("응답 목록 형식이 올바르지 않습니다.");
-                this.visibleColumns = new Set(this.essentialEntries().map((entry) => entry.id));
-                this.page = 1;
+                const availableIds = new Set(this.questionEntries.map((entry) => entry.id));
+                const retainedColumns = [...previousColumns].filter((id) => availableIds.has(id));
+                this.visibleColumns = new Set(retainedColumns.length ? retainedColumns : this.essentialEntries().map((entry) => entry.id));
+                if (!preserveView) this.page = 1;
                 this.root.querySelector("[data-response-title]").textContent = survey.title || "제목 없는 설문";
                 this.setEnabled(true);
                 this.renderMetrics(responsePayload?.summary || {});
                 this.renderTable();
+                return true;
             } catch (error) {
                 if (requestToken !== this.responseLoadToken || String(id) !== this.selectedSurveyId) return;
                 this.responses = [];
                 this.currentSurvey = null;
                 this.setEnabled(false);
                 this.renderError(error.message);
+                return false;
             }
         },
         async fetchAllResponses(id) {
@@ -254,7 +266,7 @@
             return responses;
         },
         setEnabled(enabled) {
-            this.root.querySelectorAll("[data-response-search], [data-response-state], [data-response-from], [data-response-to], [data-response-reset], [data-export-responses], [data-toggle-columns], [data-column-preset]").forEach((element) => { element.disabled = !enabled; });
+            this.root.querySelectorAll("[data-response-search], [data-response-state], [data-response-from], [data-response-to], [data-response-query], [data-response-reset], [data-export-responses], [data-toggle-columns], [data-column-preset]").forEach((element) => { element.disabled = !enabled; });
         },
         renderMetrics(summary = {}) {
             const total = summary.total ?? this.responses.length;
@@ -442,6 +454,25 @@
             this.root.querySelector("[data-response-to]").value = "";
             this.page = 1;
             this.renderTable();
+        },
+        applyResponseFilters() {
+            this.page = 1;
+            this.renderTable();
+            this.root.querySelector("[data-response-state-host]")?.scrollTo({ top: 0 });
+        },
+        async refreshResponses(button) {
+            if (!this.selectedSurveyId || button.disabled) return;
+            button.disabled = true;
+            button.setAttribute("aria-busy", "true");
+            try {
+                const loaded = await this.loadResponses(this.selectedSurveyId, { preserveView: true });
+                if (loaded && this.root) this.context.toast("최신 응답으로 새로고침했습니다.", "success");
+            } finally {
+                if (this.root) {
+                    button.removeAttribute("aria-busy");
+                    button.disabled = !this.selectedSurveyId;
+                }
+            }
         },
         applyColumnPreset(mode) {
             if (mode === "all") this.visibleColumns = new Set(this.questionEntries.map((entry) => entry.id));

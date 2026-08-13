@@ -54,7 +54,7 @@
         <div class="distribution-head-actions">
             <span class="distribution-save-state" data-distribution-save-state role="status">저장 전</span>
             <button class="button" type="button" data-distribution-save>초안 저장</button>
-            <button class="button" type="button" data-distribution-project-back>프로젝트 목록</button>
+            <button class="button workspace-list-button" type="button" data-distribution-project-back><span class="workspace-list-button-icon" aria-hidden="true">←</span><span>프로젝트 목록</span></button>
         </div>
     </header>
 
@@ -67,14 +67,17 @@
                 <div><span class="eyebrow">WHO WILL RECEIVE IT?</span><h3>응답자 정보와 전송 가능한 연락수단</h3><p>국가와 선호 언어는 분리해서 관리합니다. 한 명에게 여러 채널을 선택할 수 있습니다.</p></div>
                 <div class="distribution-panel-actions">
                     <button class="button button-small" type="button" data-download-recipient-sample>CSV 양식</button>
-                    <button class="button button-small" type="button" data-import-recipient>CSV 가져오기</button>
-                    <input type="file" accept=".csv,text/csv" data-recipient-file hidden>
+                    <button class="button button-small" type="button" data-download-recipient-xlsx>Excel 양식</button>
+                    <button class="button button-small" type="button" data-import-recipient>파일 가져오기</button>
+                    <input type="file" accept=".csv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-recipient-file hidden>
                     <button class="button button-small button-primary" type="button" data-add-recipient>＋ 대상자 추가</button>
                 </div>
             </header>
             <div class="card-body">
+                <div class="recipient-import-progress" data-recipient-import-progress role="status" aria-live="polite" hidden><span data-recipient-import-label>파일을 가져오는 중입니다.</span><progress max="100" value="0" data-recipient-import-meter></progress></div>
                 <div class="recipient-list-heading" aria-hidden="true"><span>대상자·국가</span><span>선호 언어</span><span>연락 정보</span><span>전송 가능 채널</span><span></span></div>
                 <div class="distribution-recipient-list" data-recipient-list></div>
+                <nav class="recipient-pagination" data-recipient-pagination aria-label="대상자 목록 페이지" hidden></nav>
                 <p class="distribution-inline-error" data-recipient-error role="alert" tabindex="-1" hidden></p>
                 <aside class="distribution-data-note" role="note"><strong>개인정보 확인</strong><span>업로드 전 수신 동의와 보유 기간을 확인하세요. 연락처는 화면·로그에서 마스킹하고 서버에서 암호화 저장해야 합니다.</span></aside>
             </div>

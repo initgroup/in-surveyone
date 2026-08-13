@@ -4,8 +4,12 @@ import pytest
 from pydantic import ValidationError
 
 from backend.errors import DomainValidationError
+from backend.delivery_security import (
+    recipient_access_token,
+    validate_recipient_access_token,
+)
 from backend.memory_store import MemoryStore
-from backend.models import DeploymentDraftRequest
+from backend.models import DeploymentDraftRequest, DeploymentExecuteRequest
 
 
 def _request(**overrides) -> DeploymentDraftRequest:
@@ -58,6 +62,44 @@ def test_delivery_messages_are_required_only_for_locale_channel_pairs_in_use() -
 
     assert request.messages_by_language["ko"].sms_body == ""
     assert request.messages_by_language["vi"].email_subject == ""
+
+
+def test_empty_delivery_plan_is_valid_only_as_a_draft() -> None:
+    draft = DeploymentDraftRequest.model_validate(
+        {"recipients": [], "channels": [], "messagesByLanguage": {}}
+    )
+
+    assert draft.recipients == []
+    assert draft.channels == []
+
+    with pytest.raises(ValidationError, match="at least 1 item"):
+        DeploymentExecuteRequest.model_validate(
+            {"recipients": [], "channels": [], "messagesByLanguage": {}}
+        )
+
+
+def test_recipient_access_token_is_opaque_scoped_and_tamper_evident() -> None:
+    token = recipient_access_token(
+        "delivery-secret",
+        survey_id="survey-1",
+        survey_version=3,
+        deployment_id="deployment-1",
+        recipient_id="respondent-1",
+    )
+
+    assert token.startswith("d1.")
+    assert "respondent-1" not in token
+    assert validate_recipient_access_token(
+        "delivery-secret", token, survey_id="survey-1", survey_version=3
+    )
+    assert not validate_recipient_access_token(
+        "delivery-secret", token, survey_id="survey-2", survey_version=3
+    )
+    assert not validate_recipient_access_token(
+        "delivery-secret", token[:-1] + ("A" if token[-1] != "A" else "B"),
+        survey_id="survey-1",
+        survey_version=3,
+    )
 
 
 def test_delivery_rejects_unreachable_recipients_and_duplicate_priority() -> None:

@@ -2,7 +2,7 @@
 .skin-heading h2 { margin: 5px 0; font-size: clamp(23px,3vw,32px); letter-spacing: -.05em; }
 .skin-heading p { max-width: 720px; margin: 0; color: var(--muted); }
 .skin-heading label { display: grid; gap: 5px; }
-.skin-project-selector { display: grid; gap: 8px; justify-items: start; }
+.skin-project-selector { display: grid; gap: 8px; justify-items: end; text-align: right; }
 .skin-project-id { overflow: hidden; color: var(--blue-strong); font-family: ui-monospace, monospace; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .skin-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(360px,.62fr); gap: 18px; align-items: start; width: 100%; }
 .skin-controls { display: grid; gap: 14px; }

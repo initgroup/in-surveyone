@@ -47,7 +47,6 @@
 
 <div class="response-workspace" data-response-workspace hidden>
     <section class="response-workspace-header page-section">
-        <button class="button button-small" type="button" data-response-project-back>← 프로젝트 목록</button>
         <div class="response-workspace-title">
             <span class="eyebrow">RAW DATA ANALYSIS</span>
             <h2 data-workspace-project-title tabindex="-1">설문 원자료</h2>
@@ -57,6 +56,7 @@
             <button class="button button-small" type="button" data-column-preset="essential" disabled>핵심 열</button>
             <button class="button button-small" type="button" data-toggle-columns disabled>열 설정</button>
             <button class="button button-small button-success" type="button" data-export-responses disabled>CSV 내보내기</button>
+            <button class="button workspace-list-button" type="button" data-response-project-back><span class="workspace-list-button-icon" aria-hidden="true">←</span><span>프로젝트 목록</span></button>
         </div>
     </section>
 
@@ -80,7 +80,11 @@
             <select data-response-state disabled aria-label="응답 상태"><option value="all">전체 상태</option><option value="complete">완료</option><option value="partial">미완료</option></select>
             <label>수집 시작일<input type="date" data-response-from disabled></label>
             <label>수집 종료일<input type="date" data-response-to disabled></label>
-            <button class="button button-small" type="button" data-response-reset disabled>초기화</button>
+            <div class="response-filter-actions">
+                <button class="button button-small button-primary" type="button" data-response-query disabled>조회</button>
+                <button class="button button-icon response-grid-refresh" type="button" data-response-refresh disabled aria-label="최신 응답 새로고침" title="최신 응답 새로고침"><span aria-hidden="true">↻</span></button>
+                <button class="button button-small" type="button" data-response-reset disabled>초기화</button>
+            </div>
         </div>
         <div class="response-table-state" data-response-state-host>
             <div class="response-empty"><span>≡</span><strong>응답 데이터를 준비하고 있습니다.</strong><p>프로젝트의 문항과 응답 레코드를 확인합니다.</p></div>

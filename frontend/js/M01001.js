@@ -24,7 +24,8 @@
                 const authStart = event.target.closest("[data-start-auth]");
                 if (authStart) { this.context.openAuth(authStart.dataset.startAuth); return; }
                 if (event.target.closest("[data-visitor-database-retry]")) { void this.configureDatabaseGuestEntry({ force: true }); return; }
-                if (event.target.closest("[data-dashboard-create], [data-dashboard-templates]")) { this.openWorkspace("M02001", { create: "1" }); return; }
+                if (event.target.closest("[data-dashboard-create]")) { this.openWorkspace("M02001", { create: "1" }); return; }
+                if (event.target.closest("[data-dashboard-templates]")) { this.openWorkspace("M02001", { create: "1", start: "template" }); return; }
                 if (event.target.closest("[data-dashboard-all]")) { this.openWorkspace("M02001"); return; }
                 if (event.target.closest("[data-dashboard-reports]")) { this.openWorkspace("M05001"); return; }
                 if (event.target.closest("[data-dashboard-refresh]")) { void this.load({ announce: true, refreshGuest: true }); return; }
@@ -36,7 +37,7 @@
         },
 
         openWorkspace(route, params = null) {
-            if (this.isVisitor) this.context.openAuth("guest");
+            if (this.isVisitor) this.context.openAuth("guest", { route, params });
             else this.context.navigate(route, params);
         },
 
@@ -66,7 +67,12 @@
             }
             try {
                 const dashboard = await this.context.api.get("/api/dashboard");
-                this.renderMetrics(dashboard.summary || dashboard.metrics || dashboard);
+                const summary = dashboard.summary || dashboard.metrics || dashboard;
+                this.renderMetrics({
+                    ...summary,
+                    todayResponses: dashboard.todayResponses ?? summary.todayResponses,
+                    responseTrend: dashboard.responseTrend ?? summary.responseTrend
+                });
                 this.renderRecent(dashboard.recentSurveys || dashboard.surveys || []);
                 this.renderTemplateEntry();
             } catch (error) {
@@ -118,7 +124,7 @@
             const values = [
                 { label: "작성 중", value: summary.drafts ?? summary.draftCount ?? summary.draftSurveys ?? 0, hint: "초안을 이어서 완성하세요" },
                 { label: "진행 중", value: summary.active ?? summary.publishedCount ?? summary.publishedSurveys ?? 0, hint: "현재 응답 수집 중" },
-                { label: "누적 응답", value: summary.responses ?? summary.responseCount ?? summary.totalResponses ?? 0, hint: "실시간으로 반영됩니다" },
+                { label: "누적 응답", value: summary.responses ?? summary.responseCount ?? summary.totalResponses ?? 0, hint: "새로고침 시 반영됩니다" },
                 { label: "완료 설문", value: summary.closed ?? summary.closedCount ?? Math.max(0, (summary.totalSurveys || 0) - (summary.draftSurveys || 0) - (summary.publishedSurveys || 0)), hint: "보고서를 만들 수 있어요" }
             ];
             this.root.querySelector("[data-dashboard-metrics]").innerHTML = values.map((item, index) => `
@@ -128,7 +134,31 @@
                     <span class="metric-trend">${item.hint}</span>
                 </article>
             `).join("");
-            this.root.querySelector("[data-live-responses]").textContent = `+${Common.formatNumber(summary.todayResponses ?? summary.responsesToday ?? 0)}`;
+            const trend = this.renderResponseTrend(summary.responseTrend);
+            const todayResponses = summary.todayResponses ?? summary.responsesToday ?? trend.at(-1)?.responses ?? 0;
+            this.root.querySelector("[data-live-responses]").textContent = `+${Common.formatNumber(todayResponses)}`;
+        },
+
+        renderResponseTrend(points) {
+            const host = this.root.querySelector("[data-response-trend]");
+            if (!host) return [];
+            const source = Array.isArray(points) ? points.slice(-8) : [];
+            const normalized = source.map((point) => ({
+                date: String(point.date || ""),
+                responses: Math.max(0, Number(point.responses || 0))
+            }));
+            while (normalized.length < 8) normalized.unshift({ date: "", responses: 0 });
+            const maximum = Math.max(1, ...normalized.map((point) => point.responses));
+            host.innerHTML = normalized.map((point) => {
+                const height = point.responses ? Math.max(12, Math.round((point.responses / maximum) * 100)) : 4;
+                const label = point.date ? `${point.date} · ${Common.formatNumber(point.responses)}건` : `응답 ${Common.formatNumber(point.responses)}건`;
+                return `<i style="--h:${height}%" title="${Common.escapeHtml(label)}"></i>`;
+            }).join("");
+            const total = normalized.reduce((sum, point) => sum + point.responses, 0);
+            host.setAttribute("aria-label", total
+                ? `최근 8일 응답 추이. 총 ${Common.formatNumber(total)}건, 오늘 ${Common.formatNumber(normalized.at(-1)?.responses || 0)}건.`
+                : "최근 8일 응답이 없습니다.");
+            return normalized;
         },
 
         renderRecent(items) {

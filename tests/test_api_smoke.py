@@ -188,6 +188,9 @@ def test_guest_create_publish_respond_and_report_flow() -> None:
         assert dashboard.status_code == 200
         assert dashboard.json()["data"]["totalSurveys"] == 1
         assert dashboard.json()["data"]["totalResponses"] == 1
+        assert dashboard.json()["data"]["todayResponses"] == 1
+        assert len(dashboard.json()["data"]["responseTrend"]) == 8
+        assert sum(point["responses"] for point in dashboard.json()["data"]["responseTrend"]) == 1
 
         assert owner.post("/api/auth/logout").status_code == 200
         assert owner.get("/api/auth/me").status_code == 401
@@ -314,6 +317,14 @@ def test_distribution_execution_is_immutable_and_new_batch_keeps_masked_contacts
         assert created.status_code == 201, created.text
         survey_id = created.json()["data"]["id"]
         assert owner.post(f"/api/surveys/{survey_id}/publish", json={}).status_code == 200
+        confirmed_page = owner.get(
+            "/api/surveys/page?status=published&stage=confirmed&page=1&pageSize=24"
+        )
+        assert confirmed_page.status_code == 200, confirmed_page.text
+        confirmed_item = next(
+            item for item in confirmed_page.json()["data"]["items"] if item["id"] == survey_id
+        )
+        assert confirmed_item["deploymentStatus"] == "READY"
 
         plan = {
             "recipients": [
@@ -356,6 +367,14 @@ def test_distribution_execution_is_immutable_and_new_batch_keeps_masked_contacts
         executed_data = executed.json()["data"]
         assert executed_data["execution"]["executionStatus"] == "DISABLED"
         executed_deployment_id = executed_data["deployment"]["deploymentId"]
+        active_page = owner.get(
+            "/api/surveys/page?status=published&stage=active&page=1&pageSize=24"
+        )
+        assert active_page.status_code == 200, active_page.text
+        active_item = next(
+            item for item in active_page.json()["data"]["items"] if item["id"] == survey_id
+        )
+        assert active_item["deploymentStatus"] == "ACTIVE"
 
         immutable = owner.put(
             f"/api/deployments/by-survey/{survey_id}",
@@ -380,6 +399,64 @@ def test_distribution_execution_is_immutable_and_new_batch_keeps_masked_contacts
         assert next_data["revision"] == 1
         assert next_data["executionStatus"] is None
         assert "*" in next_data["recipients"][0]["email"]
+
+
+def test_empty_distribution_draft_can_be_saved_but_not_executed() -> None:
+    with TestClient(app) as owner:
+        _signup(owner, "empty-distribution-draft")
+        created = owner.post(
+            "/api/surveys",
+            json={"title": "대상자 입력 전 배포 초안", "templateId": "social-research"},
+        )
+        assert created.status_code == 201, created.text
+        survey_id = created.json()["data"]["id"]
+        assert owner.post(f"/api/surveys/{survey_id}/publish", json={}).status_code == 200
+
+        draft = {
+            "recipients": [],
+            "channels": [],
+            "messagesByLanguage": {},
+            "status": "DRAFT",
+        }
+        saved = owner.put(f"/api/deployments/by-survey/{survey_id}", json=draft)
+        assert saved.status_code == 200, saved.text
+        saved_data = saved.json()["data"]
+        assert saved_data["revision"] == 1
+        assert saved_data["recipients"] == []
+        assert saved_data["channels"] == []
+
+        loaded = owner.get(f"/api/deployments/by-survey/{survey_id}")
+        assert loaded.status_code == 200, loaded.text
+        assert loaded.json()["data"]["recipients"] == []
+
+        execution = owner.post(
+            f"/api/deployments/by-survey/{survey_id}/execute",
+            json={**draft, "revision": saved_data["revision"]},
+        )
+        assert execution.status_code == 422
+
+
+def test_recipient_file_import_and_excel_sample_endpoints() -> None:
+    with TestClient(app) as owner:
+        _signup(owner, "recipient-import")
+        text = (
+            "name,countryCode,preferredLanguage,email,mobile,fax,kakaoId,channels\r\n"
+            "응답자 A001,KR,ko,sample@example.test,,,,EMAIL\r\n"
+        ).encode("cp949")
+        imported = owner.post(
+            "/api/deployments/recipients/import",
+            files={"upload": ("recipients.txt", text, "text/plain")},
+        )
+        assert imported.status_code == 200, imported.text
+        imported_data = imported.json()["data"]
+        assert imported_data["total"] == 1
+        assert imported_data["encoding"] == "cp949"
+        assert imported_data["recipients"][0]["name"] == "응답자 A001"
+
+        sample = owner.get("/api/deployments/recipients/sample.xlsx")
+        assert sample.status_code == 200, sample.text
+        assert sample.content.startswith(b"PK")
+        assert "spreadsheetml.sheet" in sample.headers["content-type"]
 
 
 def test_report_uses_only_latest_published_version_responses_and_snapshot() -> None:

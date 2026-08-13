@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -65,6 +66,34 @@ def test_admin_member_list_reset_and_status_workflow(monkeypatch) -> None:
         assert guest_item["isGuest"] is True
         assert guest_item["guestMode"] == "database"
         assert guest_item["expiresAt"] is not None
+        assert guest_item["projectCount"] == 0
+        unused_guest_page = admin_client.get(
+            f"/api/admin/members?memberType=guest_unused&query={guest_login_id}"
+        )
+        assert unused_guest_page.status_code == 200
+        assert unused_guest_page.json()["data"]["total"] == 1
+        created_guest_project = guest_client.post(
+            "/api/surveys", json={"title": "게스트 사용 여부 확인"}
+        )
+        assert created_guest_project.status_code == 201, created_guest_project.text
+        used_guest_page = admin_client.get(
+            f"/api/admin/members?memberType=guest_unused&query={guest_login_id}"
+        )
+        assert used_guest_page.status_code == 200
+        assert used_guest_page.json()["data"]["total"] == 0
+        expired_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        memory_store._users[guest_id] = replace(
+            memory_store._users[guest_id], tenant_expires_at=expired_at
+        )
+        guest_tenant_id = memory_store._users[guest_id].tenant_id
+        memory_store._tenants[guest_tenant_id] = replace(
+            memory_store._tenants[guest_tenant_id], expires_at=expired_at
+        )
+        expired_guest_page = admin_client.get(
+            f"/api/admin/members?memberType=guest_expired&query={guest_login_id}"
+        )
+        assert expired_guest_page.status_code == 200
+        assert expired_guest_page.json()["data"]["total"] == 1
         member_page = admin_client.get(
             f"/api/admin/members?memberType=member&query={guest_login_id}"
         )
