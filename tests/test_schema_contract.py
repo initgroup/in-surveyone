@@ -10,7 +10,6 @@ DDL_PATH = DATABASE / "SURVEYONE_SYSTEM_DDL.sql"
 ALT_PATH = DATABASE / "SURVEYONE_SYSTEM_ALT.sql"
 DROP_PATH = DATABASE / "SURVEYONE_SYSTEM_DROP.sql"
 TRUC_PATH = DATABASE / "SURVEYONE_SYSTEM_TRUC.sql"
-LEGACY_DROP_PATH = DATABASE / "TEMP_SVY_LEGACY_DROP.sql"
 
 PREFIX = "INIT$SVY_"
 EXPECTED_TABLES = {
@@ -656,32 +655,6 @@ def test_response_retry_and_answer_tenant_upgrade_contract() -> None:
     assert "INIT$SVY_IX_ANSWER_TENANT" in alt
 
 
-def test_temporary_legacy_drop_is_confirmed_and_prefix_scoped() -> None:
-    legacy_drop = _read(LEGACY_DROP_PATH)
-
-    assert "DEFINE CONFIRM_SVY_LEGACY_DROP = 'DROP_SVY_LEGACY'" in legacy_drop
-    assert "EXECUTION ENABLED" in legacy_drop
-    assert "ACCEPT CONFIRM_SVY_LEGACY_DROP" not in legacy_drop
-    assert "SET VERIFY OFF" in legacy_drop
-    assert "V_CONFIRMATION <> 'DROP_SVY_LEGACY'" in legacy_drop
-    assert "SUBSTR(OBJECT_NAME, 1, 4) = 'SVY$'" in legacy_drop
-    assert "SUBSTR(TABLE_NAME, 1, 4) = 'SVY$'" in legacy_drop
-    assert "OBJECT_TYPE IN ('TABLE', 'FUNCTION')" in legacy_drop
-    assert "OBJECT_TYPE = 'FUNCTION'" in legacy_drop
-    assert "V_EXPECTED_SCHEMA CONSTANT VARCHAR2(128 BYTE) := 'INIT$BASE02'" in legacy_drop
-    assert "IF USER <> V_EXPECTED_SCHEMA" in legacy_drop
-    assert "USER_CONSTRAINTS" in legacy_drop
-    assert "USER_DEPENDENCIES" in legacy_drop
-    assert "DBA_CONSTRAINTS" not in legacy_drop
-    assert "DBA_DEPENDENCIES" not in legacy_drop
-    assert "ALL_CONSTRAINTS" not in legacy_drop
-    assert "ALL_DEPENDENCIES" not in legacy_drop
-    assert "DROP FUNCTION " in legacy_drop
-    assert "DROP TABLE " in legacy_drop
-    assert "DBMS_ASSERT.ENQUOTE_NAME" not in legacy_drop
-    assert "INIT$SVY_" in legacy_drop  # The header explicitly documents exclusion.
-
-
 def test_member_withdrawal_marker_is_present_in_fresh_and_upgrade_schema() -> None:
     ddl_tables = _table_definitions(_read(DDL_PATH))
     alt = _read(ALT_PATH)
@@ -692,3 +665,26 @@ def test_member_withdrawal_marker_is_present_in_fresh_and_upgrade_schema() -> No
     assert "'INIT$SVY_TB_USER'" in alt
     assert "'WITHDRAWN_AT'" in alt
     assert "irreversible member withdrawal marker" in alt
+
+
+def test_runtime_sql_sections_are_referenced_by_backend() -> None:
+    backend_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((ROOT / "backend").rglob("*.py"))
+    )
+    system_suffixes = ("_DDL.SQL", "_ALT.SQL", "_DROP.SQL", "_TRUC.SQL")
+    unused: list[str] = []
+    for sql_path in sorted(DATABASE.glob("*.sql")):
+        if sql_path.name.upper().endswith(system_suffixes):
+            continue
+        identifiers = re.findall(
+            r"(?m)^-- \[([A-Za-z0-9_]+)\][ \t]*$",
+            sql_path.read_text(encoding="utf-8"),
+        )
+        unused.extend(
+            f"{sql_path.name}:{identifier}"
+            for identifier in identifiers
+            if f'"{identifier}"' not in backend_source
+        )
+
+    assert unused == []
