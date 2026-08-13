@@ -1,0 +1,60 @@
+<nav class="survey-flow skin-workflow" data-skin-flow aria-label="설문 프로젝트 단계">
+    <ol>
+        <li class="is-complete"><button type="button" data-skin-flow-route="M02001"><span>STEP 01</span><strong>기본정보</strong><small>조사 조건과 목표 설정</small></button></li>
+        <li class="is-current" aria-current="step"><span class="survey-flow-step"><span>STEP 02</span><strong>스킨 설정</strong><small>색상·글꼴·응답 화면</small></span></li>
+        <li><button type="button" data-skin-flow-route="M02004"><span>STEP 03</span><strong>응답 UI</strong><small>스크롤 또는 한 문항씩</small></button></li>
+        <li><button type="button" data-skin-flow-route="M02003"><span>STEP 04</span><strong>설문 편집</strong><small>문항 작성·저장·확정</small></button></li>
+    </ol>
+</nav>
+
+<section class="skin-heading page-section">
+    <div><span class="eyebrow">BRAND & PROJECT SETTINGS</span><h2>기관의 신뢰를 담은 설문 화면을 만드세요.</h2><p>공통 접근성 기준은 유지하면서 프로젝트별 색상, 모서리, 글꼴, 헤더 스타일을 적용합니다.</p></div>
+    <div class="skin-project-selector"><span class="skin-project-id" data-skin-project-id>프로젝트를 선택해 주세요.</span><button class="button" type="button" data-skin-project-list>프로젝트 목록에서 선택</button></div>
+</section>
+
+<div class="skin-layout">
+    <section class="skin-controls">
+        <article class="card skin-control-card">
+            <header class="card-header"><div><span class="eyebrow">PRESET</span><h2>스킨 프리셋</h2></div></header>
+            <div class="card-body"><div class="skin-preset-grid" data-skin-presets></div></div>
+        </article>
+
+        <article class="card skin-control-card">
+            <header class="card-header"><div><span class="eyebrow">CUSTOM TOKENS</span><h2>세부 스타일</h2></div><span class="tag">프로젝트별</span></header>
+            <div class="card-body form-grid">
+                <div class="form-grid form-grid-two"><label class="form-field">대표 색상<span class="color-field"><input type="color" value="#2457d6" data-skin-primary><input type="text" value="#2457d6" data-skin-primary-text></span></label><label class="form-field">강조 색상<span class="color-field"><input type="color" value="#4ed7bd" data-skin-accent><input type="text" value="#4ed7bd" data-skin-accent-text></span></label></div>
+                <div class="form-grid form-grid-two"><label class="form-field">글꼴<select data-skin-font><option value="system">기본 한글 시스템 글꼴</option><option value="serif">차분한 명조</option><option value="rounded">부드러운 고딕</option></select></label><label class="form-field">카드 모서리<select data-skin-radius><option value="6px">단정하게</option><option value="12px">기본</option><option value="18px">부드럽게</option><option value="24px">둥글게</option></select></label></div>
+                <label class="form-field">상단 이미지<input type="file" accept="image/png,image/jpeg,image/webp" data-skin-header-image><span class="field-help">권장 1600×400px, 2MB 이하. 현재 미리보기는 브라우저에서만 처리됩니다.</span></label>
+                <label class="setting-row"><span><strong>기관 로고 표시</strong><small>응답 화면 상단에 IN-SURVEYONE 대신 회원사 로고를 표시합니다.</small></span><input type="checkbox" data-skin-show-logo></label>
+                <label class="setting-row"><span><strong>고대비 응답 모드</strong><small>본문 대비와 포커스 표시를 한 단계 강화합니다.</small></span><input type="checkbox" data-skin-contrast></label>
+            </div>
+        </article>
+
+        <article class="card skin-control-card">
+            <header class="card-header"><div><span class="eyebrow">PROJECT POLICY</span><h2>공개 프로젝트 설정</h2></div></header>
+            <div class="card-body form-grid">
+                <label class="form-field">응답 URL 별칭<div class="slug-field"><span>/s/</span><input type="text" data-project-slug placeholder="배포 시 자동 생성" disabled></div></label>
+                <label class="form-field">홈페이지 게시 제목<input type="text" data-project-share-title placeholder="공유 카드 제목"></label>
+                <label class="form-field">검색·공유 설명<textarea rows="3" data-project-share-description placeholder="SNS나 메신저 공유 시 표시할 설명"></textarea></label>
+            </div>
+        </article>
+
+        <div class="skin-save-row"><span data-skin-save-state>설문을 선택하면 저장할 수 있습니다. 확정된 버전은 바뀌지 않으며 다음 확정부터 반영됩니다.</span><div><button class="button" type="button" data-save-skin disabled>변경사항 저장</button><button class="button button-primary" type="button" data-skin-next disabled>저장 후 STEP 03으로</button></div></div>
+    </section>
+
+    <aside class="skin-preview-column">
+        <div class="preview-toolbar"><div><span class="eyebrow">LIVE PREVIEW</span><strong>응답 화면</strong></div><div class="segmented-control"><button type="button" aria-selected="true" data-preview-device="mobile">모바일</button><button type="button" aria-selected="false" data-preview-device="desktop">PC</button></div></div>
+        <div class="device-stage" data-device-stage>
+            <div class="device-frame" data-device-frame>
+                <div class="device-speaker"></div>
+                <div class="skin-survey-preview" data-skin-preview>
+                    <div class="skin-preview-header" data-skin-preview-header><img src="/frontend/assets/images/surveyone-mark.svg" alt="" data-preview-logo></div>
+                    <div class="skin-preview-progress"><i></i></div>
+                    <section class="skin-preview-cover"><span>고객 경험 조사</span><h3 data-preview-title>서비스 만족도 설문</h3><p data-preview-description>더 나은 서비스를 위해 여러분의 의견을 들려주세요.</p><small>약 3분 · 8개 문항</small></section>
+                    <section class="skin-preview-question"><span>1 / 8</span><strong>이용하신 서비스에 얼마나 만족하시나요? <i>*</i></strong><label><input type="radio" name="skinDemo"> 매우 만족</label><label><input type="radio" name="skinDemo"> 만족</label><label><input type="radio" name="skinDemo"> 보통</label><button type="button">다음</button></section>
+                </div>
+            </div>
+        </div>
+        <p class="preview-note">미리보기는 색상과 레이아웃 확인용입니다. 실제 응답 화면은 문항 분기와 검증을 함께 적용합니다.</p>
+    </aside>
+</div>

@@ -20,75 +20,95 @@
         bind() {
             this.onClick = (event) => {
                 const guestStart = event.target.closest("[data-start-guest]");
-                if (guestStart) this.context.openAuth("guest");
+                if (guestStart) { this.context.openAuth("guest"); return; }
                 const authStart = event.target.closest("[data-start-auth]");
-                if (authStart) this.context.openAuth(authStart.dataset.startAuth);
-                if (event.target.closest("[data-dashboard-create], [data-dashboard-templates]")) this.openWorkspace("M02002");
-                if (event.target.closest("[data-dashboard-all]")) this.openWorkspace("M02001");
-                if (event.target.closest("[data-dashboard-reports]")) this.openWorkspace("M05001");
-                if (event.target.closest("[data-dashboard-refresh]")) this.load();
-                if (event.target.closest("[data-blank-survey]")) {
-                    if (this.isVisitor) this.context.openAuth("guest"); else this.createBlankSurvey();
-                }
+                if (authStart) { this.context.openAuth(authStart.dataset.startAuth); return; }
+                if (event.target.closest("[data-visitor-database-retry]")) { void this.configureDatabaseGuestEntry({ force: true }); return; }
+                if (event.target.closest("[data-dashboard-create], [data-dashboard-templates]")) { this.openWorkspace("M02001", { create: "1" }); return; }
+                if (event.target.closest("[data-dashboard-all]")) { this.openWorkspace("M02001"); return; }
+                if (event.target.closest("[data-dashboard-reports]")) { this.openWorkspace("M05001"); return; }
+                if (event.target.closest("[data-dashboard-refresh]")) { void this.load({ announce: true, refreshGuest: true }); return; }
+                if (event.target.closest("[data-blank-survey]")) { this.openWorkspace("M02001", { create: "1" }); return; }
                 const project = event.target.closest("[data-open-survey]");
                 if (project) this.context.navigate("M02003", { surveyId: project.dataset.openSurvey });
-                const template = event.target.closest("[data-template-id]");
-                if (template) {
-                    if (this.isVisitor) this.context.openAuth("guest");
-                    else this.context.navigate("M02002", { templateId: template.dataset.templateId });
-                }
             };
             this.root.addEventListener("click", this.onClick);
         },
 
-        openWorkspace(route) {
+        openWorkspace(route, params = null) {
             if (this.isVisitor) this.context.openAuth("guest");
-            else this.context.navigate(route);
+            else this.context.navigate(route, params);
         },
 
-        async load() {
+        async load({ announce = false, refreshGuest = false } = {}) {
+            if (this.loading) return;
+            this.loading = true;
+            const refreshButton = this.root.querySelector("[data-dashboard-refresh]");
+            if (refreshButton) {
+                refreshButton.disabled = true;
+                refreshButton.setAttribute("aria-busy", "true");
+                refreshButton.textContent = "새로고침 중…";
+            }
             if (this.isVisitor) {
                 this.renderMetrics({ drafts: 0, active: 0, responses: 0, closed: 0 });
                 this.renderRecent([]);
                 try {
-                    const [templatesPayload] = await Promise.all([
-                        this.context.api.get("/api/templates"),
-                        this.configureDatabaseGuestEntry()
-                    ]);
-                    const templates = templatesPayload.items || templatesPayload.templates || templatesPayload;
-                    this.renderTemplates(Array.isArray(templates) ? templates.slice(0, 3) : []);
+                    await this.configureDatabaseGuestEntry({ force: refreshGuest });
+                    this.renderTemplateEntry();
                 } catch (error) {
-                    this.renderTemplates([]);
-                    console.warn("공개 템플릿을 불러오지 못했습니다.", error);
+                    this.renderTemplateEntry();
+                    console.warn("게스트 시작 상태를 확인하지 못했습니다.", error);
+                    if (announce) this.context.toast("일부 대시보드 정보를 새로고침하지 못했습니다.", "error");
+                    announce = false;
                 }
+                this.finishLoading(announce);
                 return;
             }
             try {
-                const [dashboard, templatesPayload] = await Promise.all([
-                    this.context.api.get("/api/dashboard"),
-                    this.context.api.get("/api/templates")
-                ]);
+                const dashboard = await this.context.api.get("/api/dashboard");
                 this.renderMetrics(dashboard.summary || dashboard.metrics || dashboard);
                 this.renderRecent(dashboard.recentSurveys || dashboard.surveys || []);
-                const templates = templatesPayload.items || templatesPayload.templates || templatesPayload;
-                this.renderTemplates(Array.isArray(templates) ? templates.slice(0, 3) : []);
+                this.renderTemplateEntry();
             } catch (error) {
                 this.renderMetrics({ drafts: 0, active: 0, responses: 0, closed: 0 });
                 this.renderRecent([]);
-                this.renderTemplates([]);
+                this.renderTemplateEntry();
                 this.context.toast(error.message, "error");
+                announce = false;
+            } finally {
+                this.finishLoading(announce);
             }
         },
 
-        async configureDatabaseGuestEntry() {
-            const capabilities = await this.context.loadGuestCapabilities();
+        finishLoading(announce) {
+            if (!this.loading) return;
+            this.loading = false;
+            const refreshButton = this.root?.querySelector("[data-dashboard-refresh]");
+            if (refreshButton) {
+                refreshButton.disabled = false;
+                refreshButton.removeAttribute("aria-busy");
+                refreshButton.textContent = "새로고침";
+            }
+            if (announce) this.context.toast("대시보드 정보를 새로고침했습니다.", "success");
+        },
+
+        async configureDatabaseGuestEntry({ force = false } = {}) {
+            const button = this.root.querySelector("[data-visitor-database-button]");
+            const retry = this.root.querySelector("[data-visitor-database-retry]");
+            const status = this.root.querySelector("[data-visitor-database-status]");
+            if (button) button.disabled = true;
+            if (retry) retry.disabled = true;
+            if (status) status.textContent = "발급 상태를 확인하고 있습니다.";
+            const capabilities = await this.context.loadGuestCapabilities({ force });
             const database = capabilities?.modes?.find((mode) => mode.mode === "database");
             const card = this.root.querySelector("[data-visitor-database-card]");
-            const button = this.root.querySelector("[data-visitor-database-button]");
-            const status = this.root.querySelector("[data-visitor-database-status]");
             const available = Boolean(database?.available);
             card?.classList.toggle("is-disabled", !available);
             if (button) button.disabled = !available;
+            if (retry) {
+                retry.hidden = available;
+                retry.disabled = available;
+            }
             if (status) status.textContent = available
                 ? "현재 발급할 수 있습니다. 유효기간과 이용 한도는 발급 화면에서 확인하세요."
                 : `현재 발급할 수 없습니다. ${database?.reason || "서비스 저장소 연결 상태를 확인해 주세요."}`;
@@ -124,35 +144,18 @@
             host.innerHTML = items.slice(0, 4).map((item) => {
                 const status = item.status || "draft";
                 const statusLabel = ({ draft: "작성 중", published: "진행 중", active: "진행 중", closed: "종료", paused: "일시정지" })[status] || status;
+                const shortId = String(item.id || "").slice(-8).toUpperCase();
                 return `<article class="recent-item">
-                    <div class="recent-title"><span class="status-badge status-${Common.escapeHtml(status)}">${statusLabel}</span><strong>${Common.escapeHtml(item.title)}</strong><small>${Common.escapeHtml(item.category || item.templateName || "직접 작성")}</small></div>
+                    <div class="recent-title"><span class="status-badge status-${Common.escapeHtml(status)}">${statusLabel}</span><strong>${Common.escapeHtml(item.title)}</strong><small title="${Common.escapeHtml(item.id)}">${Common.escapeHtml(item.category || item.templateName || "직접 작성")} · ID ${Common.escapeHtml(shortId)}</small></div>
                     <div class="recent-meta"><span>응답</span><strong>${Common.formatNumber(item.responseCount || 0)}</strong></div>
                     <button class="button recent-action" type="button" data-open-survey="${Common.escapeHtml(item.id)}" aria-label="${Common.escapeHtml(item.title)} 열기">→</button>
                 </article>`;
             }).join("");
         },
 
-        renderTemplates(items) {
+        renderTemplateEntry() {
             const host = this.root.querySelector("[data-dashboard-template-list]");
-            if (!items.length) {
-                host.innerHTML = `<button class="template-mini-card" type="button" data-dashboard-templates><span class="template-mini-icon">＋</span><h3>템플릿 라이브러리</h3><p>목적별 기본 설문을 확인해보세요.</p></button>`;
-                return;
-            }
-            host.innerHTML = items.map((item, index) => `<button class="template-mini-card" type="button" data-template-id="${Common.escapeHtml(item.id || item.code)}">
-                <span class="template-mini-top"><span class="template-mini-icon">${["社", "廉", "事"][index] || "問"}</span><span class="tag">${Common.escapeHtml(item.category || "추천")}</span></span>
-                <h3>${Common.escapeHtml(item.name || item.title)}</h3>
-                <p>${Common.escapeHtml(item.description || "검증된 기본 문항을 자유롭게 편집할 수 있습니다.")}</p>
-                <span class="template-mini-meta"><span>${Common.formatNumber(item.questionCount || Common.questionsOf(item).length)}개 문항</span><span>·</span><span>약 ${item.estimatedMinutes || 5}분</span></span>
-            </button>`).join("");
-        },
-
-        async createBlankSurvey() {
-            try {
-                const result = await this.context.api.post("/api/surveys", { title: "제목 없는 설문" });
-                const survey = result.survey || result;
-                this.context.toast("새 설문 초안을 만들었습니다.", "success");
-                this.context.navigate("M02003", { surveyId: survey.id });
-            } catch (error) { this.context.toast(error.message, "error"); }
+            host.innerHTML = `<button class="template-mini-card" type="button" data-dashboard-templates><span class="template-mini-icon">＋</span><h3>새 설문 프로젝트</h3><p>기본정보를 입력한 뒤 STEP 04 설문 편집의 템플릿 레이어에서 시작 구조를 선택할 수 있습니다.</p></button>`;
         },
 
         destroy() {

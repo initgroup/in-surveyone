@@ -1,55 +1,97 @@
-<section class="project-intro page-section">
-    <div>
-        <span class="eyebrow">SURVEY PROJECTS</span>
-        <h2>설문의 전체 생애주기를 관리합니다.</h2>
-        <p>작성 중인 설문부터 배포·종료된 프로젝트까지 상태와 응답 흐름을 한곳에서 확인하세요.</p>
-    </div>
-    <button class="button button-primary" type="button" data-project-create>＋ 새 설문 프로젝트</button>
-</section>
-
-<section class="toolbar project-toolbar" aria-label="설문 프로젝트 검색 및 필터">
-    <div class="toolbar-group project-status-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected="true" data-status-filter="all">전체 <span data-count-all>0</span></button>
-        <button type="button" role="tab" aria-selected="false" data-status-filter="draft">작성 중</button>
-        <button type="button" role="tab" aria-selected="false" data-status-filter="published">진행 중</button>
-        <button type="button" role="tab" aria-selected="false" data-status-filter="closed">종료</button>
-    </div>
-    <div class="toolbar-group">
-        <label class="search-field"><span class="sr-only">프로젝트 검색</span><input type="search" placeholder="설문 제목 검색" data-project-search></label>
-        <select data-project-sort aria-label="정렬">
-            <option value="updated">최근 수정순</option>
-            <option value="created">생성일순</option>
-            <option value="responses">응답 많은 순</option>
-        </select>
-        <div class="segmented-control" aria-label="보기 방식">
-            <button type="button" aria-selected="true" data-view="grid" title="카드 보기">▦</button>
-            <button type="button" aria-selected="false" data-view="list" title="목록 보기">☷</button>
+<div data-project-list-view>
+    <section class="project-intro page-section">
+        <div>
+            <span class="eyebrow">SURVEY PROJECTS</span>
+            <h2>설문의 전체 생애주기를 관리합니다.</h2>
+            <p>작성 중인 설문부터 배포·종료된 프로젝트까지 상태와 응답 흐름을 한곳에서 확인하세요.</p>
         </div>
-    </div>
-</section>
+        <button class="button button-primary" type="button" data-project-create>＋ 새 설문 프로젝트</button>
+    </section>
 
-<section class="project-content" data-project-content aria-live="polite">
-    <div class="project-grid" data-project-grid>
-        <article class="project-card skeleton"></article><article class="project-card skeleton"></article><article class="project-card skeleton"></article>
-    </div>
-</section>
+    <section class="toolbar project-toolbar" aria-label="설문 프로젝트 검색 및 필터">
+        <div class="toolbar-group project-status-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected="true" data-status-filter="all">전체 <span data-count-all>0</span></button>
+            <button type="button" role="tab" aria-selected="false" data-status-filter="draft">작성 중</button>
+            <button type="button" role="tab" aria-selected="false" data-status-filter="published">진행 중</button>
+            <button type="button" role="tab" aria-selected="false" data-status-filter="closed">종료</button>
+        </div>
+        <div class="toolbar-group">
+            <label class="search-field"><span class="sr-only">프로젝트 검색</span><input type="search" placeholder="설문 제목 또는 프로젝트 ID 검색" data-project-search></label>
+            <label class="project-sort-field">
+                <span class="sr-only">프로젝트 정렬 기준</span>
+                <select data-project-sort aria-describedby="projectSortStatus">
+                    <option value="updated-desc">수정일 최신순</option>
+                    <option value="updated-asc">수정일 오래된순</option>
+                    <option value="created-desc">생성일 최신순</option>
+                    <option value="responses">응답 많은 순</option>
+                    <option value="title">이름 가나다순</option>
+                </select>
+            </label>
+            <span class="sr-only" id="projectSortStatus" data-project-sort-status role="status" aria-live="polite"></span>
+            <div class="segmented-control" aria-label="보기 방식">
+                <button type="button" aria-selected="true" data-view="grid" title="카드 보기">▦</button>
+                <button type="button" aria-selected="false" data-view="list" title="목록 보기">☷</button>
+            </div>
+        </div>
+    </section>
 
-<template data-project-card-template>
-    <article class="project-card">
-        <header class="project-card-head">
-            <span class="status-badge"></span>
-            <button class="icon-button project-more" type="button" aria-label="프로젝트 메뉴">•••</button>
-        </header>
-        <button class="project-card-main" type="button">
-            <span class="project-category"></span>
-            <h3></h3>
-            <p></p>
-        </button>
-        <dl class="project-stats">
-            <div><dt>문항</dt><dd data-stat-questions>0</dd></div>
-            <div><dt>응답</dt><dd data-stat-responses>0</dd></div>
-            <div><dt>완료율</dt><dd data-stat-rate>0%</dd></div>
-        </dl>
-        <footer class="project-card-footer"><span data-updated-at></span><div class="project-card-actions"></div></footer>
-    </article>
-</template>
+    <section class="project-content" data-project-content aria-live="polite">
+        <div class="project-grid" data-project-grid>
+            <article class="project-card skeleton"></article><article class="project-card skeleton"></article><article class="project-card skeleton"></article>
+        </div>
+        <nav class="project-pagination" data-project-pagination aria-label="프로젝트 목록 페이지" hidden></nav>
+    </section>
+</div>
+
+<div class="project-registration-view" data-project-form-view hidden aria-labelledby="projectFormTitle">
+    <nav class="survey-flow" data-project-create-flow aria-label="설문 프로젝트 단계">
+        <ol>
+            <li class="is-current" aria-current="step"><span class="survey-flow-step"><span>STEP 01</span><strong>기본정보</strong><small>조사 조건과 목표 설정</small></span></li>
+            <li><button type="button" data-project-flow="M02005" disabled><span>STEP 02</span><strong>스킨 설정</strong><small>색상·글꼴·응답 화면</small></button></li>
+            <li><button type="button" data-project-flow="M02004" disabled><span>STEP 03</span><strong>응답 UI</strong><small>스크롤 또는 한 문항씩</small></button></li>
+            <li><button type="button" data-project-flow="M02003" disabled><span>STEP 04</span><strong>설문 편집</strong><small>문항 작성·저장·확정</small></button></li>
+        </ol>
+    </nav>
+
+<section class="project-registration">
+
+    <section class="project-form-heading page-section">
+        <div><span class="eyebrow" data-project-form-kicker>NEW SURVEY PROJECT</span><h2 id="projectFormTitle" data-project-form-title>프로젝트 기본정보를 입력하세요.</h2><p>이 정보는 조사 운영 기준과 응답 화면 설정에 함께 사용됩니다.</p></div>
+        <button class="button" type="button" data-project-form-cancel>목록으로</button>
+    </section>
+
+    <form class="project-form card" data-project-form novalidate>
+        <div class="project-form-section">
+            <div class="project-form-section-title"><span>01</span><div><h3>조사 개요</h3><p>목록과 응답 안내에 표시할 기본 내용을 입력합니다.</p></div></div>
+            <div class="form-grid form-grid-two">
+                <label class="form-field project-form-wide">설문조사명 <strong aria-hidden="true">*</strong><input type="text" name="title" maxlength="500" required placeholder="설문조사 제목을 입력해 주세요."></label>
+                <label class="form-field">조사 분야<select name="category"><option>일반조사</option><option>사회조사</option><option>청렴도</option><option>사업체</option><option>만족도</option><option>교육·행사</option><option>조직진단</option><option>신청·수요</option><option>기관 맞춤형</option></select></label>
+                <label class="form-field project-form-wide">조사 목적·설명<textarea name="description" rows="3" maxlength="4000" placeholder="조사의 목적과 응답자에게 안내할 내용을 입력해 주세요."></textarea></label>
+                <label class="form-field project-form-wide">설문대상자<input type="text" name="targetAudience" maxlength="1000" placeholder="예: OO시청 민원실 이용자"></label>
+            </div>
+        </div>
+
+        <div class="project-form-section">
+            <div class="project-form-section-title"><span>02</span><div><h3>조사 운영</h3><p>응답 가능 기간과 응답 화면 방식을 설정합니다.</p></div></div>
+            <div class="form-grid form-grid-two">
+                <fieldset class="form-field project-form-wide"><legend>설문조사 기간</legend><div class="project-period"><label><span class="sr-only">시작일</span><input type="date" name="startsAt"></label><span aria-hidden="true">~</span><label><span class="sr-only">종료일</span><input type="date" name="closesAt"></label></div><small>비워 두면 별도 기간 제한 없이 배포할 수 있습니다.</small></fieldset>
+                <fieldset class="form-field"><legend>응답자 식별 방식</legend><div class="project-radio-row"><label><input type="radio" name="identity" value="anonymous" checked> 익명</label><label><input type="radio" name="identity" value="identified"> 실명</label></div></fieldset>
+                <fieldset class="form-field"><legend>응답 진행률 표시</legend><div class="project-radio-row"><label><input type="radio" name="progress" value="show" checked> 표시</label><label><input type="radio" name="progress" value="hide"> 미표시</label></div></fieldset>
+            </div>
+        </div>
+
+        <div class="project-form-section">
+            <div class="project-form-section-title"><span>03</span><div><h3>모집단과 목표</h3><p>표본 설계와 응답 현황 판단에 사용할 기준입니다.</p></div></div>
+            <fieldset class="form-field"><legend>모집단 정보 <strong aria-hidden="true">*</strong></legend><div class="project-radio-row"><label><input type="radio" name="populationMode" value="known"> 모집단 크기를 알고 있습니다</label><label><input type="radio" name="populationMode" value="unknown" checked> 모집단 크기를 모릅니다</label></div></fieldset>
+            <div class="form-grid form-grid-two project-target-grid">
+                <label class="form-field" data-population-size-field hidden>모집단 크기<input type="number" name="populationSize" min="1" max="1000000000" inputmode="numeric" placeholder="전체 모집단 수"></label>
+                <label class="form-field">목표 응답자 수<span class="project-number-action"><input type="number" name="targetResponseCount" min="1" max="1000000000" inputmode="numeric" placeholder="목표 표본 크기"><button class="button button-small" type="button" data-calculate-sample>표본크기 계산</button></span></label>
+            </div>
+            <aside class="project-sample-guide" role="note"><strong>표본크기 계산 기준</strong><p>모집단 크기를 알고 있을 때 95% 신뢰수준, ±5% 오차범위, 응답분포 50%를 기준으로 권장 최소 표본을 계산합니다. 실제 조사에서는 예상 응답률과 층화·가중 설계를 함께 검토하세요.</p></aside>
+        </div>
+
+        <p class="project-form-error" data-project-form-error role="alert" tabindex="-1" hidden></p>
+        <footer class="project-form-actions"><button class="button" type="button" data-project-form-cancel>취소</button><button class="button" type="button" data-project-next hidden>STEP 02 스킨 설정</button><button class="button button-primary" type="submit" data-project-form-submit>저장 후 STEP 02로</button></footer>
+    </form>
+</section>
+</div>

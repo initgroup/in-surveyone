@@ -12,6 +12,7 @@
         initialSurveyId: "",
         surveys: [],
         report: null,
+        exporting: false,
         elements: {}
     };
 
@@ -158,11 +159,103 @@
             else loadSurveys();
         }, { signal });
         state.root.querySelectorAll('[data-role="export"]').forEach((button) => {
-            button.addEventListener("click", () => {
-                const format = String(button.dataset.format || "파일").toUpperCase();
-                notify(`${format} 내보내기는 현재 Beta/Demo 기능입니다. 정식 저장 기능은 다음 단계에서 연결됩니다.`, "info");
-            }, { signal });
+            button.addEventListener("click", () => exportReport(button), { signal });
         });
+    }
+
+    function downloadFilename(response, fallback) {
+        const disposition = response.headers.get("content-disposition") || "";
+        const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+        if (encoded) {
+            try {
+                return decodeURIComponent(encoded);
+            } catch (_error) {
+                // Fall through to the ASCII filename or local fallback.
+            }
+        }
+        return disposition.match(/filename="([^"]+)"/i)?.[1] || fallback;
+    }
+
+    async function downloadError(response) {
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.toLowerCase().includes("json")) {
+            const payload = await response.json().catch(() => null);
+            const detail = payload?.detail ?? payload?.message;
+            if (typeof detail === "string") return detail;
+            if (Array.isArray(detail)) return detail.map((item) => item?.msg || String(item)).join(" / ");
+        }
+        const text = await response.text().catch(() => "");
+        return text.trim() || `보고서 파일을 만들지 못했습니다. (${response.status})`;
+    }
+
+    async function exportReport(activeButton) {
+        const id = String(state.elements.surveySelect?.value || "");
+        if (!id || !state.report || state.exporting) {
+            if (!id) notify("내보낼 설문 프로젝트를 먼저 선택해 주세요.", "info");
+            return;
+        }
+        const format = String(activeButton?.dataset.format || "").toLowerCase();
+        if (!new Set(["xlsx", "pdf"]).has(format)) return;
+        state.exporting = true;
+        const buttons = Array.from(state.root.querySelectorAll('[data-role="export"]'));
+        buttons.forEach((button) => {
+            button.disabled = true;
+            button.setAttribute("aria-busy", button === activeButton ? "true" : "false");
+        });
+        const params = new URLSearchParams({ format });
+        const cutoffDate = state.elements.cutoffDate?.value || "";
+        const responseStatus = state.elements.responseFilter?.value || "ALL";
+        if (cutoffDate) params.set("cutoffDate", cutoffDate);
+        if (responseStatus !== "ALL") params.set("responseStatus", responseStatus);
+        const label = format === "xlsx" ? "Excel" : "PDF";
+        activeButton?.classList.add("is-exporting");
+        try {
+            const response = await fetch(
+                `${window.SURVEYONE_CONFIG.apiBaseUrl}/api/surveys/${encodeURIComponent(id)}/report/export?${params}`,
+                {
+                    credentials: "same-origin",
+                    headers: { Accept: format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf" },
+                    signal: state.events.signal
+                }
+            );
+            if (!response.ok) {
+                const message = await downloadError(response);
+                if (response.status === 401) {
+                    window.dispatchEvent(new CustomEvent("surveyone:session-invalid", {
+                        detail: { endpoint: "/api/surveys/:id/report/export", message }
+                    }));
+                }
+                throw new Error(message);
+            }
+            const blob = await response.blob();
+            const expectedType = format === "xlsx" ? "spreadsheetml" : "pdf";
+            if (!blob.size || !(response.headers.get("content-type") || "").toLowerCase().includes(expectedType)) {
+                throw new Error(`${label} 파일 형식을 확인할 수 없습니다.`);
+            }
+            const survey = selectedSurvey();
+            const fallback = `${survey ? surveyTitle(survey) : "설문-보고서"}.${format}`;
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = downloadFilename(response, fallback);
+            anchor.hidden = true;
+            document.body.append(anchor);
+            anchor.click();
+            anchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 0);
+            notify(`${label} 보고서 다운로드를 시작했습니다.`, "success");
+        } catch (error) {
+            if (error?.name !== "AbortError") notify(errorMessage(error), "error");
+        } finally {
+            state.exporting = false;
+            activeButton?.classList.remove("is-exporting");
+            if (state.root) {
+                buttons.forEach((button) => {
+                    button.disabled = false;
+                    button.removeAttribute("aria-busy");
+                });
+            }
+        }
     }
 
     function setView(view) {
@@ -496,6 +589,7 @@
             state.initialSurveyId = String(window.SurveyOneApp?.queryParams?.().get("surveyId") || "");
             state.surveys = [];
             state.report = null;
+            state.exporting = false;
             cacheElements();
             if (state.elements.cutoffDate && !state.elements.cutoffDate.value) state.elements.cutoffDate.value = todayValue();
             bindEvents();
@@ -513,6 +607,7 @@
             state.initialSurveyId = "";
             state.surveys = [];
             state.report = null;
+            state.exporting = false;
             state.elements = {};
         }
     };

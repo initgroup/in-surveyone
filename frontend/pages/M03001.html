@@ -1,90 +1,128 @@
-<section class="distribution-hero">
-    <div>
-        <span class="eyebrow">PUBLISH & DISTRIBUTE</span>
-        <h2>한 번 확정하고, 필요한 채널로 안내하세요.</h2>
-        <p>배포본마다 고유 URL을 만들고 홈페이지 게시, 이메일, 문자, 카카오 안내를 같은 이력으로 관리합니다.</p>
-    </div>
-    <label class="distribution-survey-select">배포할 설문<select data-distribution-survey><option value="">설문을 선택하세요</option></select></label>
-</section>
+<div data-distribution-project-view>
+    <section class="distribution-intro page-section">
+        <div>
+            <span class="eyebrow">PUBLISH &amp; DISTRIBUTE</span>
+            <h2>확정된 설문을 대상자에게 안전하게 배포합니다.</h2>
+            <p>대상자·연락수단·언어를 먼저 확인하고, 가능한 채널을 조합해 하나의 발송 이력으로 관리하세요.</p>
+        </div>
+        <span class="distribution-intro-note"><strong data-finalized-count>0</strong>개의 확정 프로젝트</span>
+    </section>
 
-<div class="distribution-layout">
-    <section class="card distribution-main" aria-labelledby="distributionTitle">
-        <header class="card-header distribution-header">
-            <div><span class="eyebrow">PUBLIC LINK</span><h2 id="distributionTitle" data-distribution-title>설문을 선택하세요</h2></div>
-            <span class="status-badge" data-distribution-status>선택 필요</span>
-        </header>
-        <div class="card-body" data-distribution-body>
-            <div class="distribution-empty"><span>↗</span><strong>배포할 설문을 먼저 선택하세요.</strong><p>작성 중인 설문은 확정 후 고유 응답 URL이 생성됩니다.</p></div>
+    <section class="toolbar distribution-toolbar" aria-label="배포 프로젝트 검색 및 필터">
+        <div class="toolbar-group">
+            <label class="search-field"><span class="sr-only">확정 프로젝트 검색</span><input type="search" placeholder="설문 제목 또는 프로젝트 ID 검색" data-distribution-search></label>
+            <label><span class="sr-only">분류 필터</span><select data-distribution-filter aria-label="프로젝트 분류"><option value="all">전체 분류</option></select></label>
+        </div>
+        <div class="toolbar-group">
+            <select data-distribution-sort aria-label="정렬">
+                <option value="updated">최근 확정·수정순</option>
+                <option value="responses">응답 많은 순</option>
+                <option value="title">제목순</option>
+            </select>
+            <div class="segmented-control" aria-label="보기 방식">
+                <button type="button" aria-selected="true" data-distribution-layout="grid" title="카드 보기">▦</button>
+                <button type="button" aria-selected="false" data-distribution-layout="list" title="목록 보기">☷</button>
+            </div>
         </div>
     </section>
 
-    <aside class="distribution-side">
-        <section class="card release-checklist">
-            <header class="card-header"><h3>배포 전 체크</h3><span data-check-progress>0/4</span></header>
-            <div class="card-body">
-                <label><input type="checkbox" disabled data-release-check="questions"><span><strong>문항 구성</strong><small>응답 가능한 문항 1개 이상</small></span></label>
-                <label><input type="checkbox" disabled data-release-check="intro"><span><strong>안내문</strong><small>조사 목적과 개인정보 고지</small></span></label>
-                <label><input type="checkbox" disabled data-release-check="mobile"><span><strong>모바일 미리보기</strong><small>작은 화면에서 흐름 확인</small></span></label>
-                <label><input type="checkbox" disabled data-release-check="published"><span><strong>배포본 확정</strong><small>불변 버전과 고유 URL</small></span></label>
-            </div>
-        </section>
-        <section class="card channel-summary">
-            <header class="card-header"><h3>채널 연동 상태</h3></header>
-            <div class="card-body">
-                <div><span class="channel-icon email">@</span><span><strong>이메일</strong><small>기본 SMTP/API 설정 필요</small></span><i>준비</i></div>
-                <div><span class="channel-icon sms">M</span><span><strong>문자</strong><small>발송 사업자 연결 필요</small></span><i>연동 전</i></div>
-                <div><span class="channel-icon kakao">K</span><span><strong>카카오 알림톡</strong><small>승인 템플릿 연결 필요</small></span><i>연동 전</i></div>
-            </div>
-        </section>
-    </aside>
+    <section class="distribution-project-content" aria-live="polite">
+        <div class="distribution-project-grid" data-distribution-project-grid>
+            <article class="distribution-project-card skeleton"></article>
+            <article class="distribution-project-card skeleton"></article>
+            <article class="distribution-project-card skeleton"></article>
+        </div>
+    </section>
 </div>
 
-<template data-published-distribution-template>
-    <div class="distribution-published">
-        <div class="public-url-panel">
-            <div class="public-url-copy"><span>응답자 URL</span><div><input type="text" readonly data-public-url><button class="button button-primary" type="button" data-copy-public>URL 복사</button><button class="button button-icon" type="button" data-open-public aria-label="새 창에서 열기">↗</button></div></div>
-            <dl><div><dt>배포 버전</dt><dd data-version-label>-</dd></div><div><dt>배포일</dt><dd data-published-at>-</dd></div><div><dt>누적 응답</dt><dd data-distribution-response-count>0</dd></div></dl>
-        </div>
-        <div class="channel-tabs" role="tablist" aria-label="배포 채널">
-            <button role="tab" type="button" aria-selected="true" data-channel="link">링크·게시</button>
-            <button role="tab" type="button" aria-selected="false" data-channel="email">이메일</button>
-            <button role="tab" type="button" aria-selected="false" data-channel="message">문자·카카오</button>
-            <button role="tab" type="button" aria-selected="false" data-channel="qr">QR</button>
-        </div>
-        <div class="channel-panel" data-channel-panel="link">
-            <div class="channel-panel-copy"><span class="channel-large-icon">⌁</span><div><h3>홈페이지에 설문 게시</h3><p>버튼 링크를 사용하거나 반응형 iframe 코드를 홈페이지에 붙여 넣으세요.</p></div></div>
-            <label class="form-field">반응형 iframe 코드<textarea rows="3" readonly data-embed-code></textarea></label>
-            <button class="button button-small" type="button" data-copy-embed>삽입 코드 복사</button>
-        </div>
-        <div class="channel-panel" data-channel-panel="email" hidden>
-            <div class="recipient-toolbar"><div><h3>이메일 안내</h3><p>CSV/XLSX 수신자 업로드는 발송 API 연결 시 활성화됩니다.</p></div><button class="button button-small" type="button" data-download-recipient-sample>수신자 양식</button></div>
-            <div class="form-grid form-grid-two"><label class="form-field">발신자명<input value="IN-SURVEYONE 담당자" data-email-sender></label><label class="form-field">수신자 파일<input type="file" accept=".csv,.xlsx" data-recipient-file></label></div>
-            <label class="form-field">제목<input data-email-subject></label><label class="form-field">안내문<textarea rows="5" data-email-message></textarea></label>
-            <div class="channel-action-row"><span class="beta-note">현재는 발송 내용 미리보기 단계입니다.</span><button class="button button-primary" type="button" data-preview-message>발송 내용 미리보기</button></div>
-        </div>
-        <div class="channel-panel" data-channel-panel="message" hidden>
-            <div class="message-channel-grid"><button type="button" aria-pressed="true" data-message-channel="sms"><span class="channel-icon sms">M</span><strong>문자</strong><small>SMS / LMS</small></button><button type="button" aria-pressed="false" data-message-channel="kakao"><span class="channel-icon kakao">K</span><strong>카카오 알림톡</strong><small>승인 템플릿 필요</small></button></div>
-            <label class="form-field">안내문<textarea rows="5" maxlength="1000" data-message-body></textarea><span class="field-help" data-message-count>0 / 1,000자</span></label>
-            <div class="channel-action-row"><span class="beta-note">발송 사업자 연결 후 실제 전송됩니다.</span><button class="button button-primary" type="button" data-preview-message>발송 내용 미리보기</button></div>
-        </div>
-        <div class="channel-panel" data-channel-panel="qr" hidden>
-            <div class="qr-panel">
-                <div class="qr-preview" data-qr-preview>
-                    <img data-qr-image hidden alt="설문 참여 QR 코드">
-                    <span class="qr-status" data-qr-status role="status">표준 QR 코드를 생성하는 중입니다.</span>
-                </div>
-                <div class="qr-copy">
-                    <h3>오프라인 홍보물용 QR</h3>
-                    <p>오류 복원 수준 Q와 4모듈 여백을 적용한 표준 QR입니다. SVG는 인쇄물에서도 선명하게 확대됩니다.</p>
-                    <code class="qr-target" data-qr-target></code>
-                    <div class="qr-network-guide" data-qr-network-guide></div>
-                    <div class="qr-actions"><a class="button button-primary" data-download-qr>QR SVG 다운로드</a><button class="button" type="button" data-copy-public>URL 복사</button><button class="button" type="button" data-open-public>주소 열기</button></div>
-                </div>
-            </div>
-        </div>
-    </div>
-</template>
+<section class="distribution-workflow" data-distribution-workflow hidden aria-labelledby="distributionWorkflowTitle">
+    <nav class="survey-flow distribution-flow" aria-label="설문 배포 단계">
+        <ol>
+            <li class="is-current" aria-current="step"><button type="button" data-distribution-step-target="1"><span>STEP 01</span><strong>대상자 정보</strong><small>국가·언어·연락수단</small></button></li>
+            <li><button type="button" data-distribution-step-target="2" disabled><span>STEP 02</span><strong>채널과 방식</strong><small>복수 채널·예약 설정</small></button></li>
+            <li><button type="button" data-distribution-step-target="3" disabled><span>STEP 03</span><strong>언어별 안내</strong><small>설문 URL·메시지</small></button></li>
+            <li><button type="button" data-distribution-step-target="4" disabled><span>STEP 04</span><strong>검토·실행</strong><small>저장·발송 요청</small></button></li>
+        </ol>
+    </nav>
 
-<template data-draft-distribution-template>
-    <div class="distribution-draft"><span class="draft-mark">✓</span><h3>설문 편집을 마쳤나요?</h3><p>확정하면 현재 문항을 불변 배포 버전으로 저장하고 회원사·프로젝트별 고유 응답 URL을 만듭니다.</p><div><button class="button" type="button" data-edit-survey>편집기로 돌아가기</button><button class="button button-primary" type="button" data-publish-survey>설문 확정 및 URL 만들기</button></div></div>
-</template>
+    <header class="distribution-workflow-head page-section">
+        <div>
+            <span class="eyebrow" data-distribution-step-kicker>DISTRIBUTION · STEP 01</span>
+            <h2 id="distributionWorkflowTitle" data-distribution-title tabindex="-1">배포 대상자를 준비하세요.</h2>
+            <p><strong data-distribution-survey-title>-</strong><span>프로젝트 ID <code data-distribution-project-id>-</code></span><span>확정 버전 <b data-distribution-version>-</b></span></p>
+        </div>
+        <div class="distribution-head-actions">
+            <span class="distribution-save-state" data-distribution-save-state role="status">저장 전</span>
+            <button class="button" type="button" data-distribution-save>초안 저장</button>
+            <button class="button" type="button" data-distribution-project-back>프로젝트 목록</button>
+        </div>
+    </header>
+
+    <aside class="distribution-provider-alert" data-provider-alert role="note"></aside>
+    <aside class="distribution-execution-result" data-execution-result role="status" tabindex="-1" hidden></aside>
+
+    <div class="distribution-step-panel" data-distribution-step="1">
+        <section class="card distribution-panel">
+            <header class="card-header distribution-panel-head">
+                <div><span class="eyebrow">WHO WILL RECEIVE IT?</span><h3>응답자 정보와 전송 가능한 연락수단</h3><p>국가와 선호 언어는 분리해서 관리합니다. 한 명에게 여러 채널을 선택할 수 있습니다.</p></div>
+                <div class="distribution-panel-actions">
+                    <button class="button button-small" type="button" data-download-recipient-sample>CSV 양식</button>
+                    <button class="button button-small" type="button" data-import-recipient>CSV 가져오기</button>
+                    <input type="file" accept=".csv,text/csv" data-recipient-file hidden>
+                    <button class="button button-small button-primary" type="button" data-add-recipient>＋ 대상자 추가</button>
+                </div>
+            </header>
+            <div class="card-body">
+                <div class="recipient-list-heading" aria-hidden="true"><span>대상자·국가</span><span>선호 언어</span><span>연락 정보</span><span>전송 가능 채널</span><span></span></div>
+                <div class="distribution-recipient-list" data-recipient-list></div>
+                <p class="distribution-inline-error" data-recipient-error role="alert" tabindex="-1" hidden></p>
+                <aside class="distribution-data-note" role="note"><strong>개인정보 확인</strong><span>업로드 전 수신 동의와 보유 기간을 확인하세요. 연락처는 화면·로그에서 마스킹하고 서버에서 암호화 저장해야 합니다.</span></aside>
+            </div>
+        </section>
+    </div>
+
+    <div class="distribution-step-panel" data-distribution-step="2" hidden>
+        <section class="card distribution-panel">
+            <header class="card-header distribution-panel-head"><div><span class="eyebrow">HOW TO DELIVER</span><h3>사용할 채널을 복수로 선택하세요.</h3><p>대상자가 가진 연락정보와 여기서 선택한 채널이 모두 일치할 때 발송 대상이 됩니다.</p></div></header>
+            <div class="card-body">
+                <div class="distribution-channel-grid" data-channel-options></div>
+                <div class="distribution-method-grid">
+                    <fieldset class="distribution-choice-card"><legend>복수 채널 처리 방식</legend><label><input type="radio" name="deliveryStrategy" value="ALL_AVAILABLE" checked> <span><strong>선택한 모든 채널</strong><small>가능한 채널마다 각각 안내합니다.</small></span></label><label><input type="radio" name="deliveryStrategy" value="PRIORITY_FALLBACK"> <span><strong>우선순위·실패 시 대체</strong><small>우선 채널부터 시도하고 실패하면 다음 채널을 사용합니다.</small></span></label></fieldset>
+                    <fieldset class="distribution-choice-card"><legend>발송 시점</legend><label><input type="radio" name="scheduleMode" value="NOW" checked> <span><strong>검토 후 바로 요청</strong><small>STEP 04에서 실행을 확인합니다.</small></span></label><label><input type="radio" name="scheduleMode" value="SCHEDULED"> <span><strong>예약 발송</strong><small>기관 표준 시간대를 기준으로 예약합니다.</small></span></label><label class="distribution-schedule-field" data-schedule-field hidden>예약 시각<input type="datetime-local" data-scheduled-at></label></fieldset>
+                </div>
+                <p class="distribution-inline-error" data-channel-error role="alert" tabindex="-1" hidden></p>
+            </div>
+        </section>
+    </div>
+
+    <div class="distribution-step-panel" data-distribution-step="3" hidden>
+        <section class="card distribution-panel">
+            <header class="card-header distribution-panel-head">
+                <div><span class="eyebrow">LANGUAGE-SPECIFIC INVITATIONS</span><h3>응답자 언어별 URL과 안내문</h3><p>확정 버전에 포함된 언어만 사용할 수 있습니다. 각 URL의 <code>lang</code> 값으로 기본 설문 언어가 정해집니다.</p></div>
+                <button class="button button-small" type="button" data-edit-survey-languages>설문 번역 확인</button>
+            </header>
+            <div class="card-body">
+                <div class="distribution-language-summary" data-language-summary></div>
+                <div class="distribution-message-list" data-message-list></div>
+                <p class="distribution-inline-error" data-message-error role="alert" tabindex="-1" hidden></p>
+            </div>
+        </section>
+    </div>
+
+    <div class="distribution-step-panel" data-distribution-step="4" hidden>
+        <section class="card distribution-panel">
+            <header class="card-header distribution-panel-head"><div><span class="eyebrow">FINAL REVIEW</span><h3>누구에게 어떤 언어와 방법으로 보낼지 확인하세요.</h3><p>실행 시점의 대상·문안·설문 버전은 이력으로 고정됩니다.</p></div></header>
+            <div class="card-body">
+                <div class="distribution-review" data-distribution-review></div>
+                <aside class="distribution-execute-note" data-execute-note role="note"></aside>
+                <div class="distribution-final-actions"><button class="button" type="button" data-distribution-save>초안 저장</button><button class="button button-primary" type="button" data-distribution-execute>저장하고 발송 실행 요청</button></div>
+            </div>
+        </section>
+    </div>
+
+    <footer class="distribution-step-actions">
+        <button class="button" type="button" data-distribution-previous>이전 단계</button>
+        <span data-step-position>STEP 01 / 04</span>
+        <button class="button button-primary" type="button" data-distribution-next>다음 단계</button>
+    </footer>
+</section>

@@ -8,9 +8,9 @@
     --custom-accent: #14a79a;
     --custom-danger: #c2415d;
     --custom-shadow: 0 18px 48px rgba(33, 55, 98, 0.09);
-    width: min(100%, 1600px);
-    margin: 0 auto;
-    padding: clamp(20px, 3vw, 44px);
+    width: 100%;
+    margin: 0;
+    padding: 0;
     color: var(--custom-ink);
     font: inherit;
 }
@@ -380,7 +380,7 @@
 }
 
 @media (max-width: 700px) {
-    .custom-report-page { padding: 16px; }
+    .custom-report-page { padding: 0; }
     .custom-report-page .custom-report-hero { min-height: 0; align-items: stretch; flex-direction: column; padding: 28px 22px; border-radius: 20px; }
     .custom-report-page .custom-report-hero-note { max-width: none; }
     .custom-report-page .custom-report-settings-grid,

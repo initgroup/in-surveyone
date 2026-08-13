@@ -7,23 +7,23 @@
     <meta name="robots" content="noindex,nofollow">
     <title>설문 참여 | IN-SURVEYONE</title>
     <link rel="icon" href="/frontend/assets/images/surveyone-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/frontend/css/public.css?v=20260811.3">
+    <link rel="stylesheet" href="/frontend/css/public.css?v=20260814.28">
 </head>
 <body>
-    <a class="public-skip" href="#surveyMain">설문 본문 바로가기</a>
+    <a class="public-skip" href="#surveyMain" data-public-i18n="skipToSurvey">설문 본문 바로가기</a>
     <header class="public-header">
         <a href="/" aria-label="IN-SURVEYONE"><img src="/frontend/assets/images/inSurveyOneLogoW.png" alt="IN-SURVEYONE"></a>
         <div class="public-header-actions">
             <span data-public-organization>안전한 온라인 설문</span>
             <label class="public-language" data-public-language-wrap hidden>
-                <span>설문 언어</span>
-                <select data-public-language aria-label="설문 표시 언어"></select>
+                <span data-public-i18n="surveyLanguage">설문 언어</span>
+                <select data-public-language aria-label="설문 표시 언어" data-public-i18n-aria-label="surveyLanguageAria"></select>
             </label>
         </div>
     </header>
     <div class="public-progress" aria-hidden="true"><i data-public-progress></i></div>
     <main id="surveyMain" class="public-main" tabindex="-1">
-        <div class="public-loading" data-public-loading role="status"><span></span><strong>설문을 불러오고 있습니다.</strong><p>잠시만 기다려 주세요.</p></div>
+        <div class="public-loading" data-public-loading role="status"><span></span><strong data-public-i18n="loadingTitle">설문을 불러오고 있습니다.</strong><p data-public-i18n="loadingMessage">잠시만 기다려 주세요.</p></div>
         <form class="public-form" data-public-form hidden novalidate>
             <section class="public-cover">
                 <div class="public-cover-image" data-public-cover-image></div>
@@ -32,19 +32,21 @@
                     <span class="public-kicker" data-public-category>ONLINE SURVEY</span>
                     <h1 data-public-title></h1>
                     <p data-public-description></p>
-                    <dl><div><dt>예상 소요</dt><dd data-public-time>-</dd></div><div><dt>문항 수</dt><dd data-public-count>-</dd></div><div><dt>응답 방식</dt><dd data-public-mode>-</dd></div></dl>
+                    <dl><div><dt data-public-i18n="estimatedTimeLabel">예상 소요</dt><dd data-public-time>-</dd></div><div><dt data-public-i18n="questionCountLabel">문항 수</dt><dd data-public-count>-</dd></div><div><dt data-public-i18n="responseModeLabel">응답 방식</dt><dd data-public-mode>-</dd></div></dl>
                 </div>
             </section>
             <section class="public-notice" data-public-notice hidden></section>
             <div class="public-question-list" data-public-question-list></div>
-            <section class="public-validation-summary" data-validation-summary hidden role="alert"><strong>확인이 필요한 문항이 있습니다.</strong><ul></ul></section>
-            <footer class="public-submit-row"><div><span data-public-save-state>이 탭에 임시 저장됩니다.</span><small>제출 전에는 서버에 전송하지 않습니다.</small></div><button class="public-submit" type="submit">응답 제출하기</button></footer>
+            <section class="public-validation-summary" data-validation-summary hidden role="alert"><strong data-public-i18n="validationTitle">확인이 필요한 문항이 있습니다.</strong><ul></ul></section>
+            <nav class="public-question-pager" data-public-pager hidden aria-label="문항 이동" data-public-i18n-aria-label="pagerAria"><button type="button" data-public-previous data-public-i18n="previous">이전</button><span data-public-page-status aria-live="polite">1 / 1</span><button type="button" data-public-next data-public-i18n="next">다음</button></nav>
+            <footer class="public-submit-row"><div><span data-public-save-state data-public-i18n="draftLocal">이 탭에 임시 저장됩니다.</span><small data-public-i18n="notSentBeforeSubmit">제출 전에는 서버에 전송하지 않습니다.</small></div><button class="public-submit" type="submit" data-public-i18n="submit">응답 제출하기</button></footer>
         </form>
         <section class="public-state-card" data-public-state hidden></section>
     </main>
     <footer class="public-footer"><span>Powered by <strong>IN-SURVEYONE</strong></span><span>© inIT</span></footer>
-    <script src="/frontend/config/app.config.js?v=20260811.3"></script>
-    <script src="/frontend/js/common.js?v=20260811.3"></script>
-    <script src="/frontend/js/public.js?v=20260811.3"></script>
+    <div class="public-toast-stack" data-public-toast-stack aria-live="assertive" aria-atomic="false"></div>
+    <script src="/frontend/config/app.config.js?v=20260814.28"></script>
+    <script src="/frontend/js/common.js?v=20260814.28"></script>
+    <script src="/frontend/js/public.js?v=20260814.28"></script>
 </body>
 </html>

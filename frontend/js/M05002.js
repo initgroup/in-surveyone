@@ -19,6 +19,7 @@
         api: null,
         toast: null,
         navigate: null,
+        confirmMessage: null,
         events: null,
         requestVersion: 0,
         initialSurveyId: "",
@@ -568,11 +569,16 @@
         loadReport();
     }
 
-    function deleteDraft() {
+    async function deleteDraft() {
         const id = state.activeDraftId || state.elements.draftSelect.value;
         const draft = state.drafts.find((item) => item.id === id);
         if (!draft) return;
-        if (!window.confirm(`'${draft.name}' 로컬 초안을 삭제할까요?`)) return;
+        if (!(await state.confirmMessage(`'${draft.name}' 로컬 초안을 삭제할까요?`, {
+            title: "맞춤형 보고서 초안 삭제",
+            confirmLabel: "삭제",
+            tone: "error",
+            destructive: true
+        }))) return;
         state.drafts = state.drafts.filter((item) => item.id !== id);
         try {
             writeDrafts();
@@ -884,7 +890,7 @@
 
     window.Pages = window.Pages || {};
     window.Pages[PAGE_CODE] = {
-        async init({ root, api, toast, navigate, user, appState } = {}) {
+        async init({ root, api, toast, navigate, confirmMessage, user, appState } = {}) {
             this.destroy();
             if (!root || !api || typeof api.get !== "function") {
                 throw new Error("M05002 화면을 초기화하려면 root와 api.get이 필요합니다.");
@@ -893,6 +899,7 @@
             state.api = api;
             state.toast = toast;
             state.navigate = navigate;
+            state.confirmMessage = confirmMessage || window.SurveyOneApp?.confirmMessage;
             state.events = new AbortController();
             state.initialSurveyId = String(window.SurveyOneApp?.queryParams?.().get("surveyId") || "");
             state.surveys = [];
@@ -916,6 +923,13 @@
             await loadSurveys();
         },
 
+        async beforeRefresh() {
+            return !state.dirty || state.confirmMessage(
+                "저장하지 않은 맞춤형 보고서 변경사항이 있습니다. 변경사항을 버리고 현재 화면을 새로고침할까요?",
+                { title: "현재 화면 새로고침", confirmLabel: "변경 버리고 새로고침", tone: "warning", destructive: true }
+            );
+        },
+
         destroy() {
             state.requestVersion += 1;
             state.events?.abort();
@@ -923,6 +937,7 @@
             state.api = null;
             state.toast = null;
             state.navigate = null;
+            state.confirmMessage = null;
             state.events = null;
             state.initialSurveyId = "";
             state.surveys = [];

@@ -5,6 +5,17 @@
     const rangeTypes = new Set(["number", "scale", "slider"]);
     const matrixTypes = new Set(["matrix_single", "matrix_multiple", "table", "repeat_table"]);
     const choiceMatrixTypes = new Set(["matrix_single", "matrix_multiple"]);
+    const adminTemplateCategories = ["사회조사", "청렴도", "사업체", "만족도", "교육·행사", "조직진단", "신청·수요", "기관 맞춤형"];
+    const templateCovers = ["#2857cf", "#159b82", "#8652d0", "#bd6b25", "#234d78", "#a3486c"];
+    const previewDevices = [
+        { code: "mobile-360", label: "모바일 소형 · 360 × 800", width: 360, height: 800 },
+        { code: "mobile-390", label: "모바일 표준 · 390 × 844", width: 390, height: 844 },
+        { code: "mobile-430", label: "모바일 대형 · 430 × 932", width: 430, height: 932 },
+        { code: "tablet-768", label: "태블릿 세로 · 768 × 1024", width: 768, height: 1024 },
+        { code: "laptop-1024", label: "노트북 소형 · 1024 × 768", width: 1024, height: 768 },
+        { code: "desktop-1280", label: "데스크톱 · 1280 × 800", width: 1280, height: 800 },
+        { code: "desktop-1440", label: "데스크톱 대형 · 1440 × 900", width: 1440, height: 900 }
+    ];
 
     function uid(prefix = "q") {
         return `${prefix}_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`}`;
@@ -12,7 +23,7 @@
 
     function defaultQuestion(type) {
         const config = window.SURVEYONE_CONFIG.questionTypes.find((item) => item.code === type) || window.SURVEYONE_CONFIG.questionTypes[0];
-        const question = { id: uid(), type, title: `${config.label} 문항`, description: "", required: false, validation: { type: "none" } };
+        const question = { id: uid(), type, title: `${config.label} 문항`, description: "", required: false, behavior: "fixed_optional", activationCondition: null, validation: { type: "none" } };
         if (optionTypes.has(type)) question.options = [{ id: uid("o"), label: "보기 1" }, { id: uid("o"), label: "보기 2" }];
         if (type === "scale") Object.assign(question, { min: 1, max: 5, minLabel: "매우 불만족", maxLabel: "매우 만족" });
         if (type === "slider") Object.assign(question, { min: 0, max: 100, unit: "점" });
@@ -29,27 +40,76 @@
         async init(context) {
             this.context = context;
             this.root = context.root;
-            this.surveyId = window.SurveyOneApp.queryParams().get("surveyId");
+            const params = window.SurveyOneApp.queryParams();
+            this.surveyId = params.get("surveyId");
+            this.templateAdmin = params.get("templateAdmin") === "1";
+            this.newProjectFlow = !this.templateAdmin;
+            this.templateCode = params.get("templateCode") || null;
+            this.recommendedTemplateId = params.get("templateId");
+            this.openTemplateOnLoad = params.get("template") === "1" || Boolean(this.recommendedTemplateId);
             this.survey = null;
             this.activeId = null;
             this.saveTimer = null;
             this.savePromise = null;
+            this.publishing = false;
             this.dirty = false;
             this.destroyed = false;
             this.dragId = null;
             this.editingLocale = null;
             this.persistedSourceLocale = null;
+            if (this.templateAdmin && !context.user?.systemAdmin) {
+                this.context.toast("공용 템플릿은 플랫폼 관리자만 편집할 수 있습니다.", "error");
+                this.context.navigate("M01001");
+                return;
+            }
+            if (!this.surveyId) {
+                this.context.toast("편집할 프로젝트를 먼저 선택하거나 새 프로젝트를 시작해 주세요.", "error");
+                this.context.navigate("M02001");
+                return;
+            }
+            this.root.querySelector("[data-builder-flow]").hidden = false;
+            if (this.templateAdmin) this.root.querySelector("[data-builder-flow]").hidden = true;
+            this.root.querySelectorAll("[data-template-admin-publish]").forEach((button) => { button.hidden = !this.templateAdmin; });
+            this.root.querySelectorAll("[data-builder-template-library]").forEach((button) => { button.hidden = this.templateAdmin; });
+            this.root.querySelectorAll("[data-builder-distribute]").forEach((button) => { button.hidden = this.templateAdmin; });
+            this.root.querySelector("[data-builder-publish]").hidden = this.templateAdmin;
+            if (this.templateAdmin) this.root.querySelector("[data-builder-back]").setAttribute("aria-label", "공용 템플릿 관리로 돌아가기");
             this.bind();
             this.renderTools();
             this.renderSkins();
             await this.load();
+            if (this.openTemplateOnLoad && this.survey) await this.openTemplateLibrary();
         },
         bind() {
             this.onClick = async (event) => {
+                if (event.target.closest("[data-builder-basic]")) {
+                    try {
+                        await this.flushSave();
+                        return this.context.navigate("M02001", { editId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
+                    } catch (error) {
+                        return this.context.toast(`저장하지 못해 이동을 중단했습니다. ${error.message}`, "error");
+                    }
+                }
+                if (event.target.closest("[data-builder-skin-step]")) {
+                    try {
+                        await this.flushSave();
+                        return this.context.navigate("M02005", { surveyId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
+                    } catch (error) {
+                        return this.context.toast(`저장하지 못해 이동을 중단했습니다. ${error.message}`, "error");
+                    }
+                }
+                if (event.target.closest("[data-builder-experience]")) {
+                    try {
+                        await this.flushSave();
+                        return this.context.navigate("M02004", { surveyId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
+                    } catch (error) {
+                        return this.context.toast(`저장하지 못해 이동을 중단했습니다. ${error.message}`, "error");
+                    }
+                }
                 if (event.target.closest("[data-builder-back]")) {
                     try {
                         await this.flushSave();
-                        return this.context.navigate("M02001");
+                        return this.context.navigate(this.templateAdmin ? "M07001" : "M02001");
                     } catch (error) {
                         return this.context.toast(`저장하지 못해 이동을 중단했습니다. ${error.message}`, "error");
                     }
@@ -79,20 +139,26 @@
                 if (mode) return this.setMode(mode.dataset.builderMode);
                 if (event.target.closest("[data-builder-save]")) return this.saveExplicit();
                 if (event.target.closest("[data-builder-preview]")) return this.preview();
+                if (event.target.closest("[data-builder-template-library]")) return this.openTemplateLibrary();
                 if (event.target.closest("[data-builder-distribute]")) return this.prepareDistribution();
+                if (event.target.closest("[data-template-admin-publish]")) return this.openAdminTemplatePublish();
+                if (event.target.closest("[data-builder-publish]")) return this.publishSurvey();
                 if (event.target.closest("[data-properties-close]")) return this.closeProperties();
                 const skin = event.target.closest("[data-skin-code]");
                 if (skin) return this.setSkin(skin.dataset.skinCode);
                 if (event.target.closest("[data-open-skins]")) {
                     try {
                         await this.flushSave();
-                        return this.context.navigate("M06001", { surveyId: this.survey.id });
+                        return this.context.navigate("M02005", { surveyId: this.survey.id, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
                     } catch (error) {
                         return this.context.toast(`저장하지 못해 이동을 중단했습니다. ${error.message}`, "error");
                     }
                 }
                 if (event.target.closest("[data-add-rule]")) return this.addLogicRule();
                 if (event.target.closest("[data-remove-rule]")) return this.removeLogicRule(event.target.closest("[data-rule-id]").dataset.ruleId);
+                if (event.target.closest("[data-add-condition]")) return this.addActivationCondition();
+                const removeCondition = event.target.closest("[data-remove-condition]");
+                if (removeCondition) return this.removeActivationCondition(Number(removeCondition.dataset.removeCondition));
                 if (event.target.closest("[data-mobile-tools]")) this.root.querySelector(".builder-toolbox")?.scrollIntoView({ behavior: "smooth" });
             };
             this.onInput = (event) => this.handleInput(event);
@@ -111,15 +177,8 @@
         },
         async load() {
             try {
-                if (!this.surveyId) {
-                    const created = await this.context.api.post("/api/surveys", { title: "제목 없는 설문" });
-                    this.survey = created.survey || created;
-                    this.surveyId = this.survey.id;
-                    history.replaceState(null, "", `#/M02003?surveyId=${encodeURIComponent(this.surveyId)}`);
-                } else {
-                    const payload = await this.context.api.get(`/api/surveys/${encodeURIComponent(this.surveyId)}`);
-                    this.survey = payload.survey || payload;
-                }
+                const payload = await this.context.api.get(`/api/surveys/${encodeURIComponent(this.surveyId)}`);
+                this.survey = payload.survey || payload;
                 this.normalizeSurvey();
                 this.persistedSourceLocale = this.survey.languages.sourceLocale;
                 this.renderSurvey();
@@ -137,16 +196,22 @@
                 id: section.id || uid("section"),
                 title: section.title || `섹션 ${index + 1}`,
                 description: section.description || "",
-                questions: (Array.isArray(section.questions) ? section.questions : []).map((question) => ({
-                    ...defaultQuestion(question.type || "single"),
-                    ...question,
-                    id: question.id || uid()
-                }))
+                questions: (Array.isArray(section.questions) ? section.questions : []).map((question) => {
+                    const normalized = {
+                        ...defaultQuestion(question.type || "single"),
+                        ...question,
+                        id: question.id || uid(),
+                        behavior: question.behavior || (question.required ? "fixed_required" : "fixed_optional"),
+                        activationCondition: question.activationCondition || question.activation_condition || null
+                    };
+                    if (normalized.type === "notice") Object.assign(normalized, { behavior: "fixed_optional", required: false, activationCondition: null });
+                    return normalized;
+                })
             }));
             this.survey.sections.forEach((section) => section.questions.forEach((question) => this.syncQuestionCompatibility(question)));
             this.refreshQuestions();
             const incomingSettings = this.survey.settings || {};
-            const settings = { anonymous: true, showProgressBar: true, oneResponsePerRespondent: false, allowResponseEdit: false, confirmationMessage: "응답해 주셔서 감사합니다.", ...incomingSettings };
+            const settings = { anonymous: true, showProgressBar: true, oneResponsePerRespondent: false, allowResponseEdit: false, presentationMode: "scroll", confirmationMessage: "응답해 주셔서 감사합니다.", ...incomingSettings };
             if (incomingSettings.showProgressBar === undefined && incomingSettings.showProgress !== undefined) settings.showProgressBar = incomingSettings.showProgress;
             if (incomingSettings.oneResponsePerRespondent === undefined && incomingSettings.oneResponse !== undefined) settings.oneResponsePerRespondent = incomingSettings.oneResponse;
             if (incomingSettings.allowResponseEdit === undefined && incomingSettings.allowEdit !== undefined) settings.allowResponseEdit = incomingSettings.allowEdit;
@@ -275,6 +340,9 @@
             return String(question.settings?.[field]?.[index]?.id ?? index);
         },
         syncQuestionCompatibility(question) {
+            const behaviors = new Set(["fixed_required", "fixed_optional", "dynamic_required", "dynamic_optional"]);
+            question.behavior = behaviors.has(question.behavior) ? question.behavior : (question.required ? "fixed_required" : "fixed_optional");
+            question.required = ["fixed_required", "dynamic_required"].includes(question.behavior);
             question.settings = question.settings && typeof question.settings === "object" ? question.settings : {};
             [["min", "minValue"], ["max", "maxValue"], ["minLabel", "minLabel"], ["maxLabel", "maxLabel"], ["unit", "unit"]].forEach(([topLevel, setting]) => {
                 if (question[topLevel] === undefined || question[topLevel] === null) question[topLevel] = question.settings[setting] ?? question[topLevel];
@@ -448,6 +516,7 @@
         renderSurvey() {
             const status = this.survey.status || "draft";
             this.root.querySelector("[data-builder-status]").textContent = ({ draft: "작성 중", published: "배포됨", active: "배포됨", closed: "종료" })[status] || status;
+            if (this.templateAdmin) this.root.querySelector("[data-builder-status]").textContent = this.templateCode ? `공용 템플릿 ${this.templateCode} 편집 중` : "새 공용 템플릿 편집 중";
             this.renderLanguageControls();
             const localizedTitle = this.localizedSurveyField("title") || "제목 없는 설문";
             this.root.querySelector("[data-builder-title]").value = localizedTitle;
@@ -486,7 +555,7 @@
                     const description = node.querySelector("[data-question-description-preview]");
                     description.textContent = this.localizedQuestionField(question, "description");
                     description.hidden = !description.textContent;
-                    node.querySelector("[data-required-label]").textContent = question.required ? "필수 응답" : "선택 응답";
+                    node.querySelector("[data-required-label]").textContent = ({ fixed_required: "고정 · 필수", fixed_optional: "고정 · 선택", dynamic_required: "동적 · 필수", dynamic_optional: "동적 · 선택" })[question.behavior] || (question.required ? "필수 응답" : "선택 응답");
                     node.querySelector("[data-answer-editor]").innerHTML = this.answerMarkup(question);
                     host.appendChild(node);
                 });
@@ -566,7 +635,10 @@
             this.root.querySelector("[data-properties-panel]").hidden = false;
             this.root.querySelector(".builder-properties").classList.add("is-open");
             this.root.querySelector("[data-properties-type]").textContent = this.typeLabel(question.type);
-            this.root.querySelector("[data-prop-required]").checked = Boolean(question.required);
+            const behaviorSelect = this.root.querySelector("[data-prop-behavior]");
+            behaviorSelect.value = question.behavior || (question.required ? "fixed_required" : "fixed_optional");
+            behaviorSelect.disabled = question.type === "notice";
+            this.renderActivationConditions(question);
             const descriptionEnabled = this.root.querySelector("[data-prop-description-enabled]");
             descriptionEnabled.checked = Boolean(question.description);
             descriptionEnabled.disabled = this.editingLocale !== this.survey.languages.sourceLocale;
@@ -619,6 +691,52 @@
             });
             panel.querySelectorAll("[data-axis-add]").forEach((button) => { button.disabled = !sourceEditing; });
             panel.classList.toggle("is-translation", !sourceEditing);
+        },
+        renderActivationConditions(question) {
+            const behavior = question.behavior || (question.required ? "fixed_required" : "fixed_optional");
+            const dynamic = behavior.startsWith("dynamic_");
+            const builder = this.root.querySelector("[data-prop-condition-builder]");
+            builder.hidden = !dynamic;
+            if (!dynamic) return;
+            question.activationCondition ||= { combinator: "all", conditions: [] };
+            const questionIndex = this.survey.questions.findIndex((item) => String(item.id) === String(question.id));
+            const sources = this.survey.questions.slice(0, questionIndex).filter((item) => item.type !== "notice");
+            this.root.querySelector("[data-condition-combinator]").value = question.activationCondition.combinator || "all";
+            this.root.querySelector("[data-condition-list]").innerHTML = question.activationCondition.conditions.map((condition, index) => `<div class="question-condition-row" data-condition-index="${index}"><label>선행 문항<select data-condition-source>${sources.map((source) => `<option value="${Common.escapeHtml(source.id)}" ${String(source.id) === String(condition.sourceQuestionId || condition.source_question_id) ? "selected" : ""}>${Common.escapeHtml(this.localizedQuestionField(source, "title"))} · ${Common.escapeHtml(source.id)}</option>`).join("")}</select></label><label>조건<select data-condition-operator><option value="equals" ${condition.operator === "equals" ? "selected" : ""}>같음</option><option value="not_equals" ${condition.operator === "not_equals" ? "selected" : ""}>같지 않음</option><option value="contains" ${condition.operator === "contains" ? "selected" : ""}>포함</option><option value="in" ${condition.operator === "in" ? "selected" : ""}>목록 중 하나</option><option value="exists" ${condition.operator === "exists" ? "selected" : ""}>응답값 존재</option><option value="not_exists" ${condition.operator === "not_exists" ? "selected" : ""}>응답값 없음</option><option value="greater_than" ${condition.operator === "greater_than" ? "selected" : ""}>보다 큼</option><option value="greater_or_equal" ${condition.operator === "greater_or_equal" ? "selected" : ""}>이상</option><option value="less_than" ${condition.operator === "less_than" ? "selected" : ""}>보다 작음</option><option value="less_or_equal" ${condition.operator === "less_or_equal" ? "selected" : ""}>이하</option></select></label><label>비교 값${this.activationConditionValueMarkup(condition, sources)}</label><button type="button" data-remove-condition="${index}" aria-label="조건 삭제" ${question.activationCondition.conditions.length <= 1 ? "disabled" : ""}>×</button></div>`).join("");
+            this.root.querySelector("[data-add-condition]").disabled = !sources.length;
+        },
+        activationConditionValueMarkup(condition, sources) {
+            const operator = condition.operator || "equals";
+            const disabled = ["exists", "not_exists"].includes(operator);
+            const sourceId = String(condition.sourceQuestionId || condition.source_question_id || "");
+            const source = sources.find((candidate) => String(candidate.id) === sourceId);
+            const values = (Array.isArray(condition.value) ? condition.value : [condition.value]).filter((value) => value !== null && value !== undefined && String(value) !== "").map(String);
+            const options = Array.isArray(source?.options) ? source.options : [];
+            if (!disabled && options.length && ["equals", "not_equals", "contains", "in"].includes(operator)) {
+                const multiple = operator === "in";
+                const knownIds = new Set(options.map((option) => String(option.id)));
+                const legacy = values.filter((value) => !knownIds.has(value));
+                return `<select data-condition-value ${multiple ? 'multiple size="4" aria-label="비교할 보기 복수 선택"' : ""}>${multiple ? "" : '<option value="">비교할 보기 선택</option>'}${options.map((option) => `<option value="${Common.escapeHtml(option.id)}" ${values.includes(String(option.id)) ? "selected" : ""}>${Common.escapeHtml(this.localizedOptionLabel(source, option))} · ${Common.escapeHtml(option.id)}</option>`).join("")}${legacy.map((value) => `<option value="${Common.escapeHtml(value)}" selected>기존 값 · ${Common.escapeHtml(value)}</option>`).join("")}</select>${multiple ? "<small>PC에서는 Ctrl/Command 키로, 모바일에서는 목록에서 여러 보기를 선택합니다.</small>" : ""}`;
+            }
+            return `<input data-condition-value value="${Common.escapeHtml(values.join(","))}" placeholder="비교할 응답값" ${disabled ? "disabled" : ""}>`;
+        },
+        addActivationCondition() {
+            const question = this.question(this.activeId);
+            const index = this.survey.questions.findIndex((item) => String(item.id) === String(question?.id));
+            const source = this.survey.questions.slice(0, index).find((item) => item.type !== "notice");
+            if (!question || !source) return this.context.toast("동적 문항 앞에 응답 가능한 선행 문항을 먼저 배치해 주세요.", "error");
+            question.activationCondition ||= { combinator: "all", conditions: [] };
+            question.activationCondition.conditions.push({ sourceQuestionId: source.id, operator: "exists", value: null });
+            this.openProperties(question.id);
+            this.scheduleSave();
+        },
+        removeActivationCondition(index) {
+            const question = this.question(this.activeId);
+            if (!question?.activationCondition) return;
+            if (question.activationCondition.conditions.length <= 1) return this.context.toast("동적 문항에는 활성화 조건이 한 개 이상 필요합니다.", "error");
+            question.activationCondition.conditions.splice(index, 1);
+            this.openProperties(question.id);
+            this.scheduleSave();
         },
         closeProperties() { this.root.querySelector(".builder-properties").classList.remove("is-open"); },
         handleInput(event) {
@@ -744,7 +862,44 @@
             }
             const question = this.question(this.activeId);
             if (!question) return;
-            if (event.target.matches("[data-prop-required]")) { question.required = event.target.checked; this.renderQuestions(); }
+            if (event.target.matches("[data-prop-behavior]")) {
+                const nextBehavior = event.target.value;
+                if (nextBehavior.startsWith("dynamic_")) {
+                    const questionIndex = this.survey.questions.findIndex((item) => String(item.id) === String(question.id));
+                    const source = this.survey.questions.slice(0, questionIndex).find((item) => item.type !== "notice");
+                    if (!source) {
+                        event.target.value = question.behavior;
+                        return this.context.toast("동적 문항 앞에 응답 가능한 선행 문항을 먼저 배치해 주세요.", "error");
+                    }
+                    question.activationCondition ||= { combinator: "all", conditions: [{ sourceQuestionId: source.id, operator: "exists", value: null }] };
+                } else question.activationCondition = null;
+                question.behavior = nextBehavior;
+                question.required = ["fixed_required", "dynamic_required"].includes(question.behavior);
+                this.openProperties(question.id);
+                this.renderQuestions();
+            }
+            if (event.target.matches("[data-condition-combinator]")) question.activationCondition.combinator = event.target.value;
+            const conditionRow = event.target.closest("[data-condition-index]");
+            if (conditionRow && question.activationCondition) {
+                const condition = question.activationCondition.conditions[Number(conditionRow.dataset.conditionIndex)];
+                if (condition) {
+                    if (event.target.matches("[data-condition-source]")) {
+                        condition.sourceQuestionId = event.target.value;
+                        condition.value = null;
+                        this.openProperties(question.id);
+                    }
+                    if (event.target.matches("[data-condition-operator]")) {
+                        condition.operator = event.target.value;
+                        if (["exists", "not_exists"].includes(condition.operator)) condition.value = null;
+                        this.openProperties(question.id);
+                    }
+                    if (event.target.matches("[data-condition-value]")) {
+                        condition.value = event.target.multiple
+                            ? [...event.target.selectedOptions].map((option) => option.value)
+                            : event.target.value.includes(",") ? event.target.value.split(",").map((value) => value.trim()).filter(Boolean) : event.target.value;
+                    }
+                }
+            }
             if (event.target.matches("[data-prop-description-enabled]") && this.editingLocale === this.survey.languages.sourceLocale) { if (event.target.checked && !question.description) question.description = "응답 기준이나 도움말을 입력하세요."; if (!event.target.checked) question.description = ""; this.openProperties(question.id); this.renderQuestions(); }
             if (event.target.matches("[data-prop-validation]")) question.validation = { ...(question.validation || {}), type: event.target.value };
             this.scheduleSave();
@@ -769,6 +924,8 @@
             const from = this.questionLocation(fromId);
             const target = this.questionLocation(targetId);
             if (!from || !target) return;
+            const originalSections = structuredClone(this.survey.sections);
+            const originalTranslations = structuredClone(this.survey.translations || {});
             const sourceSectionId = String(from.section.id);
             const [question] = from.section.questions.splice(from.questionIndex, 1);
             const targetAfterRemoval = this.questionLocation(targetId);
@@ -777,6 +934,14 @@
             const destinationSectionId = String(targetAfterRemoval.section.id);
             if (sourceSectionId !== destinationSectionId) this.moveQuestionTranslations(question.id, sourceSectionId, destinationSectionId);
             this.refreshQuestions();
+            const orderProblem = this.activationOrderProblem();
+            if (orderProblem) {
+                this.survey.sections = originalSections;
+                this.survey.translations = originalTranslations;
+                this.refreshQuestions();
+                this.renderQuestions();
+                return this.context.toast(`문항을 이동할 수 없습니다. ${orderProblem}`, "error");
+            }
             this.renderQuestions();
             this.scheduleSave();
         },
@@ -907,6 +1072,8 @@
         deleteQuestion(id) {
             const location = this.questionLocation(id);
             if (!location) return;
+            const dependents = this.conditionSourceDependents(id);
+            if (dependents.length) return this.context.toast(`이 문항을 조건으로 사용하는 후행 문항이 있습니다: ${dependents.slice(0, 3).map((item) => this.localizedQuestionField(item, "title")).join(", ")}. 먼저 해당 활성화 조건을 제거해 주세요.`, "error");
             location.section.questions.splice(location.questionIndex, 1);
             this.pruneQuestionTranslations(id);
             this.survey.logicRules = (this.survey.logicRules || []).filter((rule) => ![
@@ -926,7 +1093,21 @@
             this.scheduleSave();
         },
         addOption(questionId) { const question = this.question(questionId); if (!question) return; question.options = question.options || []; question.options.push({ id: uid("o"), label: `보기 ${question.options.length + 1}` }); this.renderQuestions(); this.scheduleSave(); },
-        deleteOption(questionId, optionId) { const question = this.question(questionId); if (!question || question.options.length <= 1) return this.context.toast("보기는 한 개 이상 필요합니다.", "error"); question.options = question.options.filter((item) => item.id !== optionId); this.pruneOptionTranslations(questionId, optionId); this.renderQuestions(); this.scheduleSave(); },
+        deleteOption(questionId, optionId) { const question = this.question(questionId); if (!question || question.options.length <= 1) return this.context.toast("보기는 한 개 이상 필요합니다.", "error"); const referenced = this.survey.questions.some((candidate) => (candidate.activationCondition?.conditions || []).some((condition) => String(condition.sourceQuestionId || condition.source_question_id) === String(questionId) && (Array.isArray(condition.value) ? condition.value : [condition.value]).some((value) => String(value) === String(optionId)))); if (referenced) return this.context.toast("이 보기를 동적 문항 조건에서 사용 중입니다. 조건을 먼저 수정해 주세요.", "error"); question.options = question.options.filter((item) => item.id !== optionId); this.pruneOptionTranslations(questionId, optionId); this.renderQuestions(); this.scheduleSave(); },
+        conditionSourceDependents(sourceId) {
+            return this.survey.questions.filter((question) => (question.activationCondition?.conditions || []).some((condition) => String(condition.sourceQuestionId || condition.source_question_id) === String(sourceId)));
+        },
+        activationOrderProblem() {
+            const positions = new Map(this.survey.questions.map((question, index) => [String(question.id), index]));
+            for (const [index, question] of this.survey.questions.entries()) {
+                for (const condition of question.activationCondition?.conditions || []) {
+                    const sourceIndex = positions.get(String(condition.sourceQuestionId || condition.source_question_id));
+                    if (sourceIndex === undefined) return `${this.localizedQuestionField(question, "title")}의 기준 문항을 찾을 수 없습니다.`;
+                    if (sourceIndex >= index) return `${this.localizedQuestionField(question, "title")}보다 조건 기준 문항이 앞에 있어야 합니다.`;
+                }
+            }
+            return "";
+        },
         setMode(mode) { this.root.querySelectorAll("[data-builder-mode]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.builderMode === mode))); this.root.querySelectorAll("[data-mode-panel]").forEach((panel) => { panel.hidden = panel.dataset.modePanel !== mode; }); },
         addLogicRule() {
             const source = this.survey.questions.find((question) => optionTypes.has(question.type)) || this.survey.questions[0];
@@ -991,7 +1172,8 @@
                 skin,
                 logicRules: structuredClone(this.survey.logicRules || []),
                 languages,
-                translations
+                translations,
+                expectedRevision: this.survey.revision
             };
             if (this.persistedSourceLocale && languages.sourceLocale !== this.persistedSourceLocale) payload.sourceLocalePromotionFrom = this.persistedSourceLocale;
             return payload;
@@ -1046,23 +1228,134 @@
                 return false;
             }
         },
+        async openTemplateLibrary() {
+            if (this.templateAdmin || !this.survey) return;
+            try {
+                await this.flushSave();
+            } catch (error) {
+                return this.context.toast(`저장하지 못해 템플릿 선택을 열 수 없습니다. ${error.message}`, "error");
+            }
+            this.context.openModal(`<div class="page-loading" role="status"><span class="spinner"></span><strong>템플릿을 불러오고 있습니다.</strong></div>`, { label: "템플릿 선택", wide: true, templateLibrary: true });
+            try {
+                const payload = await this.context.api.get("/api/templates");
+                this.templateItems = payload?.items || payload?.templates || payload || [];
+                const categories = ["전체", ...new Set(this.templateItems.map((item) => item.category || "일반"))];
+                const dialog = this.context.openModal(`<section class="editor-template-layer"><header><div><span class="eyebrow">TEMPLATE LIBRARY</span><h2>설문 구조 템플릿 선택</h2><p>템플릿은 시작 구조입니다. 적용 후 STEP 04에서 자유롭게 수정할 수 있습니다.</p></div><button class="button" type="button" data-editor-template-blank>빈 설문</button></header><div class="editor-template-toolbar"><div class="editor-template-categories" data-editor-template-categories>${categories.map((category, index) => `<button type="button" data-editor-template-category="${Common.escapeHtml(category)}" aria-pressed="${index === 0}">${Common.escapeHtml(category)}</button>`).join("")}</div><label class="search-field"><span class="sr-only">템플릿 검색</span><input type="search" data-editor-template-search placeholder="템플릿 이름 또는 설명 검색"></label></div><div class="editor-template-grid" data-editor-template-grid></div><aside class="editor-template-confirm" data-editor-template-confirm hidden><div><strong data-editor-template-confirm-title>템플릿 적용 확인</strong><p>현재 문항·동적 조건·섹션 분기·번역이 새 구조로 교체됩니다. 기본정보·스킨·응답 UI는 유지됩니다.</p></div><button class="button" type="button" data-editor-template-confirm-cancel>취소</button><button class="button button-primary" type="button" data-editor-template-confirm-apply>구조 교체</button></aside></section>`, { label: "설문 구조 템플릿 선택", wide: true, templateLibrary: true, initialFocus: "[data-editor-template-search]" });
+                this.templateCategory = "전체";
+                this.renderTemplateLibrary(dialog);
+                dialog.querySelector("[data-editor-template-search]")?.addEventListener("input", () => this.renderTemplateLibrary(dialog));
+                dialog.querySelector("[data-editor-template-categories]")?.addEventListener("click", (event) => {
+                    const category = event.target.closest("[data-editor-template-category]");
+                    if (!category) return;
+                    this.templateCategory = category.dataset.editorTemplateCategory;
+                    dialog.querySelectorAll("[data-editor-template-category]").forEach((button) => button.setAttribute("aria-pressed", String(button === category)));
+                    this.renderTemplateLibrary(dialog);
+                });
+                dialog.querySelector("[data-editor-template-grid]")?.addEventListener("click", (event) => {
+                    const use = event.target.closest("[data-editor-template-use]");
+                    if (use) this.confirmTemplateChoice(dialog, use.dataset.editorTemplateUse);
+                });
+                dialog.querySelector("[data-editor-template-blank]")?.addEventListener("click", () => this.confirmTemplateChoice(dialog, ""));
+                dialog.querySelector("[data-editor-template-confirm-cancel]")?.addEventListener("click", () => { dialog.querySelector("[data-editor-template-confirm]").hidden = true; });
+                dialog.querySelector("[data-editor-template-confirm-apply]")?.addEventListener("click", () => void this.applyTemplateChoice(dialog));
+            } catch (error) {
+                this.context.openModal(`<p class="eyebrow">TEMPLATE LIBRARY</p><h2>템플릿을 불러오지 못했습니다</h2><p>${Common.escapeHtml(error.message)}</p>`, { label: "템플릿 불러오기 오류" });
+            }
+        },
+        renderTemplateLibrary(dialog) {
+            const query = dialog.querySelector("[data-editor-template-search]")?.value.trim().toLowerCase() || "";
+            const items = this.templateItems.filter((item) => (this.templateCategory === "전체" || (item.category || "일반") === this.templateCategory) && (!query || `${item.name || item.title} ${item.description || ""}`.toLowerCase().includes(query)));
+            dialog.querySelector("[data-editor-template-grid]").innerHTML = items.map((item, index) => `<article class="editor-template-card ${String(item.id || item.code) === String(this.recommendedTemplateId) ? "is-recommended" : ""}"><div class="editor-template-cover" style="--template-cover:${templateCovers[index % templateCovers.length]}"><span>${String(index + 1).padStart(2, "0")}</span><b>${Common.escapeHtml(item.category || "일반")}</b></div><div><h3>${Common.escapeHtml(item.name || item.title)}</h3><p>${Common.escapeHtml(item.description || "목적에 맞게 편집할 수 있는 설문 구조입니다.")}</p><small>${Common.formatNumber(item.questionCount || Common.questionsOf(item).length)}개 문항</small></div><button class="button button-primary" type="button" data-editor-template-use="${Common.escapeHtml(item.id || item.code)}">이 템플릿 선택</button></article>`).join("") || `<section class="empty-state"><span class="empty-icon">⌕</span><h3>검색 결과가 없습니다</h3><p>다른 검색어나 분야를 선택해 주세요.</p></section>`;
+        },
+        confirmTemplateChoice(dialog, code) {
+            const template = this.templateItems.find((item) => String(item.id || item.code) === String(code));
+            this.pendingTemplateCode = code;
+            dialog.querySelector("[data-editor-template-confirm-title]").textContent = template ? `“${template.name || template.title}” 구조로 교체할까요?` : "빈 설문 구조로 교체할까요?";
+            const confirmation = dialog.querySelector("[data-editor-template-confirm]");
+            confirmation.hidden = false;
+            confirmation.querySelector("[data-editor-template-confirm-apply]").focus({ preventScroll: true });
+        },
+        async applyTemplateChoice(dialog) {
+            const apply = dialog.querySelector("[data-editor-template-confirm-apply]");
+            apply.disabled = true;
+            try {
+                const endpoint = this.pendingTemplateCode ? "template" : "template/reset";
+                const body = this.pendingTemplateCode ? { templateCode: this.pendingTemplateCode, expectedRevision: this.survey.revision } : { expectedRevision: this.survey.revision };
+                const payload = await this.context.api.post(`/api/surveys/${encodeURIComponent(this.survey.id)}/${endpoint}`, body);
+                this.survey = payload.survey || payload;
+                this.normalizeSurvey();
+                this.persistedSourceLocale = this.survey.languages.sourceLocale;
+                this.dirty = false;
+                this.renderSurvey();
+                this.recommendedTemplateId = null;
+                dialog.close();
+                this.context.toast(this.pendingTemplateCode ? "템플릿 구조를 적용했습니다." : "빈 설문 구조를 적용했습니다.", "success");
+            } catch (error) {
+                apply.disabled = false;
+                this.context.toast(error.message, "error");
+            }
+        },
         preview() {
             const questions = this.survey.questions;
             const skin = window.SURVEYONE_CONFIG.skinPresets.find((item) => item.code === this.survey.skin?.preset) || window.SURVEYONE_CONFIG.skinPresets[0];
             const questionMarkup = questions.map((question, index) => {
                 const title = this.localizedQuestionField(question, "title");
                 const answer = this.previewAnswerMarkup(question);
-                return `<div class="builder-preview-question"><strong>${index + 1}. ${Common.escapeHtml(title)} ${question.required ? '<span class="text-danger">*</span>' : ""}</strong>${answer}</div>`;
+                return `<section class="builder-preview-question" data-preview-question-id="${Common.escapeHtml(question.id)}" data-preview-required="${question.required ? "true" : "false"}"><strong>${index + 1}. ${Common.escapeHtml(title)} ${question.required ? '<span class="text-danger">*</span>' : ""}</strong>${answer}<small class="builder-preview-required" hidden>필수 응답을 입력해 주세요.</small></section>`;
             }).join("");
-            this.context.openModal(`<p class="eyebrow">RESPONDENT PREVIEW · ${Common.escapeHtml(this.localeLabel(this.editingLocale))}</p><h2>모바일 응답 미리보기</h2><div class="builder-preview" style="--survey-primary:${skin.primary}"><div class="builder-preview-cover"><h3>${Common.escapeHtml(this.localizedSurveyField("title"))}</h3><p>${Common.escapeHtml(this.localizedSurveyField("description") || "설문에 참여해 주세요.")}</p></div>${questionMarkup || '<div class="builder-preview-question">문항을 추가하면 여기에 표시됩니다.</div>'}</div>`, { wide: false });
+            const deviceOptions = `${previewDevices.map((device) => `<option value="${device.code}" ${device.code === "mobile-390" ? "selected" : ""}>${device.label}</option>`).join("")}<option value="custom">직접 입력</option>`;
+            const dialog = this.context.openModal(`<section class="builder-preview-simulator"><header class="builder-preview-toolbar"><div class="builder-preview-toolbar-copy"><span class="eyebrow">RESPONDENT PREVIEW · ${Common.escapeHtml(this.localeLabel(this.editingLocale))}</span><h2>응답 동작·반응형 미리보기</h2></div><div class="builder-preview-size-controls"><label>화면 해상도<select data-preview-device-size>${deviceOptions}</select></label><div class="builder-preview-custom-size" data-preview-custom-size role="group" aria-label="직접 입력 해상도" hidden><label><span>가로(px)</span><input type="number" inputmode="numeric" min="240" max="5120" step="1" value="390" data-preview-custom-width></label><span aria-hidden="true">×</span><label><span>세로(px)</span><input type="number" inputmode="numeric" min="320" max="2880" step="1" value="844" data-preview-custom-height></label></div></div><output data-preview-size-status>390 × 844 · 100%</output></header><div class="builder-preview-stage" data-preview-stage><div class="builder-preview-device-holder" data-preview-device-holder><div class="builder-preview-viewport" data-preview-viewport style="--survey-primary:${skin.primary};--survey-accent:${skin.accent || "#4ed7bd"}"><form class="builder-preview" data-interactive-preview novalidate><div class="builder-preview-content"><div class="builder-preview-cover"><h3>${Common.escapeHtml(this.localizedSurveyField("title"))}</h3><p>${Common.escapeHtml(this.localizedSurveyField("description") || "설문에 참여해 주세요.")}</p><small>이 미리보기의 응답은 저장되거나 제출되지 않습니다.</small></div>${questionMarkup || '<div class="builder-preview-question">문항을 추가하면 여기에 표시됩니다.</div>'}<footer class="builder-preview-submit"><button class="button button-primary" type="submit">입력 동작 확인</button><span data-preview-submit-state role="status">입력 요소를 직접 조작할 수 있습니다.</span></footer></div></form></div></div></div></section>`, { label: "응답 동작 및 반응형 미리보기", wide: true, previewSimulator: true, initialFocus: "[data-preview-device-size]" });
+            const form = dialog.querySelector("[data-interactive-preview]");
+            const select = dialog.querySelector("[data-preview-device-size]");
+            const customSize = dialog.querySelector("[data-preview-custom-size]");
+            const customInputs = [...customSize.querySelectorAll("input")];
+            const refresh = () => this.applyPreviewDevice(dialog, select.value);
+            select.addEventListener("change", () => {
+                customSize.hidden = select.value !== "custom";
+                refresh();
+                if (!customSize.hidden) dialog.querySelector("[data-preview-custom-width]").focus();
+            });
+            customInputs.forEach((input) => {
+                input.addEventListener("input", refresh);
+                input.addEventListener("change", () => {
+                    const value = Number(input.value);
+                    input.value = String(Math.round(Math.min(Number(input.max), Math.max(Number(input.min), Number.isFinite(value) ? value : Number(input.min)))));
+                    refresh();
+                });
+            });
+            form.addEventListener("input", (event) => {
+                if (event.target.matches("[data-preview-slider]")) event.target.closest(".builder-preview-slider").querySelector("output").textContent = `${event.target.value}${event.target.dataset.unit || ""}`;
+                this.updatePreviewLogic(dialog);
+            });
+            form.addEventListener("change", () => this.updatePreviewLogic(dialog));
+            form.addEventListener("click", (event) => this.handlePreviewTableAction(event));
+            form.addEventListener("submit", (event) => this.submitPreview(event, dialog));
+            const observer = typeof ResizeObserver === "function" ? new ResizeObserver(refresh) : null;
+            observer?.observe(dialog.querySelector("[data-preview-stage]"));
+            window.addEventListener("resize", refresh);
+            dialog.addEventListener("close", () => {
+                observer?.disconnect();
+                window.removeEventListener("resize", refresh);
+            }, { once: true });
+            this.updatePreviewLogic(dialog);
+            requestAnimationFrame(refresh);
         },
         previewAnswerMarkup(question) {
-            if (optionTypes.has(question.type)) return (question.options || []).map((option) => `<label><input type="${question.type === "multiple" ? "checkbox" : "radio"}" disabled> ${Common.escapeHtml(this.localizedOptionLabel(question, option))}</label>`).join("");
-            if (question.type === "short_text") return '<input class="builder-preview-input" type="text" placeholder="짧은 답변" disabled>';
-            if (question.type === "long_text") return '<textarea class="builder-preview-input" rows="3" placeholder="긴 답변" disabled></textarea>';
-            if (["number", "slider"].includes(question.type)) return `<input class="builder-preview-input" type="text" placeholder="${question.min ?? 0} — ${question.max ?? 100} ${Common.escapeHtml(this.localizedQuestionField(question, "unit"))}" disabled>`;
-            if (question.type === "date") return '<input class="builder-preview-input" type="text" placeholder="연도-월-일" disabled>';
-            if (question.type === "scale") return this.answerMarkup(question);
+            const name = `preview_${question.id}`;
+            const escapedName = Common.escapeHtml(name);
+            if (["single", "multiple"].includes(question.type)) return `<fieldset class="builder-preview-choices"><legend class="sr-only">${Common.escapeHtml(this.localizedQuestionField(question, "title"))}</legend>${(question.options || []).map((option) => `<label><input type="${question.type === "multiple" ? "checkbox" : "radio"}" name="${escapedName}" value="${Common.escapeHtml(option.id)}"> <span>${Common.escapeHtml(this.localizedOptionLabel(question, option))}</span></label>`).join("")}</fieldset>`;
+            if (question.type === "dropdown") return `<select class="builder-preview-input" name="${escapedName}"><option value="">선택해 주세요.</option>${(question.options || []).map((option) => `<option value="${Common.escapeHtml(option.id)}">${Common.escapeHtml(this.localizedOptionLabel(question, option))}</option>`).join("")}</select>`;
+            if (question.type === "short_text") return `<input class="builder-preview-input" name="${escapedName}" type="text" placeholder="짧은 답변">`;
+            if (question.type === "long_text") return `<textarea class="builder-preview-input" name="${escapedName}" rows="3" placeholder="긴 답변"></textarea>`;
+            if (question.type === "number") return `<label class="builder-preview-unit"><input class="builder-preview-input" name="${escapedName}" type="number" min="${question.min ?? ""}" max="${question.max ?? ""}" placeholder="숫자 입력"><span>${Common.escapeHtml(this.localizedQuestionField(question, "unit"))}</span></label>`;
+            if (question.type === "slider") return `<div class="builder-preview-slider"><output>${question.min ?? 0}${Common.escapeHtml(this.localizedQuestionField(question, "unit"))}</output><input name="${escapedName}" type="range" min="${question.min ?? 0}" max="${question.max ?? 100}" value="${question.min ?? 0}" data-preview-slider data-unit="${Common.escapeHtml(this.localizedQuestionField(question, "unit"))}"></div>`;
+            if (question.type === "date") return `<input class="builder-preview-input" name="${escapedName}" type="date">`;
+            if (question.type === "scale") {
+                const minimum = Number(question.min ?? 1);
+                const maximum = Number(question.max ?? 5);
+                const count = Math.min(11, Math.max(2, maximum - minimum + 1));
+                return `<fieldset class="builder-preview-scale"><legend class="sr-only">${Common.escapeHtml(this.localizedQuestionField(question, "title"))}</legend><div style="--scale-count:${count}">${Array.from({ length: count }, (_, index) => `<label><input type="radio" name="${escapedName}" value="${minimum + index}"><span>${minimum + index}</span></label>`).join("")}</div><p><span>${Common.escapeHtml(this.localizedQuestionField(question, "minLabel"))}</span><span>${Common.escapeHtml(this.localizedQuestionField(question, "maxLabel"))}</span></p></fieldset>`;
+            }
             if (choiceMatrixTypes.has(question.type)) return this.previewAxisTableMarkup(question, question.type === "matrix_multiple" ? "checkbox" : "radio");
             if (question.type === "table") return this.previewAxisTableMarkup(question, "text");
             if (question.type === "repeat_table") return this.previewRepeatTableMarkup(question);
@@ -1072,11 +1365,113 @@
         previewAxisTableMarkup(question, cellType) {
             const columns = (question.columns || []).map((column, index) => this.localizedIndexedLabel(question, "columns", index));
             const rows = (question.rows || []).map((row, index) => this.localizedIndexedLabel(question, "rows", index));
-            return `<div class="builder-respondent-table"><table><thead><tr><th scope="col">항목</th>${columns.map((column) => `<th scope="col">${Common.escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr><th scope="row">${Common.escapeHtml(row)}</th>${columns.map(() => `<td><input type="${cellType}" ${cellType === "text" ? 'placeholder="입력"' : ""} disabled></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+            return `<div class="builder-respondent-table"><table><thead><tr><th scope="col">항목</th>${columns.map((column) => `<th scope="col">${Common.escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row, rowIndex) => `<tr><th scope="row">${Common.escapeHtml(row)}</th>${columns.map((column, columnIndex) => `<td><input type="${cellType}" name="preview_${Common.escapeHtml(question.id)}_${rowIndex}${cellType === "checkbox" ? `_${columnIndex}` : ""}" value="${columnIndex}" ${cellType === "text" ? `placeholder="입력" aria-label="${Common.escapeHtml(row)} - ${Common.escapeHtml(column)}"` : `aria-label="${Common.escapeHtml(row)} - ${Common.escapeHtml(column)}"`}></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
         },
         previewRepeatTableMarkup(question) {
             const columns = (question.columns || []).map((column, index) => this.localizedIndexedLabel(question, "columns", index));
-            return `<div class="builder-preview-repeat"><div class="builder-preview-repeat-row" style="--columns:${Math.max(1, columns.length)}">${columns.map((column) => `<strong>${Common.escapeHtml(column)}</strong>`).join("")}<span></span></div><div class="builder-preview-repeat-row" style="--columns:${Math.max(1, columns.length)}">${columns.map((column) => `<input type="text" placeholder="${Common.escapeHtml(column)}" disabled>`).join("")}<button type="button" disabled>×</button></div><button type="button" class="repeat-table-add-preview" disabled>＋ 행 추가</button></div>`;
+            return `<div class="builder-preview-repeat" data-preview-repeat-table="${Common.escapeHtml(question.id)}"><div class="builder-preview-repeat-row" style="--columns:${Math.max(1, columns.length)}">${columns.map((column) => `<strong>${Common.escapeHtml(column)}</strong>`).join("")}<span></span></div><div data-preview-repeat-rows>${this.previewRepeatRowMarkup(question, 0)}</div><button type="button" class="repeat-table-add-preview" data-preview-repeat-add>＋ 행 추가</button></div>`;
+        },
+        previewRepeatRowMarkup(question, rowIndex) {
+            const columns = (question.columns || []).map((column, index) => this.localizedIndexedLabel(question, "columns", index));
+            return `<div class="builder-preview-repeat-row" style="--columns:${Math.max(1, columns.length)}" data-preview-repeat-row>${columns.map((column, columnIndex) => `<input type="text" name="preview_${Common.escapeHtml(question.id)}_${rowIndex}_${columnIndex}" placeholder="${Common.escapeHtml(column)}" aria-label="${rowIndex + 1}행 ${Common.escapeHtml(column)}">`).join("")}<button type="button" data-preview-repeat-remove aria-label="${rowIndex + 1}행 삭제">×</button></div>`;
+        },
+        handlePreviewTableAction(event) {
+            const add = event.target.closest("[data-preview-repeat-add]");
+            const remove = event.target.closest("[data-preview-repeat-remove]");
+            if (add) {
+                const table = add.closest("[data-preview-repeat-table]");
+                const rows = table.querySelector("[data-preview-repeat-rows]");
+                const question = this.question(table.dataset.previewRepeatTable);
+                rows.insertAdjacentHTML("beforeend", this.previewRepeatRowMarkup(question, rows.children.length));
+            }
+            if (remove) {
+                const rows = remove.closest("[data-preview-repeat-rows]");
+                if (rows.children.length > 1) remove.closest("[data-preview-repeat-row]").remove();
+            }
+        },
+        previewAnswers(dialog) {
+            const answers = {};
+            dialog.querySelectorAll("[data-preview-question-id]").forEach((card) => {
+                const question = this.question(card.dataset.previewQuestionId);
+                if (!question) return;
+                const checked = [...card.querySelectorAll("input:checked")].map((input) => input.value);
+                if (["multiple", "matrix_multiple"].includes(question.type)) answers[question.id] = checked;
+                else if (["single", "scale", "matrix_single"].includes(question.type)) answers[question.id] = checked[0] || "";
+                else if (["table", "repeat_table"].includes(question.type)) answers[question.id] = [...card.querySelectorAll("input")].map((input) => input.value);
+                else answers[question.id] = card.querySelector("select, textarea, input")?.value || "";
+            });
+            return answers;
+        },
+        previewHasValue(value) {
+            return Array.isArray(value) ? value.some((item) => String(item ?? "").trim()) : String(value ?? "").trim() !== "";
+        },
+        previewConditionMatches(condition, answer) {
+            const operator = condition.operator || "equals";
+            if (operator === "exists") return this.previewHasValue(answer);
+            if (operator === "not_exists") return !this.previewHasValue(answer);
+            if (!this.previewHasValue(answer)) return false;
+            const actual = Array.isArray(answer) ? answer : [answer];
+            const expected = Array.isArray(condition.value) ? condition.value : [condition.value];
+            if (operator === "contains") return actual.some((item) => expected.some((value) => String(item).includes(String(value))));
+            if (operator === "in") return actual.some((item) => expected.some((value) => String(item) === String(value)));
+            if (["greater_than", "greater_or_equal", "less_than", "less_or_equal"].includes(operator)) {
+                const left = Number(actual[0]);
+                const right = Number(expected[0]);
+                if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+                return operator === "greater_than" ? left > right : operator === "greater_or_equal" ? left >= right : operator === "less_than" ? left < right : left <= right;
+            }
+            const equal = actual.some((item) => expected.some((value) => String(item) === String(value)));
+            return operator === "not_equals" ? !equal : equal;
+        },
+        updatePreviewLogic(dialog) {
+            const answers = this.previewAnswers(dialog);
+            dialog.querySelectorAll("[data-preview-question-id]").forEach((card) => {
+                const question = this.question(card.dataset.previewQuestionId);
+                const group = question?.activationCondition || question?.activation_condition;
+                const results = (group?.conditions || []).map((condition) => this.previewConditionMatches(condition, answers[condition.sourceQuestionId || condition.source_question_id]));
+                const active = !results.length || ((group.combinator || "all") === "any" ? results.some(Boolean) : results.every(Boolean));
+                card.hidden = !active;
+                card.querySelectorAll("input, select, textarea, button").forEach((control) => { control.disabled = !active; });
+                if (!active) card.classList.remove("is-missing");
+            });
+        },
+        submitPreview(event, dialog) {
+            event.preventDefault();
+            const answers = this.previewAnswers(dialog);
+            const missing = [...dialog.querySelectorAll('[data-preview-required="true"]:not([hidden])')].filter((card) => !this.previewHasValue(answers[card.dataset.previewQuestionId]));
+            dialog.querySelectorAll("[data-preview-question-id]").forEach((card) => {
+                const invalid = missing.includes(card);
+                card.classList.toggle("is-missing", invalid);
+                card.querySelector(".builder-preview-required").hidden = !invalid;
+            });
+            const status = dialog.querySelector("[data-preview-submit-state]");
+            if (missing.length) {
+                status.textContent = `필수 응답 ${missing.length}개를 확인해 주세요.`;
+                missing[0].querySelector("input, select, textarea")?.focus({ preventScroll: true });
+                missing[0].scrollIntoView({ behavior: "smooth", block: "center" });
+                return;
+            }
+            status.textContent = "입력 동작 확인을 완료했습니다. 미리보기 응답은 저장되지 않습니다.";
+        },
+        applyPreviewDevice(dialog, code) {
+            const preset = previewDevices.find((item) => item.code === code) || previewDevices[1];
+            const customWidth = Number(dialog.querySelector("[data-preview-custom-width]")?.value);
+            const customHeight = Number(dialog.querySelector("[data-preview-custom-height]")?.value);
+            const device = code === "custom" ? {
+                width: Math.round(Math.min(5120, Math.max(240, Number.isFinite(customWidth) ? customWidth : 390))),
+                height: Math.round(Math.min(2880, Math.max(320, Number.isFinite(customHeight) ? customHeight : 844)))
+            } : preset;
+            const stage = dialog.querySelector("[data-preview-stage]");
+            const holder = dialog.querySelector("[data-preview-device-holder]");
+            const viewport = dialog.querySelector("[data-preview-viewport]");
+            if (!stage.clientWidth || !stage.clientHeight) return;
+            const scale = Math.min(1, (stage.clientWidth - 24) / device.width, (stage.clientHeight - 24) / device.height);
+            viewport.style.width = `${device.width}px`;
+            viewport.style.height = `${device.height}px`;
+            viewport.style.transform = `scale(${scale})`;
+            holder.style.width = `${Math.round(device.width * scale)}px`;
+            holder.style.height = `${Math.round(device.height * scale)}px`;
+            dialog.querySelector("[data-preview-size-status]").textContent = `${device.width} × ${device.height} · ${Math.round(scale * 100)}%`;
         },
         async prepareDistribution() {
             if (!this.survey.questions.some((question) => question.type !== "notice")) return this.context.toast("배포하려면 응답 가능한 문항을 한 개 이상 추가하세요.", "error");
@@ -1084,6 +1479,101 @@
             if (!saved || this.destroyed) return;
             this.context.toast("초안을 저장했습니다. 배포 설정으로 이동합니다.", "success");
             this.context.navigate("M03001", { surveyId: this.survey.id });
+        },
+        openAdminTemplatePublish() {
+            if (!this.templateAdmin || this.publishing) return;
+            if (!this.survey.questions.some((question) => question.type !== "notice")) return this.context.toast("공용 템플릿에는 응답 가능한 문항이 한 개 이상 필요합니다.", "error");
+            const proposedCode = this.templateCode || `template-${Date.now().toString(36)}`;
+            const category = this.survey.category || this.survey.projectProfile?.category || adminTemplateCategories[0];
+            const dialog = this.context.openModal(`<p class="eyebrow">PUBLISH SHARED TEMPLATE</p><h2>공용 템플릿으로 등록</h2><p class="muted">현재 관리자 초안을 새 템플릿 버전으로 고정합니다. 회원이 선택하면 이 버전이 독립 설문으로 복사됩니다.</p><form class="template-meta-form" data-admin-template-form>
+                <label class="form-field">템플릿 코드<input type="text" maxlength="50" pattern="[a-z0-9][a-z0-9-]{2,49}" value="${Common.escapeHtml(proposedCode)}" data-admin-template-code ${this.templateCode ? "readonly" : ""} required><span class="field-help">영문 소문자·숫자·하이픈 3~50자, 등록 후 변경할 수 없습니다.</span></label>
+                <label class="form-field">템플릿 제목<input type="text" maxlength="120" value="${Common.escapeHtml(this.survey.title || "")}" data-admin-template-title required></label>
+                <label class="form-field">분야<select data-admin-template-category required>${adminTemplateCategories.map((item) => `<option value="${Common.escapeHtml(item)}" ${item === category ? "selected" : ""}>${Common.escapeHtml(item)}</option>`).join("")}</select></label>
+                <label class="form-field">회원에게 보일 설명<textarea rows="4" maxlength="500" data-admin-template-description>${Common.escapeHtml(this.survey.description || "")}</textarea></label>
+                <p class="form-error" data-admin-template-error role="alert" tabindex="-1" hidden></p>
+                <div class="template-meta-actions"><button class="button" type="button" data-admin-template-cancel>취소</button><button class="button button-primary" type="submit">저장 후 등록</button></div>
+            </form>`, { label: "공용 템플릿 등록", initialFocus: "[data-admin-template-title]" });
+            const form = dialog.querySelector("[data-admin-template-form]");
+            dialog.querySelector("[data-admin-template-cancel]")?.addEventListener("click", () => dialog.close());
+            form?.addEventListener("submit", (event) => this.publishAdminTemplate(event, dialog));
+        },
+        async publishAdminTemplate(event, dialog) {
+            event.preventDefault();
+            if (this.publishing) return;
+            const form = event.currentTarget;
+            const code = form.querySelector("[data-admin-template-code]").value.trim().toLowerCase();
+            const errorHost = form.querySelector("[data-admin-template-error]");
+            if (!/^[a-z0-9][a-z0-9-]{2,49}$/.test(code)) {
+                errorHost.textContent = "템플릿 코드는 영문 소문자·숫자·하이픈으로 3~50자 입력하세요.";
+                errorHost.hidden = false;
+                errorHost.focus();
+                return;
+            }
+            const submit = form.querySelector('[type="submit"]');
+            this.publishing = true;
+            submit.disabled = true;
+            errorHost.hidden = true;
+            const saved = await this.saveExplicit({ notify: false });
+            if (!saved || this.destroyed) {
+                this.publishing = false;
+                if (!this.destroyed) submit.disabled = false;
+                return;
+            }
+            try {
+                await this.context.api.post(`/api/admin/templates/${encodeURIComponent(code)}/publish`, {
+                    sourceSurveyId: this.survey.id,
+                    title: form.querySelector("[data-admin-template-title]").value.trim(),
+                    description: form.querySelector("[data-admin-template-description]").value.trim(),
+                    category: form.querySelector("[data-admin-template-category]").value
+                });
+                dialog.close();
+                this.context.toast("공용 템플릿 버전을 등록했습니다.", "success");
+                this.context.navigate("M07001");
+            } catch (error) {
+                errorHost.textContent = error.message;
+                errorHost.hidden = false;
+                errorHost.focus();
+                submit.disabled = false;
+            } finally {
+                this.publishing = false;
+            }
+        },
+        async publishSurvey() {
+            if (this.publishing) return;
+            if (!this.survey.questions.some((question) => question.type !== "notice")) return this.context.toast("확정하려면 응답 가능한 문항을 한 개 이상 추가하세요.", "error");
+            const button = this.root.querySelector("[data-builder-publish]");
+            this.publishing = true;
+            button.disabled = true;
+            const saved = await this.saveExplicit({ notify: false });
+            if (!saved || this.destroyed) {
+                this.publishing = false;
+                if (!this.destroyed) button.disabled = false;
+                return;
+            }
+            try {
+                const payload = await this.context.api.post(`/api/surveys/${encodeURIComponent(this.survey.id)}/publish`, {});
+                const published = payload.survey || payload;
+                this.survey.status = "published";
+                this.survey.slug = published.slug;
+                this.survey.publicUrl = published.publicUrl;
+                this.root.querySelector("[data-builder-status]").textContent = "배포됨";
+                this.context.toast(`설문을 확정했습니다. 응답 URL: ${published.publicUrl}`, "success");
+            } catch (error) {
+                this.context.toast(error.message, "error");
+            } finally {
+                this.publishing = false;
+                if (!this.destroyed) button.disabled = false;
+            }
+        },
+        async beforeRefresh() {
+            if (!this.survey || (!this.dirty && !this.savePromise)) return true;
+            try {
+                await this.flushSave();
+                return true;
+            } catch (error) {
+                if (!this.destroyed) this.context.toast(`저장하지 못해 화면을 새로고침하지 않았습니다. ${error.message}`, "error");
+                return false;
+            }
         },
         async destroy() {
             clearTimeout(this.saveTimer);

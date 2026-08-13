@@ -7,7 +7,7 @@
     <meta name="description" content="기관을 위한 설문 제작, 배포, 수집, 분석 통합 플랫폼 IN-SURVEYONE">
     <title>IN-SURVEYONE</title>
     <link rel="icon" href="/frontend/assets/images/surveyone-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/frontend/css/app.css?v=20260811.5">
+    <link rel="stylesheet" href="/frontend/css/app.css?v=20260814.28">
 </head>
 <body>
     <a class="skip-link" href="#pageHost">본문 바로가기</a>
@@ -21,15 +21,15 @@
                 <img src="/frontend/assets/images/inSurveyOneLogoW.png" alt="IN-SURVEYONE">
             </a>
             <div class="header-context">
-                <button class="workspace-chip" type="button" title="회원사 작업공간">
+                <a class="workspace-chip" href="#/M01001" title="작업공간 대시보드로 이동" aria-label="현재 작업공간 대시보드로 이동">
                     <span class="workspace-mark" aria-hidden="true">IN</span>
                     <span><small>작업공간</small><strong data-tenant-name>IN-SURVEYONE</strong></span>
-                    <span aria-hidden="true">⌄</span>
-                </button>
-                <div class="header-page-context">
-                    <span data-page-group>홈</span>
+                    <span aria-hidden="true">→</span>
+                </a>
+                <nav class="header-page-context" aria-label="현재 위치">
+                    <a href="#/M01001" data-page-group-link><span data-page-group>홈</span></a>
                     <h1 data-page-title>대시보드</h1>
-                </div>
+                </nav>
             </div>
             <div class="header-actions">
                 <div class="header-page-actions">
@@ -38,6 +38,9 @@
                         <span aria-hidden="true">＋</span> 체험 시작
                     </button>
                 </div>
+                <button class="header-page-refresh" type="button" data-page-refresh title="현재 화면 새로고침" aria-label="현재 화면 메모리를 초기화하고 새로고침">
+                    <span aria-hidden="true">↻</span><span class="header-page-refresh-label">새로고침</span>
+                </button>
                 <button class="header-help" type="button" data-help-button aria-haspopup="dialog" aria-controls="appModal" title="현재 화면 작성 도움말">
                     <span aria-hidden="true">?</span><span class="header-help-label">작성 도움말</span>
                 </button>
@@ -47,6 +50,7 @@
                     <span aria-hidden="true">⌄</span>
                 </button>
                 <div class="user-menu" data-user-menu role="menu" hidden>
+                    <p class="user-menu-security" data-session-security hidden>공용 PC에서는 작업 후 반드시 로그아웃하세요.</p>
                     <button type="button" role="menuitem" data-auth-action="signup">회원가입</button>
                     <button type="button" role="menuitem" data-auth-action="login">로그인</button>
                     <button type="button" role="menuitem" data-auth-action="logout" hidden>로그아웃</button>
@@ -103,6 +107,7 @@
                 </article>
                 <p class="guest-capability-status" id="guestCapabilityStatus" data-guest-capability-status role="status">게스트 계정 발급 상태를 확인하고 있습니다.</p>
                 <button class="button button-primary button-block" type="button" data-guest-start disabled>게스트 계정 발급</button>
+                <button class="button button-secondary button-block" type="button" data-guest-capability-retry hidden>발급 상태 다시 확인</button>
                 <small>실제 연락처나 민감정보를 입력하지 마세요. 외부 메시지 발송은 제공자 설정에 따라 제한됩니다.</small>
             </div>
             <section class="guest-credential-result" data-guest-credentials hidden aria-labelledby="guestCredentialTitle">
@@ -123,33 +128,93 @@
         <form class="auth-panel" data-auth-panel="login" hidden data-login-form>
             <label>아이디<input type="text" name="loginId" autocomplete="username" required placeholder="회원 또는 게스트 계정 아이디"></label>
             <label>비밀번호<input type="password" name="password" autocomplete="current-password" required minlength="8" placeholder="8자 이상"></label>
+            <label class="check-label"><input type="checkbox" name="keepSignedIn" value="true"> 이 브라우저에서 로그인 상태 유지</label>
+            <aside class="shared-device-notice" role="note">
+                <strong>공용 PC인가요?</strong>
+                <span>로그인 상태 유지를 선택하지 말고, 작업을 마치면 사용자 메뉴에서 반드시 로그아웃하세요.</span>
+            </aside>
             <button class="button button-primary button-block" type="submit">로그인</button>
         </form>
         <form class="auth-panel" data-auth-panel="signup" hidden data-signup-form>
             <div class="form-grid form-grid-two">
-                <label>기관명<input type="text" name="organizationName" required placeholder="기관 또는 회사명"></label>
-                <label>담당자명<input type="text" name="name" required placeholder="이름"></label>
+                <label>기관명<input type="text" name="organizationName" autocomplete="organization" required placeholder="기관 또는 회사명"></label>
+                <label>담당자명<input type="text" name="name" autocomplete="name" required placeholder="이름"></label>
             </div>
-            <label>아이디<input type="text" name="loginId" required minlength="4" maxlength="50" pattern="[A-Za-z0-9._-]+" placeholder="영문, 숫자, ., _, - 조합"></label>
-            <label>업무 이메일<input type="email" name="email" autocomplete="username" required placeholder="name@organization.kr"></label>
+            <label>아이디<input type="text" name="loginId" autocomplete="username" required minlength="4" maxlength="50" pattern="[A-Za-z0-9._-]+" placeholder="영문, 숫자, ., _, - 조합"></label>
+            <label>업무 이메일<input type="email" name="email" autocomplete="email" required placeholder="name@organization.kr"></label>
             <label>비밀번호<input type="password" name="password" autocomplete="new-password" required minlength="8" placeholder="8자 이상"></label>
-            <label class="check-label"><input type="checkbox" name="terms" required> 이용약관과 개인정보 처리방침에 동의합니다.</label>
+            <fieldset class="signup-account-role">
+                <legend>계정 권한</legend>
+                <label class="check-label signup-admin-option"><input type="checkbox" name="requestSystemAdmin" value="true" data-signup-admin-toggle><span><strong>플랫폼 관리자로 가입</strong><small>공용 템플릿을 설계·등록하는 최고 권한 계정입니다.</small></span></label>
+                <div class="signup-admin-key" data-signup-admin-key hidden>
+                    <label>관리자 인증키<input type="password" name="adminKey" autocomplete="off" maxlength="256" placeholder="INIT_ADMIN_KEY 입력" disabled data-signup-admin-key-input><span class="field-help">서버에 설정된 INIT_ADMIN_KEY와 일치해야 하며 가입 후 저장되지 않습니다.</span></label>
+                </div>
+            </fieldset>
+            <section class="signup-agreement" aria-labelledby="signupTermsTitle">
+                <header><div><span class="eyebrow">REQUIRED AGREEMENT</span><h3 id="signupTermsTitle">서비스 이용약관 및 개인정보 안내</h3></div><small>시행일 2026. 08. 13.</small></header>
+                <div class="signup-terms-document" tabindex="0" aria-label="이용약관 및 개인정보 처리 안내 전문">
+                    <section>
+                        <h4>IN-SURVEYONE 서비스 이용약관</h4>
+                        <h5>제1조 목적과 적용</h5>
+                        <p>본 약관은 IN-SURVEYONE이 제공하는 설문 제작, 배포, 응답 수집 및 보고 기능의 이용 조건과 사용자 책임을 정합니다. 회원가입과 서비스 이용에는 본 약관이 적용됩니다.</p>
+                        <h5>제2조 계정과 권한</h5>
+                        <p>회원은 정확한 기관 및 담당자 정보를 사용하고 계정 자격정보를 안전하게 관리해야 합니다. 플랫폼 관리자 인증키는 공용 템플릿을 관리하는 최고 권한 확인에만 사용하며 타인과 공유해서는 안 됩니다.</p>
+                        <h5>제3조 설문과 데이터의 책임</h5>
+                        <p>회원은 설문 문항, 수신자 정보 및 응답을 적법한 목적과 권한 범위에서 처리해야 합니다. 불필요한 민감정보 수집, 타인 사칭, 불법 발송 및 권리 침해 콘텐츠 등록은 금지됩니다.</p>
+                        <h5>제4조 서비스 이용과 제한</h5>
+                        <p>시스템 보안, 장애 대응, 법령 준수 또는 다른 사용자의 권리 보호를 위해 필요한 범위에서 기능이 일시 제한될 수 있습니다. 게스트 계정은 별도의 만료 기간과 사용량 제한이 적용됩니다.</p>
+                        <h5>제5조 템플릿과 게시물</h5>
+                        <p>공용 템플릿은 회원 프로젝트의 시작 구조로 제공됩니다. 프로젝트로 복사된 이후의 수정과 운영 책임은 해당 프로젝트 소유자에게 있으며, 원본 템플릿의 후속 변경은 이미 복사된 프로젝트에 자동 반영되지 않습니다.</p>
+                        <h5>제6조 탈퇴와 이용 종료</h5>
+                        <p>회원은 계정 이용 종료를 요청할 수 있습니다. 법령상 보존 의무가 있는 정보와 보안·분쟁 대응에 필요한 최소 기록을 제외한 회원 데이터는 정해진 절차에 따라 삭제됩니다.</p>
+                    </section>
+                    <section>
+                        <h4>개인정보 수집·이용 안내</h4>
+                        <dl>
+                            <div><dt>수집 항목</dt><dd>기관명, 담당자명, 로그인 아이디, 업무 이메일, 비밀번호 해시, 접속·보안 기록</dd></div>
+                            <div><dt>이용 목적</dt><dd>회원 식별, 기관 작업공간 제공, 로그인과 권한 관리, 보안 사고 예방, 문의 및 서비스 운영</dd></div>
+                            <div><dt>보유 기간</dt><dd>회원 계정 이용 기간 동안 보유하며, 탈퇴 후에는 관계 법령상 보존 의무 또는 분쟁·보안 대응에 필요한 기간을 제외하고 삭제합니다.</dd></div>
+                            <div><dt>동의 거부</dt><dd>필수 개인정보 수집·이용에 동의하지 않을 수 있으나, 이 경우 회원 작업공간을 만들 수 없습니다.</dd></div>
+                        </dl>
+                        <p>비밀번호 원문과 관리자 인증키는 저장하지 않습니다. 비밀번호는 강한 해시로만 저장하고 관리자 인증키는 가입 요청 시 서버 설정값과 비교한 뒤 폐기합니다.</p>
+                    </section>
+                </div>
+                <div class="signup-consents">
+                    <label class="check-label"><input type="checkbox" name="termsAccepted" value="true" required><span><strong>서비스 이용약관에 동의합니다.</strong> <small>(필수)</small></span></label>
+                    <label class="check-label"><input type="checkbox" name="privacyAccepted" value="true" required><span><strong>개인정보 수집·이용에 동의합니다.</strong> <small>(필수)</small></span></label>
+                </div>
+            </section>
             <button class="button button-primary button-block" type="submit">작업공간 만들기</button>
         </form>
         <p class="form-message" data-auth-message role="status"></p>
     </dialog>
 
     <dialog id="appModal" class="modal" data-modal aria-label="안내">
+        <div class="modal-drag-bar" data-modal-drag-handle tabindex="0" aria-label="레이어 이동 영역. 방향키로 이동할 수 있습니다."><span data-modal-drag-title>레이어 창</span></div>
         <form method="dialog" class="dialog-close-row"><button class="icon-button" value="cancel" aria-label="닫기">×</button></form>
         <div data-modal-body></div>
     </dialog>
 
+    <dialog id="messageDialog" class="message-dialog" data-message-dialog aria-labelledby="messageDialogTitle" aria-describedby="messageDialogText">
+        <header class="message-dialog-header" data-message-drag-handle tabindex="0" aria-label="메시지 레이어 이동 영역. 방향키로 이동할 수 있습니다.">
+            <span class="message-dialog-tone-icon" data-message-tone-icon aria-hidden="true">i</span>
+            <strong id="messageDialogTitle" data-message-title>확인</strong>
+            <button class="message-copy-button" type="button" data-message-copy title="메시지 복사" aria-label="메시지 내용 복사"><span aria-hidden="true">⧉</span><span>복사</span></button>
+            <form method="dialog"><button class="icon-button" value="cancel" aria-label="닫기">×</button></form>
+        </header>
+        <div class="message-dialog-body"><p id="messageDialogText" data-message-text></p></div>
+        <form method="dialog" class="message-dialog-actions">
+            <button class="button" type="submit" value="cancel" data-message-cancel>취소</button>
+            <button class="button button-primary" type="submit" value="confirm" data-message-confirm>확인</button>
+        </form>
+    </dialog>
+
     <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="true"></div>
 
-    <script src="/frontend/config/app.config.js?v=20260811.5"></script>
-    <script src="/frontend/config/menu.config.js?v=20260811.5"></script>
-    <script src="/frontend/config/help.config.js?v=20260811.5"></script>
-    <script src="/frontend/js/common.js?v=20260811.5"></script>
-    <script src="/frontend/js/app.js?v=20260811.5"></script>
+    <script src="/frontend/config/app.config.js?v=20260814.28"></script>
+    <script src="/frontend/config/menu.config.js?v=20260814.28"></script>
+    <script src="/frontend/config/help.config.js?v=20260814.28"></script>
+    <script src="/frontend/js/common.js?v=20260814.28"></script>
+    <script src="/frontend/js/app.js?v=20260814.28"></script>
 </body>
 </html>

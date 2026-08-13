@@ -1,0 +1,45 @@
+<nav class="survey-flow" aria-label="설문 프로젝트 단계">
+    <ol>
+        <li class="is-complete"><button type="button" data-experience-basic><span>STEP 01</span><strong>기본정보</strong><small>조사 조건과 목표 설정</small></button></li>
+        <li class="is-complete"><button type="button" data-experience-skin><span>STEP 02</span><strong>스킨 설정</strong><small>색상·글꼴·응답 화면</small></button></li>
+        <li class="is-current" aria-current="step"><span class="survey-flow-step"><span>STEP 03</span><strong>응답 UI</strong><small>스크롤 또는 한 문항씩</small></span></li>
+        <li><button type="button" data-experience-editor><span>STEP 04</span><strong>설문 편집</strong><small>문항 작성·저장·확정</small></button></li>
+    </ol>
+</nav>
+
+<section class="experience-hero page-section">
+    <div>
+        <span class="eyebrow">RESPONDENT EXPERIENCE</span>
+        <span class="experience-project-id" data-experience-project-id></span>
+        <h2>응답자가 문항을 만나는 방식을 선택하세요.</h2>
+        <p>선택한 방식은 편집기의 설정에서 언제든 바꿀 수 있으며, 이미 확정·배포한 버전에는 영향을 주지 않습니다.</p>
+    </div>
+</section>
+
+<section class="experience-options" aria-labelledby="experienceOptionsTitle">
+    <article class="experience-skin-summary">
+        <div><span class="eyebrow">PROJECT SKIN</span><strong>선택한 스킨으로 응답 UI를 확인합니다.</strong><small data-experience-skin-name>스킨 확인 중</small></div>
+        <div class="experience-skin-presets" data-experience-skins aria-label="빠른 스킨 선택"></div>
+    </article>
+    <div class="section-heading">
+        <div><span class="section-kicker">STEP 03</span><h2 id="experienceOptionsTitle">설문 UI 컨셉</h2><p>문항 수와 응답 환경에 맞는 기본 진행 방식을 고르세요.</p></div>
+    </div>
+    <div class="experience-grid" role="radiogroup" aria-label="응답 UI 방식">
+        <button class="experience-card" type="button" role="radio" aria-checked="false" data-presentation-mode="scroll">
+            <span class="experience-preview experience-preview-scroll" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <span class="experience-copy"><span class="experience-badge">전체 보기</span><strong>전체 문항 스크롤</strong><small>문항을 한 화면에서 연속으로 확인합니다. 짧은 설문과 전체 맥락 확인에 적합합니다.</small></span>
+            <span class="experience-check" aria-hidden="true">✓</span>
+        </button>
+        <button class="experience-card" type="button" role="radio" aria-checked="false" data-presentation-mode="one_at_a_time">
+            <span class="experience-preview experience-preview-one" aria-hidden="true"><i></i><b>1 / 8</b></span>
+            <span class="experience-copy"><span class="experience-badge">집중 보기</span><strong>한 화면에 한 문항</strong><small>이전·다음 버튼으로 한 문항씩 이동합니다. 모바일과 긴 설문에 적합합니다.</small></span>
+            <span class="experience-check" aria-hidden="true">✓</span>
+        </button>
+    </div>
+    <aside class="experience-note" role="note"><strong>동적 문항도 안전하게 처리합니다.</strong><p>선행 응답에 따라 활성화된 문항만 진행 순서에 포함하며, 조건이 바뀌면 현재 위치와 진행률을 다시 계산합니다.</p></aside>
+    <p class="form-error" data-experience-error role="alert" tabindex="-1" hidden></p>
+    <div class="experience-actions">
+        <button class="button" type="button" data-experience-skin>이전: 스킨 설정</button>
+        <button class="button button-primary" type="button" data-experience-next>저장하고 문항 편집</button>
+    </div>
+</section>

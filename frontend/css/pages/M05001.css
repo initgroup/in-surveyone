@@ -9,9 +9,9 @@
     --report-warn: #d97706;
     --report-danger: #c2415d;
     --report-shadow: 0 18px 48px rgba(33, 55, 98, 0.09);
-    width: min(100%, 1440px);
-    margin: 0 auto;
-    padding: clamp(20px, 3vw, 44px);
+    width: 100%;
+    margin: 0;
+    padding: 0;
     color: var(--report-ink);
     font: inherit;
 }
@@ -253,6 +253,21 @@
 
 .survey-report-page .report-button:hover:not(:disabled) {
     transform: translateY(-1px);
+}
+
+.survey-report-page .report-button:disabled {
+    cursor: wait;
+    opacity: 0.62;
+}
+
+.survey-report-page .report-button.is-exporting::before {
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    content: "";
+    animation: report-spin 700ms linear infinite;
 }
 
 .survey-report-page .report-button-primary {
@@ -554,7 +569,7 @@
 }
 
 @media (max-width: 720px) {
-    .survey-report-page { padding: 16px; }
+    .survey-report-page { padding: 0; }
     .survey-report-page .report-hero { min-height: 0; padding: 28px 22px; border-radius: 20px; }
     .survey-report-page .report-hero-mark { display: none; }
     .survey-report-page .report-filter-grid,

@@ -4,7 +4,7 @@
     window.SURVEYONE_CONFIG = Object.freeze({
         productName: "IN-SURVEYONE",
         companyName: "inIT",
-        assetVersion: "20260811.5",
+        assetVersion: "20260814.29",
         apiBaseUrl: "",
         defaultRoute: "M01001",
         publicPathPrefix: "/s/",
@@ -13,7 +13,9 @@
             { code: "ko", label: "한국어", nativeLabel: "한국어" },
             { code: "en", label: "영어", nativeLabel: "English" },
             { code: "ja", label: "일본어", nativeLabel: "日本語" },
-            { code: "zh", label: "중국어", nativeLabel: "中文" }
+            { code: "zh", label: "중국어", nativeLabel: "中文" },
+            { code: "vi", label: "베트남어", nativeLabel: "Tiếng Việt" },
+            { code: "fil", label: "필리핀어", nativeLabel: "Filipino" }
         ],
         questionTypes: [
             { code: "single", label: "객관식", description: "하나만 선택", icon: "radio" },

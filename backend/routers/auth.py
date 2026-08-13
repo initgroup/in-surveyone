@@ -25,10 +25,16 @@ from backend.models import (
 router = APIRouter()
 
 
+def _prevent_auth_caching(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store"
+
+
 def _set_session_cookie(
     response: Response,
     token: str,
     session: AuthSessionView,
+    *,
+    persistent: bool = False,
 ) -> None:
     settings = get_settings()
     remaining_seconds = max(
@@ -40,15 +46,19 @@ def _set_session_cookie(
         if session.user.is_guest
         else settings.session_ttl_seconds
     )
+    cookie_options: dict[str, object] = {}
+    if persistent:
+        cookie_options["max_age"] = min(remaining_seconds, maximum_seconds)
     response.set_cookie(
         key=settings.session_cookie_name,
         value=token,
-        max_age=min(remaining_seconds, maximum_seconds),
         httponly=True,
         secure=settings.cookie_secure,
         samesite=settings.cookie_samesite,
         path="/",
+        **cookie_options,
     )
+    _prevent_auth_caching(response)
 
 
 @router.post("/guest", response_model=ApiResponse[GuestProvisionView], status_code=201)
@@ -68,7 +78,7 @@ def start_guest_session(
         request_payload.display_name,
         request_payload.mode,
     )
-    response.headers["Cache-Control"] = "no-store"
+    _prevent_auth_caching(response)
     return ApiResponse(data=provisioned)
 
 
@@ -88,7 +98,12 @@ def login(
     response: Response,
 ) -> ApiResponse[AuthSessionView]:
     token, session = primary_store().login(payload)
-    _set_session_cookie(response, token, session)
+    _set_session_cookie(
+        response,
+        token,
+        session,
+        persistent=payload.keep_signed_in,
+    )
     return ApiResponse(data=session)
 
 
@@ -109,13 +124,15 @@ def logout(request: Request, response: Response) -> ApiResponse[dict[str, bool]]
         httponly=True,
         samesite=settings.cookie_samesite,
     )
+    _prevent_auth_caching(response)
     return ApiResponse(data={"loggedOut": True})
 
 
 @router.get("/me", response_model=ApiResponse[AuthSessionView])
-def me(request: Request) -> ApiResponse[AuthSessionView]:
+def me(request: Request, response: Response) -> ApiResponse[AuthSessionView]:
     token = request.cookies.get(get_settings().session_cookie_name)
     store, _ = resolve_authenticated_store(token)
+    _prevent_auth_caching(response)
     return ApiResponse(data=store.auth_session(token))
 
 

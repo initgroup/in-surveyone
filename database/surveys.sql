@@ -12,6 +12,7 @@ SELECT TENANT_ID
 SELECT COUNT(*) AS PROJECT_COUNT
   FROM "INIT$SVY_TB_SURVEY"
  WHERE TENANT_ID = :tenantId
+   AND STATUS_CODE <> 'DELETED'
 ;
 
 -- [SURVEY_LIST_BY_OWNER]
@@ -26,6 +27,14 @@ SELECT S.SURVEY_ID
      , S.CREATED_AT
      , S.UPDATED_AT
      , S.PUBLISHED_AT
+     , S.SURVEY_START_AT
+     , S.SURVEY_CLOSES_AT
+     , S.IDENTIFIED_YN
+     , S.SHOW_PROGRESS_YN
+     , S.TARGET_AUDIENCE
+     , S.POPULATION_MODE_CODE
+     , S.POPULATION_SIZE
+     , S.TARGET_RESPONSE_COUNT
      , (
            SELECT COUNT(*)
              FROM "INIT$SVY_TB_RESPONSE" R
@@ -35,8 +44,84 @@ SELECT S.SURVEY_ID
   FROM "INIT$SVY_TB_SURVEY" S
  WHERE S.TENANT_ID = :tenantId
    AND S.OWNER_USER_ID = :ownerUserId
+   AND S.STATUS_CODE <> 'DELETED'
+   AND S.ADMIN_TEMPLATE_YN = 'N'
    AND (:statusCode IS NULL OR S.STATUS_CODE = :statusCode)
  ORDER BY S.UPDATED_AT DESC
+;
+
+-- [SURVEY_PAGE_COUNTS_BY_OWNER]
+SELECT COUNT(*) AS TOTAL_COUNT
+     , COUNT(
+           CASE
+               WHEN (:statusCode IS NULL OR S.STATUS_CODE = :statusCode)
+                AND (
+                       :queryPattern IS NULL
+                    OR LOWER(S.SURVEY_TITLE) LIKE :queryPattern
+                    OR LOWER(S.CATEGORY_CODE) LIKE :queryPattern
+                    OR LOWER(S.SURVEY_ID) LIKE :queryPattern
+                )
+               THEN 1
+           END
+       ) AS FILTERED_COUNT
+  FROM "INIT$SVY_TB_SURVEY" S
+ WHERE S.TENANT_ID = :tenantId
+   AND S.OWNER_USER_ID = :ownerUserId
+   AND S.STATUS_CODE <> 'DELETED'
+   AND S.ADMIN_TEMPLATE_YN = 'N'
+;
+
+-- [SURVEY_PAGE_BY_OWNER]
+SELECT S.SURVEY_ID
+     , S.SURVEY_TITLE
+     , S.CATEGORY_CODE
+     , S.STATUS_CODE
+     , S.REVISION_NO
+     , S.DRAFT_JSON
+     , S.PUBLIC_SLUG
+     , S.ACTIVE_VERSION_NO
+     , S.CREATED_AT
+     , S.UPDATED_AT
+     , S.PUBLISHED_AT
+     , S.SURVEY_START_AT
+     , S.SURVEY_CLOSES_AT
+     , S.IDENTIFIED_YN
+     , S.SHOW_PROGRESS_YN
+     , S.TARGET_AUDIENCE
+     , S.POPULATION_MODE_CODE
+     , S.POPULATION_SIZE
+     , S.TARGET_RESPONSE_COUNT
+     , (
+           SELECT COUNT(*)
+             FROM "INIT$SVY_TB_RESPONSE" R
+            WHERE R.TENANT_ID = S.TENANT_ID
+              AND R.SURVEY_ID = S.SURVEY_ID
+       ) AS RESPONSE_COUNT
+  FROM "INIT$SVY_TB_SURVEY" S
+ WHERE S.TENANT_ID = :tenantId
+   AND S.OWNER_USER_ID = :ownerUserId
+   AND S.STATUS_CODE <> 'DELETED'
+   AND S.ADMIN_TEMPLATE_YN = 'N'
+   AND (:statusCode IS NULL OR S.STATUS_CODE = :statusCode)
+   AND (
+          :queryPattern IS NULL
+       OR LOWER(S.SURVEY_TITLE) LIKE :queryPattern
+       OR LOWER(S.CATEGORY_CODE) LIKE :queryPattern
+       OR LOWER(S.SURVEY_ID) LIKE :queryPattern
+   )
+ ORDER BY CASE WHEN :sortCode = 'responses' THEN (
+                  SELECT COUNT(*)
+                    FROM "INIT$SVY_TB_RESPONSE" R
+                   WHERE R.TENANT_ID = S.TENANT_ID
+                     AND R.SURVEY_ID = S.SURVEY_ID
+              ) END DESC
+        , CASE WHEN :sortCode = 'updated-asc' THEN S.UPDATED_AT END ASC
+        , CASE WHEN :sortCode = 'created-desc' THEN S.CREATED_AT END DESC
+        , CASE WHEN :sortCode = 'title' THEN LOWER(S.SURVEY_TITLE) END ASC
+        , CASE WHEN :sortCode = 'updated-desc' THEN S.UPDATED_AT END DESC
+        , LOWER(S.SURVEY_TITLE) ASC
+        , S.SURVEY_ID ASC
+ OFFSET :offsetRows ROWS FETCH NEXT :limitRows ROWS ONLY
 ;
 
 -- [SURVEY_DETAIL_BY_OWNER]
@@ -44,6 +129,7 @@ SELECT SURVEY_ID
      , TENANT_ID
      , OWNER_USER_ID
      , TEMPLATE_CODE
+     , TEMPLATE_VERSION_NO
      , SURVEY_TITLE
      , DESCRIPTION
      , CATEGORY_CODE
@@ -55,10 +141,20 @@ SELECT SURVEY_ID
      , CREATED_AT
      , UPDATED_AT
      , PUBLISHED_AT
+     , SURVEY_START_AT
+     , SURVEY_CLOSES_AT
+     , IDENTIFIED_YN
+     , SHOW_PROGRESS_YN
+     , TARGET_AUDIENCE
+     , POPULATION_MODE_CODE
+     , POPULATION_SIZE
+     , TARGET_RESPONSE_COUNT
+     , ADMIN_TEMPLATE_YN
   FROM "INIT$SVY_TB_SURVEY"
  WHERE SURVEY_ID = :surveyId
    AND TENANT_ID = :tenantId
    AND OWNER_USER_ID = :ownerUserId
+   AND STATUS_CODE <> 'DELETED'
 ;
 
 -- [SURVEY_DETAIL_FOR_UPDATE]
@@ -66,6 +162,7 @@ SELECT SURVEY_ID
      , TENANT_ID
      , OWNER_USER_ID
      , TEMPLATE_CODE
+     , TEMPLATE_VERSION_NO
      , SURVEY_TITLE
      , DESCRIPTION
      , CATEGORY_CODE
@@ -77,11 +174,50 @@ SELECT SURVEY_ID
      , CREATED_AT
      , UPDATED_AT
      , PUBLISHED_AT
+     , SURVEY_START_AT
+     , SURVEY_CLOSES_AT
+     , IDENTIFIED_YN
+     , SHOW_PROGRESS_YN
+     , TARGET_AUDIENCE
+     , POPULATION_MODE_CODE
+     , POPULATION_SIZE
+     , TARGET_RESPONSE_COUNT
+     , ADMIN_TEMPLATE_YN
   FROM "INIT$SVY_TB_SURVEY"
  WHERE SURVEY_ID = :surveyId
    AND TENANT_ID = :tenantId
    AND OWNER_USER_ID = :ownerUserId
+   AND STATUS_CODE <> 'DELETED'
  FOR UPDATE
+;
+
+-- [SURVEY_SOFT_DELETE_BY_OWNER]
+UPDATE "INIT$SVY_TB_SURVEY"
+   SET STATUS_CODE = 'DELETED'
+     , UPDATED_AT = SYSTIMESTAMP
+ WHERE SURVEY_ID = :surveyId
+   AND TENANT_ID = :tenantId
+   AND OWNER_USER_ID = :ownerUserId
+   AND STATUS_CODE IN ('DRAFT', 'CLOSED')
+;
+
+-- [SURVEY_CLOSE_BY_OWNER]
+UPDATE "INIT$SVY_TB_SURVEY"
+   SET STATUS_CODE = 'CLOSED'
+     , UPDATED_AT = SYSTIMESTAMP
+ WHERE SURVEY_ID = :surveyId
+   AND TENANT_ID = :tenantId
+   AND OWNER_USER_ID = :ownerUserId
+   AND STATUS_CODE = 'PUBLISHED'
+;
+
+-- [SURVEY_DEPLOYMENT_CLOSE]
+UPDATE "INIT$SVY_TB_SURVEY_DEPLOYMENT"
+   SET STATUS_CODE = 'CLOSED'
+     , UPDATED_AT = SYSTIMESTAMP
+ WHERE TENANT_ID = :tenantId
+   AND SURVEY_ID = :surveyId
+   AND STATUS_CODE IN ('ACTIVE', 'PAUSED')
 ;
 
 -- [SURVEY_INSERT]
@@ -90,12 +226,22 @@ INSERT INTO "INIT$SVY_TB_SURVEY" (
      , TENANT_ID
      , OWNER_USER_ID
      , TEMPLATE_CODE
+     , TEMPLATE_VERSION_NO
      , SURVEY_TITLE
      , DESCRIPTION
      , CATEGORY_CODE
      , STATUS_CODE
      , REVISION_NO
      , DRAFT_JSON
+     , SURVEY_START_AT
+     , SURVEY_CLOSES_AT
+     , IDENTIFIED_YN
+     , SHOW_PROGRESS_YN
+     , TARGET_AUDIENCE
+     , POPULATION_MODE_CODE
+     , POPULATION_SIZE
+     , TARGET_RESPONSE_COUNT
+     , ADMIN_TEMPLATE_YN
      , CREATED_AT
      , UPDATED_AT
 ) VALUES (
@@ -103,12 +249,22 @@ INSERT INTO "INIT$SVY_TB_SURVEY" (
      , :tenantId
      , :ownerUserId
      , :templateCode
+     , :templateVersionNo
      , :surveyTitle
      , :description
      , :categoryCode
      , 'DRAFT'
      , 1
      , :draftJson
+     , :surveyStartAt
+     , :surveyClosesAt
+     , :identifiedYn
+     , :showProgressYn
+     , :targetAudience
+     , :populationModeCode
+     , :populationSize
+     , :targetResponseCount
+     , :adminTemplateYn
      , SYSTIMESTAMP
      , SYSTIMESTAMP
 )
@@ -119,12 +275,34 @@ UPDATE "INIT$SVY_TB_SURVEY"
    SET SURVEY_TITLE = :surveyTitle
      , DESCRIPTION = :description
      , CATEGORY_CODE = :categoryCode
+     , SURVEY_START_AT = :surveyStartAt
+     , SURVEY_CLOSES_AT = :surveyClosesAt
+     , IDENTIFIED_YN = :identifiedYn
+     , SHOW_PROGRESS_YN = :showProgressYn
+     , TARGET_AUDIENCE = :targetAudience
+     , POPULATION_MODE_CODE = :populationModeCode
+     , POPULATION_SIZE = :populationSize
+     , TARGET_RESPONSE_COUNT = :targetResponseCount
      , DRAFT_JSON = :draftJson
      , REVISION_NO = REVISION_NO + 1
      , UPDATED_AT = SYSTIMESTAMP
  WHERE SURVEY_ID = :surveyId
    AND TENANT_ID = :tenantId
    AND OWNER_USER_ID = :ownerUserId
+;
+
+-- [SURVEY_APPLY_TEMPLATE_BY_OWNER]
+UPDATE "INIT$SVY_TB_SURVEY"
+   SET TEMPLATE_CODE = :templateCode
+     , TEMPLATE_VERSION_NO = :templateVersionNo
+     , DRAFT_JSON = :draftJson
+     , REVISION_NO = REVISION_NO + 1
+     , UPDATED_AT = SYSTIMESTAMP
+ WHERE SURVEY_ID = :surveyId
+   AND TENANT_ID = :tenantId
+   AND OWNER_USER_ID = :ownerUserId
+   AND STATUS_CODE = 'DRAFT'
+   AND ACTIVE_VERSION_NO IS NULL
 ;
 
 -- [SURVEY_VERSION_NEXT]

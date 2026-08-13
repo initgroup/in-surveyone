@@ -39,6 +39,8 @@
 .visitor-start-card ul { display: flex; flex-wrap: wrap; gap: 5px; margin: 15px 0 18px; padding: 0; list-style: none; }
 .visitor-start-card li { padding: 4px 7px; color: #41516b; background: #fff; border: 1px solid #dfe5ed; border-radius: 999px; font-size: 9px; }
 .visitor-start-card .button { margin-top: auto; }
+.visitor-database-actions { display: grid; margin-top: auto; }
+.visitor-database-actions .button { width: 100%; }
 .visitor-card-kicker { color: var(--blue); font-size: 9px; font-weight: 900; letter-spacing: .1em; }
 .visitor-database-card { background: #f5f8ff; border-color: #cbd8f4; }
 .visitor-database-card.is-disabled { opacity: .72; }

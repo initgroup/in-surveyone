@@ -173,10 +173,30 @@ def test_page_context_is_integrated_into_top_header_and_auth_tabs_share_height()
     assert 'class="header-page-context"' in index_source
     assert 'class="header-page-actions"' in index_source
     assert 'class="page-context-bar"' not in index_source
+    assert 'class="workspace-chip" href="#/M01001"' in index_source
+    assert 'aria-label="현재 작업공간 대시보드로 이동"' in index_source
+    assert 'data-page-group-link' in index_source
+    assert 'dom.pageGroupLink.href = `#/${groupLandingCode}`' in (
+        PROJECT_ROOT / "frontend" / "js" / "app.js"
+    ).read_text(encoding="utf-8")
     assert ".auth-panel" in css_source
     assert "height: 390px" in css_source
     assert "scrollbar-width: thin" in css_source
     assert "*::-webkit-scrollbar-thumb" in css_source
+
+
+def test_dashboard_actions_have_retry_and_refresh_feedback() -> None:
+    page_source = (PROJECT_ROOT / "frontend" / "pages" / "M01001.html").read_text(encoding="utf-8")
+    page_script = (PROJECT_ROOT / "frontend" / "js" / "M01001.js").read_text(encoding="utf-8")
+    app_source = (PROJECT_ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    index_source = (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert "data-visitor-database-retry" in page_source
+    assert "data-guest-capability-retry" in index_source
+    assert 'this.configureDatabaseGuestEntry({ force: true })' in page_script
+    assert 'this.load({ announce: true, refreshGuest: true })' in page_script
+    assert 'refreshButton.textContent = "새로고침 중…"' in page_script
+    assert 'loadGuestCapabilities({ force: true })' in app_source
 
 
 def test_auth_dialog_busy_state_is_reset_before_reopening_and_after_success() -> None:
@@ -201,6 +221,16 @@ def test_issued_guest_secret_is_only_handed_to_normal_login_form() -> None:
     assert "if (!preserveLoginForm) loginForm.reset();" in app_source
     assert 'Common.api.post("/api/auth/login", data)' in app_source
     assert "localStorage" not in app_source
+
+
+def test_shared_pc_login_is_non_persistent_by_default_and_warns_users() -> None:
+    app_source = (PROJECT_ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    index_source = (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert 'name="keepSignedIn" value="true"' in index_source
+    assert "공용 PC인가요?" in index_source
+    assert "공용 PC에서는 작업 후 반드시 로그아웃하세요." in index_source
+    assert 'data.keepSignedIn = data.keepSignedIn === "true";' in app_source
 
 
 def test_unavailable_guest_capability_is_retried_and_pending_requests_are_deduplicated() -> None:
@@ -280,3 +310,22 @@ def test_guest_post_failure_replaces_stale_available_capability() -> None:
     assert.equal(authMessage.textContent, "요청 값을 확인해 주세요");
         """
     )
+
+
+def test_signup_exposes_admin_key_and_readable_required_agreements() -> None:
+    html = (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    script = (PROJECT_ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+    css = (PROJECT_ROOT / "frontend" / "css" / "app.css").read_text(encoding="utf-8")
+
+    assert 'name="requestSystemAdmin" value="true" data-signup-admin-toggle' in html
+    assert 'name="adminKey"' in html
+    assert "INIT_ADMIN_KEY와 일치해야 하며 가입 후 저장되지 않습니다." in html
+    assert "IN-SURVEYONE 서비스 이용약관" in html
+    assert "개인정보 수집·이용 안내" in html
+    assert 'name="termsAccepted" value="true" required' in html
+    assert 'name="privacyAccepted" value="true" required' in html
+    assert html.index('class="signup-terms-document"') < html.index('name="termsAccepted"')
+    assert 'data.requestSystemAdmin = data.requestSystemAdmin === "true";' in script
+    assert 'navigate("M07001")' in script
+    assert ".signup-terms-document" in css
+    assert "overflow-y: auto" in css

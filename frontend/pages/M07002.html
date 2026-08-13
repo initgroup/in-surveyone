@@ -1,0 +1,23 @@
+<section class="member-admin-hero">
+    <div><span class="eyebrow">PLATFORM MEMBER OPERATIONS</span><h2>일반 회원과 게스트 계정을 통합 관리합니다.</h2><p>회원 분류별 조회, 비밀번호 초기화, 이용 중지와 복구할 수 없는 회원 탈퇴를 담당자 확인 후 처리하세요.</p></div>
+    <button class="button" type="button" data-member-refresh>새로고침</button>
+</section>
+
+<aside class="member-admin-notice" role="note"><span aria-hidden="true">!</span><div><strong>비밀번호 초기화와 회원 탈퇴는 서로 다른 작업입니다.</strong><p>임시 비밀번호는 한 번만 표시됩니다. 회원 탈퇴는 계정 개인정보를 익명화하고 모든 세션을 종료하며 복구할 수 없습니다. 설문·응답 등 업무 이력은 무결성과 보존 정책에 따라 유지됩니다.</p></div></aside>
+
+<section class="member-admin-toolbar" aria-labelledby="memberAdminTitle">
+    <div><span class="eyebrow">REGISTERED MEMBERS</span><h2 id="memberAdminTitle">가입 회원 목록</h2><p data-member-count>회원 정보를 불러오고 있습니다.</p></div>
+    <div class="member-admin-toolbar-controls">
+        <div class="member-type-filter" role="group" aria-label="회원 분류">
+            <button type="button" data-member-type="all" aria-pressed="true">전체</button>
+            <button type="button" data-member-type="member" aria-pressed="false">일반 회원</button>
+            <button type="button" data-member-type="guest" aria-pressed="false">게스트</button>
+        </div>
+        <label class="search-field"><span class="sr-only">회원 검색</span><input type="search" placeholder="기관명·담당자·아이디·이메일 검색" data-member-search></label>
+    </div>
+</section>
+
+<section class="member-admin-list" data-member-list aria-live="polite" aria-busy="true">
+    <div class="page-loading"><span class="spinner"></span><strong>가입 회원을 불러오고 있습니다.</strong></div>
+</section>
+<nav class="member-admin-pagination" data-member-pagination aria-label="회원 목록 페이지"></nav>

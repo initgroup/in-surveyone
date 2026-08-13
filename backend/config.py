@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -114,11 +114,14 @@ class Settings:
     email_provider: str
     sms_provider: str
     kakao_provider: str
+    fax_provider: str
+    delivery_secret: str
     db_guest_max_projects: int
     db_guest_max_questions: int
     db_guest_max_responses: int
     public_submit_max_bytes: int
     public_body_max_bytes: int
+    delivery_body_max_bytes: int
     guest_body_max_bytes: int
     auth_body_max_bytes: int
     guest_create_rate_limit: int
@@ -126,6 +129,7 @@ class Settings:
     login_rate_limit: int
     public_submit_rate_limit: int
     rate_limit_window_seconds: int
+    admin_key: str | None = field(default=None, repr=False)
 
 
 def _optional_path(name: str, legacy_name: str | None = None) -> Path | None:
@@ -282,6 +286,13 @@ def get_settings() -> Settings:
                 "INIT_SECRET_KEY is required in production environments."
             )
         session_secret = _development_session_secret()
+    delivery_secret = str(os.getenv("SURVEYONE_DELIVERY_SECRET") or "").strip()
+    if not delivery_secret:
+        if environment in {"production", "prod"}:
+            raise ValueError(
+                "SURVEYONE_DELIVERY_SECRET is required in production environments."
+            )
+        delivery_secret = session_secret
 
     return Settings(
         app_name=str(
@@ -347,6 +358,8 @@ def get_settings() -> Settings:
         email_provider=str(os.getenv("SURVEYONE_EMAIL_PROVIDER", "disabled")).strip().lower(),
         sms_provider=str(os.getenv("SURVEYONE_SMS_PROVIDER", "disabled")).strip().lower(),
         kakao_provider=str(os.getenv("SURVEYONE_KAKAO_PROVIDER", "disabled")).strip().lower(),
+        fax_provider=str(os.getenv("SURVEYONE_FAX_PROVIDER", "disabled")).strip().lower(),
+        delivery_secret=delivery_secret,
         db_guest_max_projects=_env_int(
             "SURVEYONE_DB_GUEST_MAX_PROJECTS", 10, minimum=1
         ),
@@ -361,6 +374,9 @@ def get_settings() -> Settings:
         ),
         public_body_max_bytes=_env_int(
             "SURVEYONE_PUBLIC_BODY_MAX_BYTES", 524_288, minimum=4_096
+        ),
+        delivery_body_max_bytes=_env_int(
+            "SURVEYONE_DELIVERY_BODY_MAX_BYTES", 4_194_304, minimum=65_536
         ),
         guest_body_max_bytes=_env_int(
             "SURVEYONE_GUEST_BODY_MAX_BYTES", 16_384, minimum=1_024
@@ -383,4 +399,5 @@ def get_settings() -> Settings:
         rate_limit_window_seconds=_env_int(
             "SURVEYONE_RATE_LIMIT_WINDOW_SECONDS", 60, minimum=1
         ),
+        admin_key=str(os.getenv("INIT_ADMIN_KEY") or "").strip() or None,
     )

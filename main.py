@@ -18,7 +18,17 @@ from backend.request_guard import (
     InProcessFixedWindowLimiter,
     PublicRequestGuardMiddleware,
 )
-from backend.routers import auth, dashboard, help, public, surveys, templates
+from backend.routers import (
+    admin_members,
+    admin_templates,
+    auth,
+    dashboard,
+    deployments,
+    help,
+    public,
+    surveys,
+    templates,
+)
 from backend.stores import prime_database_guest_probe
 
 
@@ -151,9 +161,20 @@ async def protect_browser_writes(request: Request, call_next):
 
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(
+    admin_templates.router,
+    prefix="/api/admin/templates",
+    tags=["admin-templates"],
+)
+app.include_router(
+    admin_members.router,
+    prefix="/api/admin/members",
+    tags=["admin-members"],
+)
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(templates.router, prefix="/api/templates", tags=["templates"])
 app.include_router(surveys.router, prefix="/api/surveys", tags=["surveys"])
+app.include_router(deployments.router, prefix="/api/deployments", tags=["deployments"])
 app.include_router(public.router, prefix="/api/public", tags=["public-surveys"])
 app.include_router(help.router, prefix="/api/help", tags=["help"])
 

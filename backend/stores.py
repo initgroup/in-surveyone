@@ -12,8 +12,21 @@ from backend.config import Settings, get_settings
 from backend.errors import AuthenticationError
 from backend.memory_store import UserRecord, memory_store
 from backend.models import (
+    AdminTemplateDraftRequest,
+    AdminTemplateDraftView,
+    AdminTemplatePatchRequest,
+    AdminTemplatePublishRequest,
+    AdminTemplateView,
+    AdminMemberPage,
+    AdminMemberStatusRequest,
+    AdminMemberView,
+    AdminPasswordResetView,
     AuthSessionView,
     DashboardView,
+    DeliveryProvidersView,
+    DeploymentDraftRequest,
+    DeploymentDraftView,
+    DeploymentExecuteResult,
     GuestCapabilitiesView,
     GuestFeatures,
     GuestProvisionView,
@@ -29,11 +42,14 @@ from backend.models import (
     SubmitResponseRequest,
     SurveyCreateRequest,
     SurveyDetail,
+    SurveyPage,
     SurveyReport,
     SurveyResponseView,
     SurveyStatus,
     SurveySummary,
     SurveyTemplate,
+    SurveyTemplateApplyRequest,
+    SurveyTemplateResetRequest,
     SurveyUpdateRequest,
 )
 
@@ -85,14 +101,74 @@ class SurveyStore(Protocol):
     def logout(self, raw_token: str | None) -> None: ...
     def templates(self) -> list[SurveyTemplate]: ...
     def template(self, code: str) -> SurveyTemplate: ...
-    def create_survey(self, user: UserRecord, request: SurveyCreateRequest) -> SurveyDetail: ...
+    def admin_templates(self, user: UserRecord) -> list[AdminTemplateView]: ...
+    def create_admin_template_draft(
+        self, user: UserRecord, request: AdminTemplateDraftRequest
+    ) -> AdminTemplateDraftView: ...
+    def delete_admin_template_draft(
+        self, user: UserRecord, survey_id: str
+    ) -> None: ...
+    def publish_admin_template(
+        self,
+        user: UserRecord,
+        code: str,
+        request: AdminTemplatePublishRequest,
+    ) -> AdminTemplateView: ...
+    def patch_admin_template(
+        self,
+        user: UserRecord,
+        code: str,
+        request: AdminTemplatePatchRequest,
+    ) -> AdminTemplateView: ...
+    def delete_admin_template(self, user: UserRecord, code: str) -> None: ...
+    def admin_members(
+        self,
+        user: UserRecord,
+        *,
+        page: int,
+        page_size: int,
+        query: str = "",
+        member_type: str = "all",
+    ) -> AdminMemberPage: ...
+    def admin_reset_member_password(
+        self, user: UserRecord, member_id: str
+    ) -> AdminPasswordResetView: ...
+    def admin_set_member_status(
+        self, user: UserRecord, member_id: str, request: AdminMemberStatusRequest
+    ) -> AdminMemberView: ...
+    def admin_withdraw_member(self, user: UserRecord, member_id: str) -> None: ...
+    def create_survey(
+        self,
+        user: UserRecord,
+        request: SurveyCreateRequest,
+        *,
+        admin_template: bool = False,
+    ) -> SurveyDetail: ...
     def list_surveys(
         self, user: UserRecord, status: SurveyStatus | None = None
     ) -> list[SurveySummary]: ...
+    def survey_page(
+        self,
+        user: UserRecord,
+        *,
+        page: int,
+        page_size: int,
+        status: SurveyStatus | None = None,
+        query: str = "",
+        sort: str = "updated-desc",
+    ) -> SurveyPage: ...
     def get_survey(self, user: UserRecord, survey_id: str) -> SurveyDetail: ...
+    def apply_template(
+        self, user: UserRecord, survey_id: str, request: SurveyTemplateApplyRequest
+    ) -> SurveyDetail: ...
+    def reset_template(
+        self, user: UserRecord, survey_id: str, request: SurveyTemplateResetRequest
+    ) -> SurveyDetail: ...
     def update_survey(
         self, user: UserRecord, survey_id: str, request: SurveyUpdateRequest
     ) -> SurveyDetail: ...
+    def delete_survey(self, user: UserRecord, survey_id: str) -> None: ...
+    def close_survey(self, user: UserRecord, survey_id: str) -> SurveyDetail: ...
     def publish(
         self, user: UserRecord, survey_id: str, request: PublishRequest
     ) -> PublishResult: ...
@@ -116,6 +192,14 @@ class SurveyStore(Protocol):
         response_status: str = "all",
     ) -> SurveyReport: ...
     def dashboard(self, user: UserRecord) -> DashboardView: ...
+    def delivery_providers(self, user: UserRecord) -> DeliveryProvidersView: ...
+    def deployment(self, user: UserRecord, survey_id: str) -> DeploymentDraftView: ...
+    def save_deployment(
+        self, user: UserRecord, survey_id: str, request: DeploymentDraftRequest
+    ) -> DeploymentDraftView: ...
+    def execute_deployment(
+        self, user: UserRecord, survey_id: str, request: DeploymentDraftRequest
+    ) -> DeploymentExecuteResult: ...
     def page_help(self, menu_id: str, language: str) -> dict[str, object]: ...
 
 

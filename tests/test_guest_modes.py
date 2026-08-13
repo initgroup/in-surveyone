@@ -113,14 +113,28 @@ def test_guest_capabilities_expose_only_database_mode_and_credentials() -> None:
         assert "initialPassword" not in relogged.text
         cookie = relogged.headers["set-cookie"].lower()
         assert "httponly" in cookie
-        max_age = int(cookie.split("max-age=", 1)[1].split(";", 1)[0])
-        assert 1 <= max_age <= settings.session_ttl_seconds
+        assert "max-age=" not in cookie
         session_expiry = datetime.fromisoformat(relogged.json()["data"]["expiresAt"])
         assert session_expiry <= expires_at
         me = client.get("/api/auth/me")
         assert me.status_code == 200
+        assert me.headers["cache-control"] == "no-store"
         assert "guestCredential" not in me.text
         assert "initialPassword" not in me.text
+
+        persistent_client = TestClient(app)
+        persistent_login = persistent_client.post(
+            "/api/auth/login",
+            json={
+                "loginId": login_id,
+                "password": password,
+                "keepSignedIn": True,
+            },
+        )
+        persistent_cookie = persistent_login.headers["set-cookie"].lower()
+        assert persistent_login.headers["cache-control"] == "no-store"
+        max_age = int(persistent_cookie.split("max-age=", 1)[1].split(";", 1)[0])
+        assert 1 <= max_age <= settings.session_ttl_seconds
 
         local = client.post("/api/auth/guest", json={"mode": "local"})
         assert local.status_code == 422

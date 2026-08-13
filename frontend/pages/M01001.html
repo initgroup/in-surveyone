@@ -31,7 +31,10 @@
             <p>만료형 게스트 아이디와 독립 작업공간을 발급받아 설문 제작·배포·응답·분석 흐름을 안전한 저장 환경에서 체험합니다.</p>
             <ul><li>계정별 완전 분리</li><li>유효기간 동안 Oracle 저장</li><li>초기 비밀번호 1회 표시</li></ul>
             <p class="visitor-database-status" id="visitorDatabaseStatus" data-visitor-database-status role="status">발급 상태를 확인하고 있습니다.</p>
-            <button class="button button-primary" type="button" data-start-guest data-visitor-database-button disabled>게스트 계정 발급</button>
+            <div class="visitor-database-actions">
+                <button class="button button-primary" type="button" data-start-guest data-visitor-database-button disabled>게스트 계정 발급</button>
+                <button class="button button-secondary" type="button" data-visitor-database-retry hidden>발급 상태 다시 확인</button>
+            </div>
         </article>
         <article class="visitor-start-card visitor-member-card">
             <span class="visitor-card-kicker">MEMBER WORKSPACE</span>
@@ -96,10 +99,10 @@
 
 <section class="page-section dashboard-template-section" aria-labelledby="recommendedTitle">
     <div class="section-heading">
-        <div><span class="section-kicker">RECOMMENDED</span><h2 id="recommendedTitle">목적별 추천 템플릿</h2><p>기본 문항을 가져온 뒤 기관 상황에 맞게 자유롭게 편집할 수 있습니다.</p></div>
-        <button class="button button-small" type="button" data-dashboard-templates>모든 템플릿</button>
+        <div><span class="section-kicker">NEW SURVEY</span><h2 id="recommendedTitle">새 설문 프로젝트 시작</h2><p>회원 공개 템플릿은 프로젝트의 STEP 04 설문 편집 레이어에서만 선택합니다.</p></div>
+        <button class="button button-small" type="button" data-dashboard-templates>새 설문 시작</button>
     </div>
     <div class="dashboard-template-grid" data-dashboard-template-list>
-        <article class="template-mini-card skeleton"></article><article class="template-mini-card skeleton"></article><article class="template-mini-card skeleton"></article>
+        <article class="template-mini-card skeleton"></article>
     </div>
 </section>

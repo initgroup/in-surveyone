@@ -13,9 +13,11 @@
             label: "설문 만들기",
             icon: "edit",
             items: [
-                { code: "M02001", label: "설문 프로젝트", description: "초안부터 종료까지 관리" },
-                { code: "M02002", label: "템플릿 라이브러리", description: "검증된 설문에서 시작" },
-                { code: "M02003", label: "설문 편집기", description: "문항·분기·검증 설계" }
+                { code: "M02001", label: "설문 프로젝트", description: "신규 생성부터 편집까지 통합 관리" },
+                { code: "M02002", label: "템플릿 선택", description: "신규 프로젝트의 시작 구조 선택", hidden: true, navigationCode: "M02001" },
+                { code: "M02003", label: "설문 편집", description: "문항·분기·검증 설계", hidden: true, navigationCode: "M02001" },
+                { code: "M02004", label: "응답 UI 선택", description: "응답자 화면 진행 방식 선택", hidden: true, navigationCode: "M02001" },
+                { code: "M02005", label: "스킨 설정", description: "프로젝트 색상·글꼴·응답 화면", hidden: true, navigationCode: "M02001" }
             ]
         },
         {
@@ -43,7 +45,17 @@
             code: "M06",
             label: "운영 설정",
             icon: "settings",
-            items: [{ code: "M06001", label: "스킨 및 프로젝트 설정", description: "브랜드·응답 정책 관리" }]
+            items: [{ code: "M06001", label: "시스템 환경 설정", description: "IN-SURVEYONE 작업 환경과 실행 상태" }]
+        },
+        {
+            code: "M07",
+            label: "플랫폼 관리",
+            icon: "grid",
+            roles: ["SYSTEM_ADMIN"],
+            items: [
+                { code: "M07001", label: "공용 템플릿 관리", description: "회원 공용 설문 템플릿 설계·배포", roles: ["SYSTEM_ADMIN"] },
+                { code: "M07002", label: "회원 관리", description: "가입 회원 조회·계정 복구·이용 상태 관리", roles: ["SYSTEM_ADMIN"] }
+            ]
         }
     ]);
 

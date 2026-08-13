@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import math
 import re
+import secrets
 import unicodedata
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from threading import RLock
 from typing import Any, Iterable
@@ -17,12 +19,31 @@ from backend.errors import (
     AuthenticationError,
     ConflictError,
     DomainValidationError,
+    ForbiddenError,
     NotFoundError,
 )
 from backend.models import (
+    AdminTemplateDraftRequest,
+    AdminTemplateDraftView,
+    AdminTemplatePatchRequest,
+    AdminTemplatePublishRequest,
+    AdminTemplateStatus,
+    AdminTemplateView,
+    AdminMemberPage,
+    AdminMemberStatusRequest,
+    AdminMemberView,
+    AdminPasswordResetView,
     AnswerItem,
     AuthSessionView,
     DashboardView,
+    DeliveryChannel,
+    DeliveryChannelResult,
+    DeliveryProviderView,
+    DeliveryProvidersView,
+    DeploymentDraftRequest,
+    DeploymentDraftView,
+    DeploymentExecuteResult,
+    DeploymentExecutionView,
     GuestMode,
     GuestCredentialView,
     GuestProvisionView,
@@ -41,6 +62,8 @@ from backend.models import (
     SurveyCreateRequest,
     SurveyDetail,
     SurveyLanguages,
+    SurveyPage,
+    SurveyProjectProfile,
     SurveyReport,
     SurveyResponseView,
     SurveySection,
@@ -48,6 +71,8 @@ from backend.models import (
     SurveyStatus,
     SurveySummary,
     SurveyTemplate,
+    SurveyTemplateApplyRequest,
+    SurveyTemplateResetRequest,
     SurveyTheme,
     SurveyTranslation,
     SurveyUpdateRequest,
@@ -55,6 +80,7 @@ from backend.models import (
     UserView,
     _normalize_locale,
     validate_translation_references,
+    validate_question_activation_references,
     validate_publish_ready_sections,
 )
 from backend.security import (
@@ -65,6 +91,7 @@ from backend.security import (
     validate_idempotency_key,
     verify_password,
 )
+from backend.delivery_security import contact_hash, is_masked_contact, mask_contact
 
 
 REPORT_TIMEZONE = timezone(timedelta(hours=9), name="Asia/Seoul")
@@ -136,6 +163,9 @@ class UserRecord:
     guest_mode: GuestMode | None
     created_at: datetime
     tenant_expires_at: datetime | None
+    system_admin: bool = False
+    active: bool = True
+    withdrawn_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +184,26 @@ class PublishedVersionRecord:
     published_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class AdminTemplateVersionRecord:
+    version_no: int
+    snapshot_json: str
+    source_survey_id: str
+    published_by: str
+    published_at: datetime
+
+
+@dataclass(slots=True)
+class AdminTemplateRecord:
+    code: str
+    status: AdminTemplateStatus
+    source_survey_id: str | None
+    use_count: int
+    versions: list[AdminTemplateVersionRecord]
+    published_at: datetime
+    updated_at: datetime
+
+
 @dataclass(slots=True)
 class SurveyRecord:
     id: str
@@ -163,15 +213,18 @@ class SurveyRecord:
     description: str | None
     category: str
     template_code: str | None
+    template_version_no: int | None
     sections: list[SurveySection]
     settings: SurveySettings
     theme: SurveyTheme
     skin: dict[str, Any]
+    project_profile: SurveyProjectProfile
     logic_rules: list[dict[str, Any]]
     default_locale: str
     supported_locales: list[str]
     translations: dict[str, Any]
     languages: SurveyLanguages
+    admin_template: bool
     status: SurveyStatus
     revision: int
     slug: str | None
@@ -206,12 +259,15 @@ class MemoryStore:
         self._users_by_login: dict[str, str] = {}
         self._sessions: dict[str, SessionRecord] = {}
         self._templates: dict[str, SurveyTemplate] = {}
+        self._admin_templates: dict[str, AdminTemplateRecord] = {}
         self._surveys: dict[str, SurveyRecord] = {}
         self._slug_routes: dict[str, tuple[str, int]] = {}
         self._responses: dict[str, list[ResponseRecord]] = {}
         self._idempotency_receipts: dict[
             tuple[str, str, str], tuple[str, ResponseReceipt]
         ] = {}
+        self._deployment_drafts: dict[str, DeploymentDraftView] = {}
+        self._deployment_history: dict[str, list[DeploymentDraftView]] = {}
         self._guest_login_sequence = 0
         self._seed()
 
@@ -232,6 +288,7 @@ class MemoryStore:
             tenant_id=user.tenant_id,
             organization_name=user.organization_name,
             role=user.role,
+            system_admin=user.system_admin,
             is_guest=user.is_guest,
             guest_mode=user.guest_mode,
             created_at=user.created_at,
@@ -242,6 +299,26 @@ class MemoryStore:
         self._templates = {template.code: template for template in templates}
 
         created_at = utcnow()
+        self._admin_templates = {
+            template.code: AdminTemplateRecord(
+                code=template.code,
+                status=AdminTemplateStatus.ACTIVE,
+                source_survey_id=None,
+                use_count=0,
+                versions=[
+                    AdminTemplateVersionRecord(
+                        version_no=1,
+                        snapshot_json=template.model_dump_json(by_alias=True),
+                        source_survey_id=f"seed:{template.code}",
+                        published_by="system",
+                        published_at=created_at,
+                    )
+                ],
+                published_at=created_at,
+                updated_at=created_at,
+            )
+            for template in templates
+        }
         tenant = TenantRecord(
             id="tenant_demo",
             name="IN-SURVEYONE 데모",
@@ -274,10 +351,12 @@ class MemoryStore:
             description="IN-SURVEYONE의 모바일 설문 응답 흐름을 체험하는 공개 데모입니다.",
             category="사회조사",
             template_code=template.code,
+            template_version_no=template.version_no,
             sections=[section.model_copy(deep=True) for section in template.sections],
             settings=template.settings.model_copy(deep=True),
             theme=template.theme.model_copy(deep=True),
             skin=_skin_from_theme(template.theme),
+            project_profile=SurveyProjectProfile(),
             logic_rules=[],
             default_locale=template.default_locale,
             supported_locales=list(template.supported_locales),
@@ -286,6 +365,7 @@ class MemoryStore:
                 for key, value in template.translations.items()
             },
             languages=template.languages.model_copy(deep=True),
+            admin_template=False,
             status=SurveyStatus.DRAFT,
             revision=1,
             slug=None,
@@ -303,14 +383,489 @@ class MemoryStore:
             return [
                 template.model_copy(deep=True)
                 for template in sorted(self._templates.values(), key=lambda item: item.title)
+                if self._admin_templates.get(template.code) is not None
+                and self._admin_templates[template.code].status
+                == AdminTemplateStatus.ACTIVE
             ]
 
     def template(self, code: str) -> SurveyTemplate:
         with self._lock:
             template = self._templates.get(code)
-            if template is None:
+            record = self._admin_templates.get(code)
+            if (
+                template is None
+                or record is None
+                or record.status != AdminTemplateStatus.ACTIVE
+            ):
                 raise NotFoundError("설문 템플릿을 찾을 수 없습니다.")
             return template.model_copy(deep=True)
+
+    @staticmethod
+    def _require_system_admin(user: UserRecord) -> None:
+        if not user.system_admin:
+            raise ForbiddenError("공용 템플릿 관리는 플랫폼 관리자만 사용할 수 있습니다.")
+
+    def _admin_template_view_locked(
+        self, record: AdminTemplateRecord
+    ) -> AdminTemplateView:
+        template = self._templates[record.code]
+        return AdminTemplateView(
+            code=record.code,
+            title=template.title,
+            description=template.description,
+            category=template.category,
+            status=record.status,
+            version_no=record.versions[-1].version_no,
+            source_survey_id=record.source_survey_id,
+            question_count=template.question_count,
+            use_count=record.use_count,
+            published_at=record.published_at,
+            updated_at=record.updated_at,
+        )
+
+    def admin_templates(self, user: UserRecord) -> list[AdminTemplateView]:
+        self._require_system_admin(user)
+        with self._lock:
+            records = sorted(
+                (
+                    item
+                    for item in self._admin_templates.values()
+                    if item.status != AdminTemplateStatus.DELETED
+                ),
+                key=lambda item: item.updated_at,
+                reverse=True,
+            )
+            linked_sources = {
+                item.source_survey_id
+                for item in self._admin_templates.values()
+                if item.status != AdminTemplateStatus.DELETED
+                and item.source_survey_id is not None
+            }
+            drafts = [
+                survey
+                for survey in self._surveys.values()
+                if survey.tenant_id == user.tenant_id
+                and survey.owner_id == user.id
+                and survey.admin_template
+                and survey.status == SurveyStatus.DRAFT
+                and survey.id not in linked_sources
+            ]
+            views = [self._admin_template_view_locked(record) for record in records]
+            views.extend(
+                AdminTemplateView(
+                    code=f"draft:{survey.id}",
+                    title=survey.title,
+                    description=survey.description or "",
+                    category=survey.category,
+                    status=AdminTemplateStatus.DRAFT,
+                    version_no=0,
+                    source_survey_id=survey.id,
+                    draft_only=True,
+                    question_count=sum(
+                        len(section.questions) for section in survey.sections
+                    ),
+                    use_count=0,
+                    published_at=None,
+                    updated_at=survey.updated_at,
+                )
+                for survey in drafts
+            )
+            views.sort(key=lambda item: item.updated_at, reverse=True)
+            return views
+
+    @staticmethod
+    def _temporary_password() -> str:
+        return f"Init!{secrets.token_urlsafe(12)}"
+
+    def admin_members(
+        self,
+        user: UserRecord,
+        *,
+        page: int,
+        page_size: int,
+        query: str = "",
+        member_type: str = "all",
+    ) -> AdminMemberPage:
+        self._require_system_admin(user)
+        normalized = query.strip().lower()
+        normalized_type = member_type.strip().lower()
+        if normalized_type not in {"all", "member", "guest"}:
+            raise DomainValidationError("회원 분류가 올바르지 않습니다.")
+        with self._lock:
+            members = [
+                candidate
+                for candidate in self._users.values()
+                if (
+                    normalized_type == "all"
+                    or (normalized_type == "guest" and candidate.is_guest)
+                    or (normalized_type == "member" and not candidate.is_guest)
+                )
+                and (
+                    not normalized
+                    or normalized in candidate.login_id.lower()
+                    or normalized in candidate.name.lower()
+                    or normalized in candidate.organization_name.lower()
+                    or normalized in str(candidate.email or "").lower()
+                )
+            ]
+            members.sort(key=lambda candidate: candidate.created_at, reverse=True)
+            total = len(members)
+            start = (page - 1) * page_size
+            items = members[start : start + page_size]
+            views = [
+                AdminMemberView(
+                    id=candidate.id,
+                    login_id=candidate.login_id,
+                    name=candidate.name,
+                    email=mask_contact("EMAIL", candidate.email),
+                    tenant_id=candidate.tenant_id,
+                    organization_name=candidate.organization_name,
+                    role=candidate.role,
+                    system_admin=candidate.system_admin,
+                    is_guest=candidate.is_guest,
+                    guest_mode=candidate.guest_mode,
+                    active=candidate.active,
+                    expires_at=candidate.tenant_expires_at,
+                    withdrawn_at=candidate.withdrawn_at,
+                    created_at=candidate.created_at,
+                    last_login_at=max(
+                        (
+                            session.created_at
+                            for session in self._sessions.values()
+                            if session.user_id == candidate.id
+                        ),
+                        default=None,
+                    ),
+                )
+                for candidate in items
+            ]
+        return AdminMemberPage(
+            items=views,
+            page=page,
+            page_size=page_size,
+            total=total,
+            has_next=page * page_size < total,
+        )
+
+    def admin_reset_member_password(
+        self, user: UserRecord, member_id: str
+    ) -> AdminPasswordResetView:
+        self._require_system_admin(user)
+        if member_id == user.id:
+            raise DomainValidationError("현재 로그인한 관리자 계정은 여기에서 초기화할 수 없습니다.")
+        with self._lock:
+            member = self._users.get(member_id)
+            if member is None:
+                raise NotFoundError("회원 계정을 찾을 수 없습니다.")
+            if member.withdrawn_at is not None:
+                raise DomainValidationError("이미 탈퇴한 계정은 비밀번호를 초기화할 수 없습니다.")
+            temporary_password = self._temporary_password()
+            self._users[member_id] = replace(
+                member, password_hash=hash_password(temporary_password)
+            )
+            self._sessions = {
+                key: session
+                for key, session in self._sessions.items()
+                if session.user_id != member_id
+            }
+            return AdminPasswordResetView(
+                user_id=member_id,
+                login_id=member.login_id,
+                temporary_password=temporary_password,
+            )
+
+    def admin_set_member_status(
+        self,
+        user: UserRecord,
+        member_id: str,
+        request: AdminMemberStatusRequest,
+    ) -> AdminMemberView:
+        self._require_system_admin(user)
+        if member_id == user.id:
+            raise DomainValidationError("현재 로그인한 관리자 계정 상태는 변경할 수 없습니다.")
+        with self._lock:
+            member = self._users.get(member_id)
+            if member is None:
+                raise NotFoundError("회원 계정을 찾을 수 없습니다.")
+            if member.withdrawn_at is not None:
+                raise DomainValidationError("탈퇴한 계정의 이용 상태는 변경할 수 없습니다.")
+            member = replace(member, active=request.active)
+            self._users[member_id] = member
+            if not request.active:
+                self._sessions = {
+                    key: session
+                    for key, session in self._sessions.items()
+                    if session.user_id != member_id
+                }
+            return AdminMemberView(
+                id=member.id,
+                login_id=member.login_id,
+                name=member.name,
+                email=mask_contact("EMAIL", member.email),
+                tenant_id=member.tenant_id,
+                organization_name=member.organization_name,
+                role=member.role,
+                system_admin=member.system_admin,
+                is_guest=member.is_guest,
+                guest_mode=member.guest_mode,
+                active=member.active,
+                expires_at=member.tenant_expires_at,
+                withdrawn_at=member.withdrawn_at,
+                created_at=member.created_at,
+            )
+
+    def admin_withdraw_member(self, user: UserRecord, member_id: str) -> None:
+        self._require_system_admin(user)
+        if member_id == user.id:
+            raise DomainValidationError("현재 로그인한 관리자 계정은 여기에서 탈퇴시킬 수 없습니다.")
+        with self._lock:
+            member = self._users.get(member_id)
+            if member is None:
+                raise NotFoundError("회원 계정을 찾을 수 없습니다.")
+            if member.withdrawn_at is not None:
+                return
+            withdrawn_at = utcnow()
+            withdrawn_login = new_id("withdrawn")
+            self._users_by_login.pop(self._normalize_login(member.login_id), None)
+            withdrawn = replace(
+                member,
+                login_id=withdrawn_login,
+                name="탈퇴 회원",
+                email=None,
+                organization_name="탈퇴 작업공간",
+                password_hash=None,
+                system_admin=False,
+                active=False,
+                withdrawn_at=withdrawn_at,
+            )
+            self._users[member_id] = withdrawn
+            tenant = self._tenants.get(member.tenant_id)
+            if tenant is not None and not any(
+                candidate.tenant_id == member.tenant_id
+                and candidate.id != member_id
+                and candidate.withdrawn_at is None
+                for candidate in self._users.values()
+            ):
+                self._tenants[member.tenant_id] = replace(
+                    tenant, name="탈퇴 작업공간"
+                )
+            self._sessions = {
+                key: session
+                for key, session in self._sessions.items()
+                if session.user_id != member_id
+            }
+
+    def create_admin_template_draft(
+        self,
+        user: UserRecord,
+        request: AdminTemplateDraftRequest,
+    ) -> AdminTemplateDraftView:
+        self._require_system_admin(user)
+        with self._lock:
+            template = None
+            if request.template_code is not None:
+                template = self._templates.get(request.template_code)
+                record = self._admin_templates.get(request.template_code)
+                if (
+                    template is None
+                    or record is None
+                    or record.status == AdminTemplateStatus.DELETED
+                ):
+                    raise NotFoundError("공용 템플릿을 찾을 수 없습니다.")
+                if record.source_survey_id:
+                    current = self._surveys.get(record.source_survey_id)
+                    if (
+                        current is not None
+                        and current.tenant_id == user.tenant_id
+                        and current.owner_id == user.id
+                        and current.admin_template
+                        and current.status == SurveyStatus.DRAFT
+                    ):
+                        return AdminTemplateDraftView(
+                            survey_id=current.id,
+                            source_survey_id=current.id,
+                            template_code=request.template_code,
+                            revision=current.revision,
+                        )
+            create_request = SurveyCreateRequest(
+                title=request.title,
+                description=template.description if template else None,
+                category=template.category if template else "일반조사",
+                sections=(
+                    [section.model_copy(deep=True) for section in template.sections]
+                    if template
+                    else None
+                ),
+                settings=(template.settings.model_copy(deep=True) if template else None),
+                theme=(template.theme.model_copy(deep=True) if template else None),
+                skin=(dict(template.skin) if template else None),
+                logic_rules=(
+                    [dict(rule) for rule in template.logic_rules] if template else []
+                ),
+                languages=(
+                    template.languages.model_copy(deep=True)
+                    if template
+                    else SurveyLanguages()
+                ),
+                translations=(
+                    {
+                        locale: translation.model_copy(deep=True)
+                        for locale, translation in template.translations.items()
+                    }
+                    if template
+                    else {}
+                ),
+            )
+            survey = self.create_survey(user, create_request, admin_template=True)
+            if request.template_code is not None:
+                record.source_survey_id = survey.id
+                record.updated_at = utcnow()
+            return AdminTemplateDraftView(
+                survey_id=survey.id,
+                source_survey_id=survey.id,
+                template_code=request.template_code,
+                revision=survey.revision,
+            )
+
+    def delete_admin_template_draft(
+        self, user: UserRecord, survey_id: str
+    ) -> None:
+        self._require_system_admin(user)
+        with self._lock:
+            survey = self._owned_survey_locked(user, survey_id)
+            if not survey.admin_template or survey.status != SurveyStatus.DRAFT:
+                raise ConflictError("작성 중인 공용 템플릿 초안만 삭제할 수 있습니다.")
+            if any(
+                record.status != AdminTemplateStatus.DELETED
+                and record.source_survey_id == survey.id
+                for record in self._admin_templates.values()
+            ):
+                raise ConflictError("등록된 공용 템플릿의 편집 초안은 템플릿 삭제 기능을 사용해 주세요.")
+            survey.status = SurveyStatus.DELETED
+            survey.updated_at = utcnow()
+
+    def publish_admin_template(
+        self,
+        user: UserRecord,
+        code: str,
+        request: AdminTemplatePublishRequest,
+    ) -> AdminTemplateView:
+        self._require_system_admin(user)
+        normalized_code = code.strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,49}", normalized_code):
+            raise DomainValidationError(
+                "템플릿 코드는 영문 소문자·숫자·하이픈으로 3~50자 입력해 주세요."
+            )
+        with self._lock:
+            source = self._owned_survey_locked(user, request.source_survey_id)
+            if (
+                not source.admin_template
+                or source.status != SurveyStatus.DRAFT
+                or source.versions
+            ):
+                raise ConflictError("작성 중인 관리자 초안만 공용 템플릿으로 등록할 수 있습니다.")
+            try:
+                validate_publish_ready_sections(source.sections)
+                validate_translation_references(source.translations, source.sections)
+            except ValueError as exc:
+                raise DomainValidationError(str(exc)) from exc
+
+            existing = self._admin_templates.get(normalized_code)
+            version_no = existing.versions[-1].version_no + 1 if existing else 1
+            template = SurveyTemplate(
+                code=normalized_code,
+                title=request.title,
+                description=request.description,
+                category=request.category,
+                tags=(
+                    list(self._templates[normalized_code].tags)
+                    if normalized_code in self._templates
+                    else []
+                ),
+                sections=[section.model_copy(deep=True) for section in source.sections],
+                settings=source.settings.model_copy(deep=True),
+                theme=source.theme.model_copy(deep=True),
+                skin=dict(source.skin),
+                logic_rules=[dict(rule) for rule in source.logic_rules],
+                languages=source.languages.model_copy(deep=True),
+                translations={
+                    locale: translation.model_copy(deep=True)
+                    for locale, translation in source.translations.items()
+                },
+                version_no=version_no,
+            )
+            now = utcnow()
+            version = AdminTemplateVersionRecord(
+                version_no=version_no,
+                snapshot_json=template.model_dump_json(by_alias=True),
+                source_survey_id=source.id,
+                published_by=user.id,
+                published_at=now,
+            )
+            self._templates[normalized_code] = template.model_copy(deep=True)
+            if existing is None:
+                record = AdminTemplateRecord(
+                    code=normalized_code,
+                    status=AdminTemplateStatus.ACTIVE,
+                    source_survey_id=source.id,
+                    use_count=0,
+                    versions=[version],
+                    published_at=now,
+                    updated_at=now,
+                )
+                self._admin_templates[normalized_code] = record
+            else:
+                existing.versions.append(version)
+                existing.source_survey_id = source.id
+                existing.status = AdminTemplateStatus.ACTIVE
+                existing.published_at = now
+                existing.updated_at = now
+                record = existing
+            return self._admin_template_view_locked(record)
+
+    def patch_admin_template(
+        self,
+        user: UserRecord,
+        code: str,
+        request: AdminTemplatePatchRequest,
+    ) -> AdminTemplateView:
+        self._require_system_admin(user)
+        normalized_code = code.strip().lower()
+        with self._lock:
+            record = self._admin_templates.get(normalized_code)
+            template = self._templates.get(normalized_code)
+            if (
+                record is None
+                or template is None
+                or record.status == AdminTemplateStatus.DELETED
+            ):
+                raise NotFoundError("공용 템플릿을 찾을 수 없습니다.")
+            updates = request.model_fields_set
+            changes: dict[str, Any] = {}
+            for field_name in ("title", "description", "category"):
+                if field_name in updates:
+                    changes[field_name] = getattr(request, field_name)
+            if changes:
+                self._templates[normalized_code] = template.model_copy(update=changes)
+            if "status" in updates and request.status is not None:
+                record.status = request.status
+            record.updated_at = utcnow()
+            return self._admin_template_view_locked(record)
+
+    def delete_admin_template(self, user: UserRecord, code: str) -> None:
+        self._require_system_admin(user)
+        normalized_code = code.strip().lower()
+        with self._lock:
+            record = self._admin_templates.get(normalized_code)
+            if record is None or record.status == AdminTemplateStatus.DELETED:
+                raise NotFoundError("공용 템플릿을 찾을 수 없습니다.")
+            record.status = AdminTemplateStatus.DELETED
+            record.updated_at = utcnow()
+            if record.source_survey_id:
+                source = self._surveys.get(record.source_survey_id)
+                if source is not None and source.admin_template:
+                    source.status = SurveyStatus.DELETED
+                    source.updated_at = record.updated_at
 
     def create_guest(
         self,
@@ -359,6 +914,7 @@ class MemoryStore:
             )
 
     def signup(self, request: SignupRequest) -> tuple[str, AuthSessionView]:
+        system_admin = self._system_admin_for_signup(request)
         with self._lock:
             normalized_login = self._normalize_login(request.login_id)
             if normalized_login in self._users_by_login:
@@ -380,6 +936,7 @@ class MemoryStore:
                 organization_name=tenant.name,
                 password_hash=hash_password(request.password),
                 role=UserRole.OWNER,
+                system_admin=system_admin,
                 is_guest=False,
                 guest_mode=None,
                 created_at=now,
@@ -390,12 +947,26 @@ class MemoryStore:
             self._users_by_login[normalized_login] = user.id
             return self._create_session_locked(user)
 
+    def _system_admin_for_signup(self, request: SignupRequest) -> bool:
+        if not request.request_system_admin:
+            return False
+        configured = self.settings.admin_key
+        supplied = request.admin_key.get_secret_value() if request.admin_key else ""
+        if not configured:
+            raise DomainValidationError(
+                "플랫폼 관리자 가입이 비활성화되어 있습니다. 서버의 INIT_ADMIN_KEY 설정을 확인해 주세요."
+            )
+        if not hmac.compare_digest(supplied.encode("utf-8"), configured.encode("utf-8")):
+            raise DomainValidationError("관리자 인증키가 올바르지 않습니다.")
+        return True
+
     def login(self, request: LoginRequest) -> tuple[str, AuthSessionView]:
         with self._lock:
             user_id = self._users_by_login.get(self._normalize_login(request.login_id))
             user = self._users.get(user_id or "")
             if (
                 user is None
+                or not user.active
                 or (
                     user.tenant_expires_at is not None
                     and user.tenant_expires_at <= utcnow()
@@ -447,7 +1018,7 @@ class MemoryStore:
                 self._sessions.pop(token_hash, None)
                 raise AuthenticationError("로그인 세션이 만료되었습니다.")
             user = self._users.get(session.user_id)
-            if user is None:
+            if user is None or not user.active:
                 self._sessions.pop(token_hash, None)
                 raise AuthenticationError("로그인 사용자를 찾을 수 없습니다.")
             return user
@@ -466,11 +1037,19 @@ class MemoryStore:
         with self._lock:
             self._sessions.pop(token_hash, None)
 
-    def create_survey(self, user: UserRecord, request: SurveyCreateRequest) -> SurveyDetail:
+    def create_survey(
+        self,
+        user: UserRecord,
+        request: SurveyCreateRequest,
+        *,
+        admin_template: bool = False,
+    ) -> SurveyDetail:
         with self._lock:
             if user.is_guest:
                 owned_count = sum(
-                    survey.tenant_id == user.tenant_id and survey.owner_id == user.id
+                    survey.tenant_id == user.tenant_id
+                    and survey.owner_id == user.id
+                    and survey.status != SurveyStatus.DELETED
                     for survey in self._surveys.values()
                 )
                 if owned_count >= self.settings.db_guest_max_projects:
@@ -481,7 +1060,12 @@ class MemoryStore:
             template_code = request.template_code or request.template_id
             if template_code:
                 template = self._templates.get(template_code)
-                if template is None:
+                template_record = self._admin_templates.get(template_code)
+                if (
+                    template is None
+                    or template_record is None
+                    or template_record.status != AdminTemplateStatus.ACTIVE
+                ):
                     raise NotFoundError("설문 템플릿을 찾을 수 없습니다.")
 
             title = request.title or (f"{template.title} 복사본" if template else None)
@@ -524,6 +1108,7 @@ class MemoryStore:
                 ),
                 category=request.category or (template.category if template else "일반조사"),
                 template_code=template.code if template else None,
+                template_version_no=template.version_no if template else None,
                 sections=sections,
                 settings=(
                     request.settings.model_copy(deep=True)
@@ -542,10 +1127,11 @@ class MemoryStore:
                 skin=(
                     dict(request.skin)
                     if request.skin is not None
-                    else _skin_from_theme(template.theme)
+                    else dict(template.skin)
                     if template
                     else _skin_from_theme(SurveyTheme())
                 ),
+                project_profile=request.project_profile.model_copy(deep=True),
                 logic_rules=[dict(rule) for rule in request.logic_rules],
                 default_locale=(
                     request.languages.default_locale
@@ -585,6 +1171,7 @@ class MemoryStore:
                     if template
                     else SurveyLanguages()
                 ),
+                admin_template=admin_template,
                 status=SurveyStatus.DRAFT,
                 revision=1,
                 slug=None,
@@ -593,9 +1180,14 @@ class MemoryStore:
                 updated_at=now,
                 published_at=None,
             )
+            survey.settings = _settings_for_project_profile(
+                survey.settings, survey.project_profile
+            )
             self._validate_translation_targets(survey.sections, survey.translations)
             self._surveys[survey.id] = survey
             self._responses[survey.id] = []
+            if template is not None:
+                self._admin_templates[template.code].use_count += 1
             return self._detail_locked(survey)
 
     def list_surveys(
@@ -609,14 +1201,419 @@ class MemoryStore:
                 for survey in self._surveys.values()
                 if survey.tenant_id == user.tenant_id
                 and survey.owner_id == user.id
+                and survey.status != SurveyStatus.DELETED
+                and not survey.admin_template
                 and (status is None or survey.status == status)
             ]
             surveys.sort(key=lambda item: item.updated_at, reverse=True)
             return [self._summary_locked(survey) for survey in surveys]
 
+    def survey_page(
+        self,
+        user: UserRecord,
+        *,
+        page: int,
+        page_size: int,
+        status: SurveyStatus | None = None,
+        query: str = "",
+        sort: str = "updated-desc",
+    ) -> SurveyPage:
+        normalized_query = query.strip().casefold()
+        with self._lock:
+            owned = [
+                survey
+                for survey in self._surveys.values()
+                if survey.tenant_id == user.tenant_id
+                and survey.owner_id == user.id
+                and survey.status != SurveyStatus.DELETED
+                and not survey.admin_template
+            ]
+            filtered = [
+                survey
+                for survey in owned
+                if (status is None or survey.status == status)
+                and (
+                    not normalized_query
+                    or normalized_query
+                    in f"{survey.title} {survey.category} {survey.id}".casefold()
+                )
+            ]
+            def title_key(item: SurveyRecord) -> tuple[str, str]:
+                return item.title.casefold(), item.id
+
+            if sort == "responses":
+                filtered.sort(
+                    key=lambda item: (-len(self._responses.get(item.id, [])), *title_key(item))
+                )
+            elif sort == "title":
+                filtered.sort(key=title_key)
+            elif sort == "updated-asc":
+                filtered.sort(key=lambda item: (item.updated_at, *title_key(item)))
+            elif sort == "created-desc":
+                filtered.sort(key=lambda item: (-item.created_at.timestamp(), *title_key(item)))
+            else:
+                filtered.sort(key=lambda item: (-item.updated_at.timestamp(), *title_key(item)))
+            offset = (page - 1) * page_size
+            items = filtered[offset : offset + page_size]
+            return SurveyPage(
+                items=[self._summary_locked(survey) for survey in items],
+                page=page,
+                page_size=page_size,
+                total=len(filtered),
+                total_all=len(owned),
+                has_next=offset + page_size < len(filtered),
+            )
+
+    def delivery_providers(self, user: UserRecord) -> DeliveryProvidersView:
+        configured = {
+            "email": self.settings.email_provider,
+            "sms": self.settings.sms_provider,
+            "kakao": self.settings.kakao_provider,
+            "fax": self.settings.fax_provider,
+        }
+        providers: dict[str, DeliveryProviderView] = {}
+        for code, provider_code in configured.items():
+            enabled = not user.is_guest and provider_code not in {"", "disabled"}
+            reason = (
+                "발송 provider가 준비되었습니다."
+                if enabled
+                else "게스트 계정은 실제 외부 발송을 사용할 수 없습니다."
+                if user.is_guest
+                else f"{code.upper()} 발송 provider가 설정되지 않았습니다."
+            )
+            providers[code] = DeliveryProviderView(
+                enabled=enabled,
+                status="READY" if enabled else "DISABLED",
+                provider_code=provider_code if enabled else "disabled",
+                reason=reason,
+            )
+        return DeliveryProvidersView(providers=providers)
+
+    @staticmethod
+    def _merge_masked_recipient_contacts(
+        request: DeploymentDraftRequest,
+        current: DeploymentDraftView | None,
+    ) -> DeploymentDraftRequest:
+        if current is None:
+            return request
+        previous = {recipient.id: recipient for recipient in current.recipients}
+        payload = request.model_dump(by_alias=True, mode="json")
+        for recipient in payload["recipients"]:
+            old = previous.get(recipient["id"])
+            if old is None:
+                continue
+            for field_name in ("email", "mobile", "fax", "kakaoId"):
+                if is_masked_contact(recipient.get(field_name)):
+                    recipient[field_name] = getattr(
+                        old,
+                        {"kakaoId": "kakao_id"}.get(field_name, field_name),
+                    )
+        return DeploymentDraftRequest.model_validate(payload)
+
+    @staticmethod
+    def _masked_deployment(value: DeploymentDraftView) -> DeploymentDraftView:
+        payload = value.model_dump(by_alias=True, mode="json")
+        for recipient in payload["recipients"]:
+            recipient["email"] = mask_contact("EMAIL", recipient.get("email"))
+            recipient["mobile"] = mask_contact("SMS", recipient.get("mobile"))
+            recipient["fax"] = mask_contact("FAX", recipient.get("fax"))
+            recipient["kakaoId"] = mask_contact("KAKAO", recipient.get("kakaoId"))
+        return DeploymentDraftView.model_validate(payload)
+
+    def _published_survey_locked(
+        self, user: UserRecord, survey_id: str
+    ) -> tuple[SurveyRecord, PublicSurvey]:
+        survey = self._owned_survey_locked(user, survey_id)
+        if survey.status != SurveyStatus.PUBLISHED or not survey.versions or not survey.slug:
+            raise ConflictError("확정된 설문 프로젝트만 배포 작업을 할 수 있습니다.")
+        return survey, PublicSurvey.model_validate_json(
+            survey.versions[-1].snapshot_json
+        )
+
+    def deployment(
+        self, user: UserRecord, survey_id: str
+    ) -> DeploymentDraftView:
+        with self._lock:
+            self._published_survey_locked(user, survey_id)
+            value = self._deployment_drafts.get(survey_id)
+            if value is None:
+                raise NotFoundError("저장된 배포 초안이 없습니다.")
+            return self._masked_deployment(value)
+
+    def save_deployment(
+        self,
+        user: UserRecord,
+        survey_id: str,
+        request: DeploymentDraftRequest,
+    ) -> DeploymentDraftView:
+        with self._lock:
+            survey, public = self._published_survey_locked(user, survey_id)
+            current = self._deployment_drafts.get(survey_id)
+            if request.revision is not None and (
+                current is None or request.revision != current.revision
+            ):
+                raise ConflictError(
+                    "다른 화면에서 배포 초안이 변경되었습니다. 최신 내용을 다시 불러와 주세요."
+                )
+            request = self._merge_masked_recipient_contacts(request, current)
+            executed_current = None
+            if current is not None and current.execution_status:
+                if request.revision is not None:
+                    raise ConflictError(
+                        "이미 실행한 배포 계획은 변경할 수 없습니다. revision 없이 새 배포 계획을 만들어 주세요."
+                    )
+                executed_current = current
+                current = None
+            elif current is not None and request.revision is None:
+                raise ConflictError(
+                    "기존 배포 초안을 변경하려면 최신 revision이 필요합니다. 초안을 다시 불러와 주세요."
+                )
+            unsupported = {
+                recipient.preferred_language
+                for recipient in request.recipients
+                if recipient.preferred_language not in public.supported_locales
+            }
+            if unsupported:
+                raise DomainValidationError(
+                    "확정 버전에 포함되지 않은 수신 언어입니다: "
+                    + ", ".join(sorted(unsupported))
+                )
+            now = utcnow()
+            if public.settings.closes_at is not None and public.settings.closes_at <= now:
+                raise ConflictError("응답 기간이 종료된 설문은 배포할 수 없습니다.")
+            retention_candidates = [now + timedelta(days=90)]
+            if public.settings.closes_at and public.settings.closes_at > now:
+                retention_candidates.append(public.settings.closes_at)
+            if user.tenant_expires_at and user.tenant_expires_at > now:
+                retention_candidates.append(user.tenant_expires_at)
+            retention_until = min(retention_candidates)
+            if (
+                request.schedule.scheduled_at is not None
+                and request.schedule.scheduled_at >= retention_until
+            ):
+                raise DomainValidationError(
+                    "예약 발송 시각은 설문 응답 기간과 연락처 보유 기간 안이어야 합니다."
+                )
+            contact_fields = {
+                DeliveryChannel.EMAIL: "email",
+                DeliveryChannel.SMS: "mobile",
+                DeliveryChannel.KAKAO: "kakao_id",
+                DeliveryChannel.FAX: "fax",
+            }
+            seen_contacts: set[tuple[DeliveryChannel, str]] = set()
+            for recipient in request.recipients:
+                for channel in recipient.channels:
+                    value = getattr(recipient, contact_fields[channel])
+                    if not value:
+                        continue
+                    duplicate_key = (
+                        channel,
+                        contact_hash(self.settings.delivery_secret, channel.value, value),
+                    )
+                    if duplicate_key in seen_contacts:
+                        raise DomainValidationError(
+                            f"같은 {channel.value} 연락처를 배포 대상에 중복 등록할 수 없습니다."
+                        )
+                    seen_contacts.add(duplicate_key)
+            if executed_current is not None:
+                self._deployment_history.setdefault(survey_id, []).append(
+                    executed_current.model_copy(deep=True)
+                )
+            value = DeploymentDraftView(
+                **request.model_dump(exclude={"revision"}),
+                deployment_id=(
+                    current.deployment_id
+                    if current
+                    else new_id("deploy")
+                ),
+                survey_id=survey_id,
+                survey_version=public.version,
+                public_slug=public.slug,
+                revision=(current.revision + 1 if current else 1),
+                updated_at=now,
+                execution_status=(current.execution_status if current else None),
+            )
+            self._deployment_drafts[survey_id] = value
+            return self._masked_deployment(value)
+
+    def execute_deployment(
+        self,
+        user: UserRecord,
+        survey_id: str,
+        request: DeploymentDraftRequest,
+    ) -> DeploymentExecuteResult:
+        saved = self.save_deployment(user, survey_id, request)
+        with self._lock:
+            raw = self._deployment_drafts[survey_id]
+            if raw.revision != saved.revision or raw.execution_status is not None:
+                raise ConflictError(
+                    "배포 실행 직전에 계획이 변경되었습니다. 최신 내용을 확인한 뒤 다시 실행해 주세요."
+                )
+            providers = self.delivery_providers(user).providers
+            channel_counts = {channel: 0 for channel in raw.channels}
+            queued_count = 0
+            disabled_count = 0
+            for recipient in raw.recipients:
+                available = [
+                    channel
+                    for channel in raw.channels
+                    if channel in recipient.channels
+                ]
+                if raw.schedule.strategy == "PRIORITY_FALLBACK" and available:
+                    ordered = [
+                        channel
+                        for channel in raw.schedule.priority
+                        if channel in available
+                    ]
+                    ready = [
+                        channel
+                        for channel in ordered
+                        if providers[channel.value.lower()].enabled
+                    ]
+                    available = [ready[0] if ready else ordered[0]]
+                for channel in available:
+                    channel_counts[channel] += 1
+                    if providers[channel.value.lower()].enabled:
+                        queued_count += 1
+                    else:
+                        disabled_count += 1
+            channel_results: list[DeliveryChannelResult] = []
+            for channel in raw.channels:
+                provider = providers[channel.value.lower()]
+                channel_results.append(
+                    DeliveryChannelResult(
+                        channel=channel,
+                        status="QUEUED" if provider.enabled else "DISABLED",
+                        count=channel_counts[channel],
+                        reason=None if provider.enabled else provider.reason,
+                    )
+                )
+            execution_status = (
+                "QUEUED"
+                if queued_count and not disabled_count
+                else "PARTIAL"
+                if queued_count
+                else "DISABLED"
+            )
+            raw.execution_status = execution_status
+            self._deployment_drafts[survey_id] = raw
+            return DeploymentExecuteResult(
+                deployment=self._masked_deployment(raw),
+                execution=DeploymentExecutionView(
+                    execution_status=execution_status,
+                    channel_results=channel_results,
+                ),
+            )
+
     def get_survey(self, user: UserRecord, survey_id: str) -> SurveyDetail:
         with self._lock:
             return self._detail_locked(self._owned_survey_locked(user, survey_id))
+
+    def apply_template(
+        self,
+        user: UserRecord,
+        survey_id: str,
+        request: SurveyTemplateApplyRequest,
+    ) -> SurveyDetail:
+        with self._lock:
+            survey = self._owned_survey_locked(user, survey_id)
+            if (
+                request.expected_revision is not None
+                and request.expected_revision != survey.revision
+            ):
+                raise ConflictError(
+                    "다른 화면에서 프로젝트가 변경되었습니다. 최신 내용을 다시 불러온 뒤 템플릿을 선택해 주세요."
+                )
+            if survey.status != SurveyStatus.DRAFT or survey.versions:
+                raise ConflictError(
+                    "템플릿은 아직 확정하지 않은 작성 중 프로젝트에만 적용할 수 있습니다."
+                )
+            template = self._templates.get(request.template_code)
+            template_record = self._admin_templates.get(request.template_code)
+            if (
+                template is None
+                or template_record is None
+                or template_record.status != AdminTemplateStatus.ACTIVE
+            ):
+                raise NotFoundError("설문 템플릿을 찾을 수 없습니다.")
+            survey.template_code = template.code
+            survey.template_version_no = template.version_no
+            survey.sections = [
+                section.model_copy(deep=True) for section in template.sections
+            ]
+            template_settings = template.settings.model_copy(deep=True)
+            template_settings.presentation_mode = survey.settings.presentation_mode
+            survey.settings = _settings_for_project_profile(
+                template_settings, survey.project_profile
+            )
+            survey.logic_rules = [dict(rule) for rule in template.logic_rules]
+            survey.default_locale = template.default_locale
+            survey.supported_locales = list(template.supported_locales)
+            survey.translations = {
+                key: value.model_copy(deep=True)
+                for key, value in template.translations.items()
+            }
+            survey.languages = template.languages.model_copy(deep=True)
+            survey.revision += 1
+            survey.updated_at = utcnow()
+            template_record.use_count += 1
+            return self._detail_locked(survey)
+
+    def reset_template(
+        self,
+        user: UserRecord,
+        survey_id: str,
+        request: SurveyTemplateResetRequest,
+    ) -> SurveyDetail:
+        with self._lock:
+            survey = self._owned_survey_locked(user, survey_id)
+            if (
+                request.expected_revision is not None
+                and request.expected_revision != survey.revision
+            ):
+                raise ConflictError(
+                    "다른 화면에서 프로젝트가 변경되었습니다. 최신 내용을 다시 불러온 뒤 다시 시도해 주세요."
+                )
+            if survey.status != SurveyStatus.DRAFT or survey.versions:
+                raise ConflictError(
+                    "빈 설문으로 초기화하는 작업은 아직 확정하지 않은 작성 중 프로젝트에서만 가능합니다."
+                )
+            survey.template_code = None
+            survey.template_version_no = None
+            survey.sections = [SurveySection(title="설문 문항", questions=[])]
+            survey.logic_rules = []
+            survey.translations = {}
+            survey.revision += 1
+            survey.updated_at = utcnow()
+            return self._detail_locked(survey)
+
+    def delete_survey(self, user: UserRecord, survey_id: str) -> None:
+        with self._lock:
+            survey = self._owned_survey_locked(user, survey_id)
+            if survey.status == SurveyStatus.PUBLISHED:
+                raise ConflictError(
+                    "진행 중인 설문 프로젝트는 삭제할 수 없습니다. 먼저 배포를 종료해 주세요."
+                )
+            if survey.slug:
+                self._slug_routes.pop(survey.slug, None)
+            survey.status = SurveyStatus.DELETED
+            survey.updated_at = utcnow()
+
+    def close_survey(self, user: UserRecord, survey_id: str) -> SurveyDetail:
+        with self._lock:
+            survey = self._owned_survey_locked(user, survey_id)
+            if survey.status != SurveyStatus.PUBLISHED:
+                raise ConflictError("진행 중인 설문 프로젝트만 배포를 종료할 수 있습니다.")
+            if survey.slug:
+                self._slug_routes.pop(survey.slug, None)
+            current_delivery = self._deployment_drafts.pop(survey_id, None)
+            if current_delivery is not None:
+                self._deployment_history.setdefault(survey_id, []).append(
+                    current_delivery.model_copy(deep=True)
+                )
+            survey.status = SurveyStatus.CLOSED
+            survey.updated_at = utcnow()
+            return self._detail_locked(survey)
 
     @staticmethod
     def _translation_matches_content(
@@ -763,6 +1760,13 @@ class MemoryStore:
     ) -> SurveyDetail:
         with self._lock:
             survey = self._owned_survey_locked(user, survey_id)
+            if (
+                request.expected_revision is not None
+                and request.expected_revision != survey.revision
+            ):
+                raise ConflictError(
+                    "다른 화면에서 프로젝트가 변경되었습니다. 최신 내용을 다시 불러온 뒤 저장해 주세요."
+                )
             self._validate_source_locale_promotion(survey, request)
             updates = request.model_fields_set
             proposed_sections = (
@@ -802,12 +1806,21 @@ class MemoryStore:
                 survey.sections = [section.model_copy(deep=True) for section in request.sections]
             if "settings" in updates and request.settings is not None:
                 survey.settings = request.settings.model_copy(deep=True)
+                if "project_profile" not in updates:
+                    survey.project_profile = _project_profile_for_settings(
+                        survey.project_profile, survey.settings
+                    )
             if "theme" in updates and request.theme is not None:
                 survey.theme = request.theme.model_copy(deep=True)
                 if "skin" not in updates:
                     survey.skin = _skin_from_theme(survey.theme)
             if "skin" in updates and request.skin is not None:
                 survey.skin = dict(request.skin)
+            if "project_profile" in updates and request.project_profile is not None:
+                survey.project_profile = request.project_profile.model_copy(deep=True)
+                survey.settings = _settings_for_project_profile(
+                    survey.settings, survey.project_profile
+                )
             if "logic_rules" in updates and request.logic_rules is not None:
                 survey.logic_rules = [dict(rule) for rule in request.logic_rules]
             if "default_locale" in updates and request.default_locale is not None:
@@ -868,7 +1881,7 @@ class MemoryStore:
     ) -> PublishResult:
         if not survey.title.strip():
             raise DomainValidationError(
-                "The survey requires a title before publishing."
+                "설문을 확정하려면 제목을 입력해야 합니다."
             )
         try:
             validate_publish_ready_sections(survey.sections)
@@ -900,6 +1913,7 @@ class MemoryStore:
             settings=survey.settings.model_copy(deep=True),
             theme=survey.theme.model_copy(deep=True),
             skin=dict(survey.skin),
+            project_profile=survey.project_profile.model_copy(deep=True),
             logic_rules=[dict(rule) for rule in survey.logic_rules],
             default_locale=survey.default_locale,
             supported_locales=list(survey.supported_locales),
@@ -1121,6 +2135,8 @@ class MemoryStore:
                 survey
                 for survey in self._surveys.values()
                 if survey.tenant_id == user.tenant_id and survey.owner_id == user.id
+                and survey.status != SurveyStatus.DELETED
+                and not survey.admin_template
             ]
             surveys.sort(key=lambda item: item.updated_at, reverse=True)
             return DashboardView(
@@ -1144,6 +2160,7 @@ class MemoryStore:
             survey is None
             or survey.tenant_id != user.tenant_id
             or survey.owner_id != user.id
+            or survey.status == SurveyStatus.DELETED
         ):
             raise NotFoundError("설문 프로젝트를 찾을 수 없습니다.")
         return survey
@@ -1156,6 +2173,8 @@ class MemoryStore:
             raise NotFoundError("공개 설문을 찾을 수 없습니다.")
         survey_id, version_number = route
         survey = self._surveys[survey_id]
+        if survey.status != SurveyStatus.PUBLISHED:
+            raise NotFoundError("공개 설문을 찾을 수 없습니다.")
         tenant = self._tenants.get(survey.tenant_id)
         if tenant is None or (
             tenant.expires_at is not None and tenant.expires_at <= utcnow()
@@ -1191,11 +2210,13 @@ class MemoryStore:
             **summary.model_dump(),
             description=survey.description,
             template_code=survey.template_code,
+            template_version_no=survey.template_version_no,
             revision=survey.revision,
             sections=[section.model_copy(deep=True) for section in survey.sections],
             settings=survey.settings.model_copy(deep=True),
             theme=survey.theme.model_copy(deep=True),
             skin=dict(survey.skin),
+            project_profile=survey.project_profile.model_copy(deep=True),
             logic_rules=[dict(rule) for rule in survey.logic_rules],
             default_locale=survey.default_locale,
             supported_locales=list(survey.supported_locales),
@@ -1208,11 +2229,16 @@ class MemoryStore:
 
     @staticmethod
     def _validate_global_question_ids(sections: Iterable[SurveySection]) -> None:
+        sections = list(sections)
         identifiers = [
             question.id for section in sections for question in section.questions
         ]
         if len(identifiers) != len(set(identifiers)):
             raise DomainValidationError("설문 전체에서 문항 ID는 중복될 수 없습니다.")
+        try:
+            validate_question_activation_references(sections)
+        except ValueError as exc:
+            raise DomainValidationError(str(exc)) from exc
 
     @staticmethod
     def _validate_translation_targets(
@@ -1271,20 +2297,94 @@ class MemoryStore:
             return any(expected in item for item in values)
         return expected in values
 
+    @staticmethod
+    def _question_condition_matches(condition: Any, value: Any) -> bool:
+        operator = str(condition.operator)
+        if operator == "exists":
+            return not MemoryStore._is_empty(value)
+        if operator == "not_exists":
+            return MemoryStore._is_empty(value)
+        if MemoryStore._is_empty(value):
+            return False
+        expected = condition.value
+        actual_values = value if isinstance(value, list) else [value]
+        expected_values = expected if isinstance(expected, list) else [expected]
+        if operator == "contains":
+            return any(
+                str(expected_item) in str(actual_item)
+                for actual_item in actual_values
+                for expected_item in expected_values
+            )
+        if operator == "in":
+            return any(
+                str(actual_item) == str(expected_item)
+                for actual_item in actual_values
+                for expected_item in expected_values
+            )
+        if operator in {
+            "greater_than",
+            "greater_or_equal",
+            "less_than",
+            "less_or_equal",
+        }:
+            try:
+                actual_number = float(actual_values[0])
+                expected_number = float(expected_values[0])
+            except (TypeError, ValueError):
+                return False
+            return {
+                "greater_than": actual_number > expected_number,
+                "greater_or_equal": actual_number >= expected_number,
+                "less_than": actual_number < expected_number,
+                "less_or_equal": actual_number <= expected_number,
+            }[operator]
+        equal = any(
+            str(actual_item) == str(expected_item)
+            for actual_item in actual_values
+            for expected_item in expected_values
+        )
+        return not equal if operator == "not_equals" else equal
+
+    @classmethod
+    def _question_is_active(
+        cls, question: Question, answer_map: dict[str, AnswerItem]
+    ) -> bool:
+        group = question.activation_condition
+        if group is None:
+            return True
+        matches = [
+            cls._question_condition_matches(
+                condition,
+                answer_map.get(condition.source_question_id).value
+                if answer_map.get(condition.source_question_id)
+                else None,
+            )
+            for condition in group.conditions
+        ]
+        return all(matches) if group.combinator == "all" else any(matches)
+
     @classmethod
     def _reachable_section_ids(
         cls,
         survey: PublicSurvey,
         answer_map: dict[str, AnswerItem],
     ) -> set[str]:
-        if not survey.logic_rules:
-            return {section.id for section in survey.sections}
+        return cls._response_visibility(survey, answer_map)[0]
+
+    @classmethod
+    def _response_visibility(
+        cls,
+        survey: PublicSurvey,
+        answer_map: dict[str, AnswerItem],
+    ) -> tuple[set[str], set[str], dict[str, AnswerItem]]:
         section_index_by_question = {
             question.id: section_index
             for section_index, section in enumerate(survey.sections)
             for question in section.questions
         }
         visible: set[str] = set()
+        active_questions: set[str] = set()
+        effective_answers: dict[str, AnswerItem] = {}
         visited: set[int] = set()
         section_index = 0
         while (
@@ -1294,12 +2394,20 @@ class MemoryStore:
             visited.add(section_index)
             section = survey.sections[section_index]
             visible.add(section.id)
+            for question in section.questions:
+                if question.type == QuestionType.TEXT:
+                    continue
+                if cls._question_is_active(question, effective_answers):
+                    active_questions.add(question.id)
+                    answer = answer_map.get(question.id)
+                    if answer is not None:
+                        effective_answers[question.id] = answer
             matching_rule: dict[str, Any] | None = None
             for rule in survey.logic_rules:
                 source_id = str(
                     rule.get("sourceQuestionId") or rule.get("questionId") or ""
                 )
-                answer = answer_map.get(source_id)
+                answer = effective_answers.get(source_id)
                 if (
                     section_index_by_question.get(source_id) == section_index
                     and answer is not None
@@ -1331,7 +2439,7 @@ class MemoryStore:
                 -1,
             )
             section_index = target_index if target_index >= 0 else section_index + 1
-        return visible
+        return visible, active_questions, effective_answers
 
     def _validate_answers(
         self,
@@ -1351,13 +2459,10 @@ class MemoryStore:
                 f"존재하지 않는 문항에 대한 응답입니다: {', '.join(unknown)}"
             )
 
-        reachable_sections = self._reachable_section_ids(survey, answer_map)
-        hidden_questions = {
-            question.id
-            for section in survey.sections
-            if section.id not in reachable_sections
-            for question in section.questions
-        }
+        reachable_sections, active_question_ids, effective_answers = (
+            self._response_visibility(survey, answer_map)
+        )
+        hidden_questions = set(questions) - active_question_ids
         tampered = sorted(
             question_id
             for question_id in hidden_questions
@@ -1377,7 +2482,9 @@ class MemoryStore:
             for question in section.questions:
                 if question.type == QuestionType.TEXT:
                     continue
-                answer = answer_map.get(question.id)
+                if question.id not in active_question_ids:
+                    continue
+                answer = effective_answers.get(question.id)
                 value = answer.value if answer else None
                 if question.required and self._is_empty(value):
                     raise DomainValidationError(
@@ -1575,6 +2682,37 @@ class MemoryStore:
 
 def _option(identifier: str, label: str) -> QuestionOption:
     return QuestionOption(id=identifier, label=label)
+
+
+def _settings_for_project_profile(
+    settings: SurveySettings, profile: SurveyProjectProfile
+) -> SurveySettings:
+    payload = settings.model_dump()
+    payload.update(
+        {
+            "starts_at": profile.starts_at,
+            "closes_at": profile.closes_at,
+            "anonymous": not profile.identified,
+            "show_progress_bar": profile.show_progress,
+            "show_progress": profile.show_progress,
+        }
+    )
+    return SurveySettings.model_validate(payload)
+
+
+def _project_profile_for_settings(
+    profile: SurveyProjectProfile, settings: SurveySettings
+) -> SurveyProjectProfile:
+    payload = profile.model_dump()
+    payload.update(
+        {
+            "starts_at": settings.starts_at,
+            "closes_at": settings.closes_at,
+            "identified": not settings.anonymous,
+            "show_progress": settings.show_progress_bar,
+        }
+    )
+    return SurveyProjectProfile.model_validate(payload)
 
 
 def _skin_from_theme(theme: SurveyTheme) -> dict[str, Any]:

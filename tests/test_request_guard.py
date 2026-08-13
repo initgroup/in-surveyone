@@ -15,6 +15,7 @@ def _run_guard(
     path: str,
     chunks: list[bytes],
     *,
+    method: str = "POST",
     settings=None,
     headers: list[tuple[bytes, bytes]] | None = None,
     client_ip: str = "192.0.2.10",
@@ -57,7 +58,7 @@ def _run_guard(
     scope = {
         "type": "http",
         "http_version": "1.1",
-        "method": "POST",
+        "method": method,
         "scheme": "http",
         "path": path,
         "raw_path": path.encode("ascii"),
@@ -80,6 +81,7 @@ def test_content_length_and_chunked_caps_run_before_json_parsing() -> None:
     settings = replace(
         get_settings(),
         public_body_max_bytes=32,
+        delivery_body_max_bytes=32,
         guest_body_max_bytes=16,
         auth_body_max_bytes=16,
     )
@@ -92,6 +94,19 @@ def test_content_length_and_chunked_caps_run_before_json_parsing() -> None:
         headers=[(b"content-length", str(len(oversized)).encode("ascii"))],
     )
     assert (status, calls) == (413, 0)
+
+    for method_path in (
+        "/api/deployments/by-survey/survey-1",
+        "/api/deployments/by-survey/survey-1/execute",
+    ):
+        method = "PUT" if method_path.endswith("survey-1") else "POST"
+        status, calls, _ = _run_guard(
+            method_path,
+            [oversized[:20], oversized[20:]],
+            settings=settings,
+            method=method,
+        )
+        assert (status, calls) == (413, 0)
 
     guest_oversized = b'{"mode":"local"} malformed-' + b"x" * 32
     for auth_path in ("/api/auth/signup", "/api/auth/login"):

@@ -62,7 +62,7 @@ class InProcessFixedWindowLimiter:
 
 
 class PublicRequestGuardMiddleware:
-    """Cap anonymous transport bodies and apply process-local rate limits."""
+    """Cap sensitive transport bodies and rate-limit anonymous actions."""
 
     _PUBLIC_PREFIX = "/api/public/surveys/"
     _PUBLIC_SUFFIX = "/responses"
@@ -91,6 +91,18 @@ class PublicRequestGuardMiddleware:
             return None
         slug = path[len(cls._PUBLIC_PREFIX) : -len(cls._PUBLIC_SUFFIX)]
         return slug if slug and "/" not in slug else None
+
+    @staticmethod
+    def _is_delivery_write(path: str, method: str) -> bool:
+        prefix = "/api/deployments/by-survey/"
+        if method not in {"PUT", "POST"} or not path.startswith(prefix):
+            return False
+        suffix = path[len(prefix) :]
+        if not suffix or suffix.startswith("/") or "//" in suffix:
+            return False
+        if method == "PUT":
+            return "/" not in suffix
+        return suffix.endswith("/execute") and "/" not in suffix[: -len("/execute")]
 
     @staticmethod
     def _direct_client_ip(scope: Scope) -> str:
@@ -155,18 +167,23 @@ class PublicRequestGuardMiddleware:
                 return messages
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope.get("method", "GET").upper() != "POST":
+        if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
+        method = scope.get("method", "GET").upper()
         path = str(scope.get("path") or "")
-        submission_slug = self._submission_slug(path)
-        auth_action = self._AUTH_ACTIONS.get(path)
-        if submission_slug is None and auth_action is None:
+        submission_slug = self._submission_slug(path) if method == "POST" else None
+        auth_action = self._AUTH_ACTIONS.get(path) if method == "POST" else None
+        delivery_write = self._is_delivery_write(path, method)
+        if submission_slug is None and auth_action is None and not delivery_write:
             await self.app(scope, receive, send)
             return
 
-        if submission_slug is not None:
+        if delivery_write:
+            maximum = self.settings.delivery_body_max_bytes
+            too_large_detail = "Delivery request body is too large."
+        elif submission_slug is not None:
             maximum = self.settings.public_body_max_bytes
             too_large_detail = "Public response request body is too large."
         elif auth_action == "guest-create":
@@ -192,6 +209,30 @@ class PublicRequestGuardMiddleware:
                 status_code=status_code,
                 detail=detail,
             )
+            return
+
+        if delivery_write:
+            messages = await self._buffer_body(receive, maximum=maximum)
+            if messages is None:
+                await self._send_error(
+                    scope,
+                    receive,
+                    send,
+                    status_code=413,
+                    detail=too_large_detail,
+                )
+                return
+            message_index = 0
+
+            async def replay_delivery_receive() -> Message:
+                nonlocal message_index
+                if message_index < len(messages):
+                    message = messages[message_index]
+                    message_index += 1
+                    return message
+                return {"type": "http.request", "body": b"", "more_body": False}
+
+            await self.app(scope, replay_delivery_receive, send)
             return
 
         client_ip = self._direct_client_ip(scope)

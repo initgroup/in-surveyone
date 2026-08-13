@@ -1,0 +1,32 @@
+.experience-hero { display: flex; align-items: center; justify-content: space-between; min-height: 150px; background: linear-gradient(120deg, #f7faff, #eef5ff); }
+.experience-hero h2 { margin: 8px 0; font-size: clamp(23px, 3vw, 34px); }
+.experience-hero p { max-width: 760px; margin: 0; color: var(--muted); }
+.experience-project-id { display: inline-flex; margin-left: 10px; color: var(--blue); font-size: 11px; font-weight: 800; }
+.experience-options { width: 100%; margin: 0; padding: 18px 0 34px; }
+.experience-skin-summary { display: flex; gap: 18px; align-items: center; justify-content: space-between; margin-bottom: 18px; padding: 16px 18px; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
+.experience-skin-summary > div:first-child { display: grid; gap: 2px; }
+.experience-skin-summary small { color: var(--muted); }
+.experience-skin-presets { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+.experience-skin-presets button { display: grid; grid-template-columns: 18px auto; gap: 6px; align-items: center; min-height: 38px; padding: 6px 9px; color: var(--muted); background: #fff; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; font-size: 10px; font-weight: 750; }
+.experience-skin-presets button i { width: 18px; height: 18px; background: var(--skin-color); border-radius: 6px; }
+.experience-skin-presets button[aria-pressed="true"] { color: var(--experience-primary); border-color: var(--experience-primary); box-shadow: 0 0 0 2px color-mix(in srgb,var(--experience-primary) 12%,transparent); }
+.experience-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.experience-card { position: relative; display: grid; grid-template-columns: 170px 1fr auto; gap: 22px; align-items: center; min-height: 230px; padding: 24px; color: var(--ink); text-align: left; background: #fff; border: 2px solid var(--line); border-radius: 20px; box-shadow: var(--shadow-sm); cursor: pointer; }
+.experience-card:hover { border-color: #9eb9f5; transform: translateY(-1px); }
+.experience-card[aria-checked="true"] { border-color: var(--experience-primary, var(--blue)); border-radius: var(--experience-radius, 20px); box-shadow: 0 12px 30px color-mix(in srgb,var(--experience-primary, var(--blue)) 14%,transparent); }
+.experience-preview { display: grid; align-content: center; gap: 8px; width: 170px; height: 166px; padding: 20px; background: #eff5ff; border: 1px solid #d7e3fa; border-radius: 16px; }
+.experience-preview-scroll i { display: block; height: 24px; background: #fff; border: 1px solid #d5def0; border-radius: 7px; box-shadow: inset 4px 0 0 #5b83e4; }
+.experience-preview-one { grid-template-rows: 1fr auto; }
+.experience-preview-one i { display: block; background: #fff; border: 1px solid #d5def0; border-radius: 10px; box-shadow: inset 0 5px 0 #5b83e4; }
+.experience-preview-one b { color: var(--muted); font-size: 10px; text-align: center; }
+.experience-copy { display: grid; gap: 9px; }
+.experience-copy strong { font-size: 20px; }
+.experience-copy small { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.experience-badge { width: max-content; padding: 4px 8px; color: var(--blue); font-size: 10px; font-weight: 900; background: var(--blue-soft); border-radius: 999px; }
+.experience-check { display: grid; place-items: center; width: 28px; height: 28px; color: #fff; background: #c6cedb; border-radius: 50%; }
+.experience-card[aria-checked="true"] .experience-check { background: var(--experience-primary, var(--blue)); }
+.experience-note { display: flex; gap: 18px; align-items: baseline; margin-top: 18px; padding: 16px 18px; background: #f6f9fd; border: 1px solid var(--line); border-radius: 12px; }
+.experience-note p { margin: 0; color: var(--muted); }
+.experience-actions { display: flex; justify-content: space-between; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+@media (max-width: 900px) { .experience-grid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .experience-skin-summary { align-items: stretch; flex-direction: column; } .experience-skin-presets { justify-content: flex-start; } .experience-card { grid-template-columns: 1fr auto; min-height: 0; padding: 18px; } .experience-preview { grid-column: 1 / -1; width: 100%; height: 120px; } .experience-note { display: block; } .experience-actions { gap: 10px; } }

@@ -12,7 +12,7 @@ from main import app
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_raw_data_page_has_scalable_navigation_and_exports() -> None:
+def test_raw_data_page_starts_with_analysis_project_browser_and_exports() -> None:
     html = (PROJECT_ROOT / "frontend" / "pages" / "M04001.html").read_text(
         encoding="utf-8"
     )
@@ -23,13 +23,26 @@ def test_raw_data_page_has_scalable_navigation_and_exports() -> None:
         encoding="utf-8"
     )
 
-    assert 'role="combobox"' in html
-    assert "data-response-survey-options" in html
+    assert "data-response-project-view" in html
+    assert "data-response-project-grid" in html
+    assert 'data-response-project-layout="grid"' in html
+    assert 'data-response-project-layout="list"' in html
+    assert "data-response-workspace" in html
+    assert "data-response-project-back" in html
+    assert 'role="combobox"' not in html
     assert "data-column-summary" in html
     assert "data-response-pagination" in html
+    assert "renderProjects(errorMessage" in script
+    assert "projectCardMarkup(item)" in script
+    assert "showProjectList()" in script
+    assert 'localStorage.getItem("surveyone-rawdata-view")' in script
     assert "analysisDescriptors" in script
+    assert "this.responseLoadToken = 0" in script
+    assert "requestToken !== this.responseLoadToken" in script
     assert 'data-export-mode="analysis"' in script
     assert "보기별 1/0 열" in script
+    assert ".response-project-grid.is-list" in css
+    assert ".analysis-readiness.is-ready" in css
     assert ".response-table th:nth-child(1)" in css
     assert ".response-mobile-list" in css
 
@@ -43,8 +56,8 @@ def test_frontend_assets_are_versioned_and_not_cached_in_local_or_test_mode() ->
         encoding="utf-8"
     )
 
-    assert 'assetVersion: "20260811.5"' in config
-    assert index.count("?v=20260811.5") >= 6
+    assert 'assetVersion: "20260814.29"' in config
+    assert index.count("?v=20260814.28") >= 6
     assert "function versionedAsset(src)" in app_script
     assert 'url.searchParams.set("v", runtimeAssetVersion)' in app_script
     assert "link.href = absoluteHref" in app_script
@@ -80,12 +93,27 @@ const context = {{
     Common: {{
         escapeHtml(value) {{ return String(value ?? ""); }},
         formatNumber(value) {{ return String(value); }},
+        formatDate(value) {{ return String(value ?? ""); }},
         questionsOf(entity) {{ return entity?.questions || []; }}
     }}
 }};
 context.window = context;
 vm.runInNewContext(source, context, {{ filename: scriptPath }});
 const page = Object.create(context.Pages.M04001);
+
+const projectCard = page.projectCardMarkup({{
+    id: "survey-101",
+    title: "다문화 가정 생활 조사",
+    category: "사회조사",
+    status: "published",
+    responseCount: 24,
+    questionCount: 8,
+    publishedVersion: 2,
+    updatedAt: "2026-08-13"
+}});
+assert.match(projectCard, /data-open-response-project="survey-101"/);
+assert.match(projectCard, /분석 가능/);
+assert.match(projectCard, /v2/);
 
 const multiple = {{
     id: "q1",

@@ -12,6 +12,13 @@ from typing import Any
 from backend.config import Settings, get_settings
 from backend.database import OraclePool, get_oracle_pool
 from backend.database_helper import OracleCrud
+from backend.delivery_security import (
+    contact_hash,
+    decrypt_contact,
+    encrypt_contact,
+    is_masked_contact,
+    mask_contact,
+)
 from backend.errors import (
     AuthenticationError,
     ConflictError,
@@ -22,7 +29,9 @@ from backend.errors import (
 from backend.memory_store import (
     MemoryStore,
     UserRecord,
+    _project_profile_for_settings,
     _seed_templates,
+    _settings_for_project_profile,
     _skin_from_theme,
     apply_public_translation,
     new_id,
@@ -31,9 +40,25 @@ from backend.memory_store import (
     utcnow,
 )
 from backend.models import (
+    AdminTemplateDraftRequest,
+    AdminTemplateDraftView,
+    AdminTemplatePatchRequest,
+    AdminTemplatePublishRequest,
+    AdminTemplateStatus,
+    AdminTemplateView,
+    AdminMemberPage,
+    AdminMemberStatusRequest,
+    AdminMemberView,
+    AdminPasswordResetView,
     AnswerItem,
     AuthSessionView,
     DashboardView,
+    DeliveryChannel,
+    DeliveryChannelResult,
+    DeploymentDraftRequest,
+    DeploymentDraftView,
+    DeploymentExecuteResult,
+    DeploymentExecutionView,
     GuestMode,
     GuestCredentialView,
     GuestProvisionView,
@@ -47,6 +72,8 @@ from backend.models import (
     SurveyCreateRequest,
     SurveyDetail,
     SurveyLanguages,
+    SurveyPage,
+    SurveyProjectProfile,
     SurveyReport,
     SurveyResponseView,
     SurveySection,
@@ -54,6 +81,8 @@ from backend.models import (
     SurveyStatus,
     SurveySummary,
     SurveyTemplate,
+    SurveyTemplateApplyRequest,
+    SurveyTemplateResetRequest,
     SurveyTheme,
     SurveyTranslation,
     SurveyUpdateRequest,
@@ -163,9 +192,16 @@ class OracleStore(MemoryStore):
             ),
             role=role,
             is_guest=str(row.get("guest_yn") or "N").upper() == "Y",
-            guest_mode=self._guest_mode(row.get("guest_mode_code")),
+            guest_mode=(
+                GuestMode.DATABASE
+                if str(row.get("guest_mode_code") or "").upper() == "DB"
+                else None
+            ),
             created_at=_as_aware(row.get("created_at")) or utcnow(),
             tenant_expires_at=_as_aware(row.get("tenant_expires_at")),
+            system_admin=str(row.get("system_admin_yn") or "N").upper() == "Y",
+            active=str(row.get("user_use_yn") or row.get("use_yn") or "Y").upper() == "Y",
+            withdrawn_at=_as_aware(row.get("withdrawn_at")),
         )
 
     def _user_view(self, user: UserRecord) -> UserView:
@@ -177,6 +213,7 @@ class OracleStore(MemoryStore):
             tenant_id=user.tenant_id,
             organization_name=user.organization_name,
             role=user.role,
+            system_admin=user.system_admin,
             is_guest=user.is_guest,
             guest_mode=user.guest_mode,
             created_at=user.created_at,
@@ -273,6 +310,7 @@ class OracleStore(MemoryStore):
                     "userName": display_name.strip() or "게스트",
                     "email": None,
                     "roleCode": UserRole.GUEST.value,
+                    "systemAdminYn": "N",
                     "guestYn": "Y",
                     "guestModeCode": "DB",
                 },
@@ -328,6 +366,7 @@ class OracleStore(MemoryStore):
 
     def signup(self, request: SignupRequest) -> tuple[str, AuthSessionView]:
         login_id = self._normalize_login(request.login_id)
+        system_admin = self._system_admin_for_signup(request)
         with self.pool.transaction() as connection:
             if self.crud.fetch_one(
                 connection, "AUTH_LOGIN_ID_EXISTS", {"loginId": login_id}
@@ -356,6 +395,7 @@ class OracleStore(MemoryStore):
                     "userName": request.name,
                     "email": request.email,
                     "roleCode": UserRole.OWNER.value,
+                    "systemAdminYn": "Y" if system_admin else "N",
                     "guestYn": "N",
                     "guestModeCode": "NONE",
                 },
@@ -369,6 +409,7 @@ class OracleStore(MemoryStore):
                 organization_name=request.organization_name,
                 password_hash=None,
                 role=UserRole.OWNER,
+                system_admin=system_admin,
                 is_guest=False,
                 guest_mode=None,
                 created_at=utcnow(),
@@ -449,7 +490,9 @@ class OracleStore(MemoryStore):
             )
 
     def _seed_templates_if_empty(self, connection: Any) -> None:
-        existing_rows = self.crud.fetch_all(connection, "TEMPLATE_LIST")
+        existing_rows = self.crud.fetch_all(
+            connection, "TEMPLATE_CATALOG_CONTENT_LIST"
+        )
         seed_templates = {template.code: template for template in _seed_templates()}
 
         for row in existing_rows:
@@ -459,9 +502,19 @@ class OracleStore(MemoryStore):
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 template = seed_templates.get(template_code)
                 if template is None:
-                    raise RuntimeError(
-                        f"Template CONTENT_JSON is invalid: {template_code}"
-                    ) from exc
+                    is_public = (
+                        str(row.get("status_code") or "").upper() == "ACTIVE"
+                        and str(row.get("use_yn") or "").upper() == "Y"
+                    )
+                    if is_public:
+                        raise RuntimeError(
+                            f"Template CONTENT_JSON is invalid: {template_code}"
+                        ) from exc
+                    logger.warning(
+                        "Ignoring invalid JSON in inactive template catalog row: %s",
+                        template_code,
+                    )
+                    continue
                 self.crud.execute(
                     connection,
                     "TEMPLATE_REPAIR",
@@ -488,14 +541,49 @@ class OracleStore(MemoryStore):
                 for template in seed_templates.values()
             ],
         )
+        # Hash the exact materialized CLOB copied into the immutable version.
+        # STANDARD_HASH does not accept LOB values on every supported Oracle
+        # release, so hashing belongs at the repository edge.
+        version_rows = self.crud.fetch_all(connection, "TEMPLATE_VERSION_MISSING")
+        for row in version_rows:
+            raw_content = row.get("content_json")
+            try:
+                parsed_content = _json_load(raw_content, {})
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"Template CONTENT_JSON is invalid: {row.get('template_code')}"
+                ) from exc
+            if isinstance(raw_content, str):
+                content_json = raw_content
+            elif isinstance(raw_content, (bytes, bytearray, memoryview)):
+                content_json = bytes(raw_content).decode("utf-8")
+            else:
+                # Oracle native JSON values are returned as Python dict/list
+                # objects. str(dict) is Python syntax with single quotes, not
+                # JSON, so normalize it explicitly for the immutable snapshot.
+                content_json = _json_dump(parsed_content)
+            self.crud.execute(
+                connection,
+                "TEMPLATE_VERSION_SEED",
+                {
+                    "templateCode": str(row["template_code"]),
+                    "snapshotJson": content_json,
+                    "contentHash": hashlib.sha256(
+                        content_json.encode("utf-8")
+                    ).hexdigest(),
+                },
+            )
 
     @staticmethod
     def _template_from_row(row: dict[str, Any]) -> SurveyTemplate:
         payload = _json_load(row.get("content_json"), {})
-        payload.setdefault("code", str(row["template_code"]))
-        payload.setdefault("title", str(row["template_title"]))
-        payload.setdefault("category", str(row["category_code"]))
-        payload.setdefault("description", str(row.get("description") or ""))
+        # Catalog metadata is authoritative and can change without rewriting
+        # an immutable structural snapshot/version row.
+        payload["code"] = str(row["template_code"])
+        payload["title"] = str(row["template_title"])
+        payload["category"] = str(row["category_code"])
+        payload["description"] = str(row.get("description") or "")
+        payload["versionNo"] = int(row.get("current_version_no") or 1)
         return SurveyTemplate.model_validate(payload)
 
     def templates(self) -> list[SurveyTemplate]:
@@ -515,12 +603,522 @@ class OracleStore(MemoryStore):
         return self._template_from_row(row)
 
     @staticmethod
+    def _require_system_admin(user: UserRecord) -> None:
+        MemoryStore._require_system_admin(user)
+
+    def _admin_template_view_from_row(
+        self, row: dict[str, Any]
+    ) -> AdminTemplateView:
+        template = self._template_from_row(row)
+        return AdminTemplateView(
+            code=template.code,
+            title=template.title,
+            description=template.description,
+            category=template.category,
+            status=AdminTemplateStatus(str(row.get("status_code") or "active").lower()),
+            version_no=int(row.get("current_version_no") or 1),
+            source_survey_id=(
+                str(row["source_survey_id"])
+                if row.get("source_survey_id") is not None
+                else None
+            ),
+            question_count=template.question_count,
+            use_count=int(row.get("use_count") or 0),
+            published_at=(
+                _as_aware(row.get("current_published_at"))
+                or _as_aware(row.get("updated_at"))
+                or _as_aware(row.get("created_at"))
+                or utcnow()
+            ),
+            updated_at=(
+                _as_aware(row.get("updated_at"))
+                or _as_aware(row.get("created_at"))
+                or utcnow()
+            ),
+        )
+
+    def admin_templates(self, user: UserRecord) -> list[AdminTemplateView]:
+        self._require_system_admin(user)
+        with self.pool.transaction() as connection:
+            self._seed_templates_if_empty(connection)
+            rows = self.crud.fetch_all(connection, "ADMIN_TEMPLATE_LIST")
+            draft_rows = self.crud.fetch_all(
+                connection,
+                "ADMIN_TEMPLATE_ORPHAN_DRAFT_LIST",
+                {"tenantId": user.tenant_id, "ownerUserId": user.id},
+            )
+        values = [self._admin_template_view_from_row(row) for row in rows]
+        values.extend(self._admin_template_draft_view_from_row(row) for row in draft_rows)
+        values.sort(key=lambda item: item.updated_at, reverse=True)
+        return values
+
+    @staticmethod
+    def _admin_template_draft_view_from_row(
+        row: dict[str, Any]
+    ) -> AdminTemplateView:
+        draft = _json_load(row.get("draft_json"), {})
+        question_count = sum(
+            len(section.get("questions") or [])
+            for section in draft.get("sections") or []
+        )
+        survey_id = str(row["survey_id"])
+        updated_at = _as_aware(row.get("updated_at")) or utcnow()
+        return AdminTemplateView(
+            code=f"draft:{survey_id}",
+            title=str(row["survey_title"]),
+            description=str(row.get("description") or ""),
+            category=str(row.get("category_code") or "일반조사"),
+            status=AdminTemplateStatus.DRAFT,
+            version_no=0,
+            source_survey_id=survey_id,
+            draft_only=True,
+            question_count=question_count,
+            use_count=0,
+            published_at=None,
+            updated_at=updated_at,
+        )
+
+    @staticmethod
+    def _admin_member_from_row(row: dict[str, Any]) -> AdminMemberView:
+        return AdminMemberView(
+            id=str(row["user_id"]),
+            login_id=str(row["login_id"]),
+            name=str(row["user_name"]),
+            email=mask_contact("EMAIL", str(row["email"])) if row.get("email") is not None else None,
+            tenant_id=str(row["tenant_id"]),
+            organization_name=str(row["tenant_name"]),
+            role=UserRole(str(row["role_code"]).upper()),
+            system_admin=str(row.get("system_admin_yn") or "N").upper() == "Y",
+            is_guest=str(row.get("guest_yn") or "N").upper() == "Y",
+            guest_mode=(
+                GuestMode.DATABASE
+                if str(row.get("guest_mode_code") or "").upper() == "DB"
+                else None
+            ),
+            active=str(row.get("use_yn") or "N").upper() == "Y",
+            expires_at=_as_aware(row.get("tenant_expires_at")),
+            withdrawn_at=_as_aware(row.get("withdrawn_at")),
+            created_at=_as_aware(row.get("created_at")) or utcnow(),
+            last_login_at=_as_aware(row.get("last_login_at")),
+        )
+
+    def admin_members(
+        self,
+        user: UserRecord,
+        *,
+        page: int,
+        page_size: int,
+        query: str = "",
+        member_type: str = "all",
+    ) -> AdminMemberPage:
+        self._require_system_admin(user)
+        normalized = query.strip().lower()
+        normalized_type = member_type.strip().lower()
+        if normalized_type not in {"all", "member", "guest"}:
+            raise DomainValidationError("회원 분류가 올바르지 않습니다.")
+        params = {
+            "queryPattern": f"%{normalized}%" if normalized else None,
+            "memberType": normalized_type.upper(),
+        }
+        with self.pool.connection() as connection:
+            count_row = self.crud.fetch_one(connection, "ADMIN_MEMBER_COUNT", params) or {"member_count": 0}
+            rows = self.crud.fetch_all(
+                connection,
+                "ADMIN_MEMBER_PAGE",
+                {
+                    **params,
+                    "offsetRows": (page - 1) * page_size,
+                    "limitRows": page_size,
+                },
+            )
+        total = int(count_row.get("member_count") or 0)
+        return AdminMemberPage(
+            items=[self._admin_member_from_row(row) for row in rows],
+            page=page,
+            page_size=page_size,
+            total=total,
+            has_next=page * page_size < total,
+        )
+
+    def admin_reset_member_password(
+        self, user: UserRecord, member_id: str
+    ) -> AdminPasswordResetView:
+        self._require_system_admin(user)
+        if member_id == user.id:
+            raise DomainValidationError("현재 로그인한 관리자 계정은 여기에서 초기화할 수 없습니다.")
+        temporary_password = self._temporary_password()
+        with self.pool.transaction() as connection:
+            member = self.crud.fetch_one(
+                connection, "ADMIN_MEMBER_DETAIL_LOCK", {"userId": member_id}
+            )
+            if member is None:
+                raise NotFoundError("회원 계정을 찾을 수 없습니다.")
+            if member.get("withdrawn_at") is not None:
+                raise DomainValidationError("이미 탈퇴한 계정은 비밀번호를 초기화할 수 없습니다.")
+            affected = self.crud.execute(
+                connection,
+                "ADMIN_MEMBER_PASSWORD_RESET",
+                {"userId": member_id, "passwordHash": hash_password(temporary_password)},
+            )
+            if affected != 1:
+                raise ConflictError("비밀번호 초기화 중 계정 상태가 변경되었습니다.")
+            self.crud.execute(
+                connection, "ADMIN_MEMBER_SESSIONS_REVOKE", {"userId": member_id}
+            )
+        return AdminPasswordResetView(
+            user_id=member_id,
+            login_id=str(member["login_id"]),
+            temporary_password=temporary_password,
+        )
+
+    def admin_set_member_status(
+        self,
+        user: UserRecord,
+        member_id: str,
+        request: AdminMemberStatusRequest,
+    ) -> AdminMemberView:
+        self._require_system_admin(user)
+        if member_id == user.id:
+            raise DomainValidationError("현재 로그인한 관리자 계정 상태는 변경할 수 없습니다.")
+        with self.pool.transaction() as connection:
+            member = self.crud.fetch_one(
+                connection, "ADMIN_MEMBER_DETAIL_LOCK", {"userId": member_id}
+            )
+            if member is None:
+                raise NotFoundError("회원 계정을 찾을 수 없습니다.")
+            if member.get("withdrawn_at") is not None:
+                raise DomainValidationError("탈퇴한 계정의 이용 상태는 변경할 수 없습니다.")
+            affected = self.crud.execute(
+                connection,
+                "ADMIN_MEMBER_STATUS_UPDATE",
+                {"userId": member_id, "useYn": "Y" if request.active else "N"},
+            )
+            if affected != 1:
+                raise ConflictError("회원 상태 변경 중 계정 정보가 변경되었습니다.")
+            if not request.active:
+                self.crud.execute(
+                    connection, "ADMIN_MEMBER_SESSIONS_REVOKE", {"userId": member_id}
+                )
+            member["use_yn"] = "Y" if request.active else "N"
+        return self._admin_member_from_row(member)
+
+    def admin_withdraw_member(self, user: UserRecord, member_id: str) -> None:
+        self._require_system_admin(user)
+        if member_id == user.id:
+            raise DomainValidationError("현재 로그인한 관리자 계정은 여기에서 탈퇴시킬 수 없습니다.")
+        with self.pool.transaction() as connection:
+            member = self.crud.fetch_one(
+                connection, "ADMIN_MEMBER_DETAIL_LOCK", {"userId": member_id}
+            )
+            if member is None:
+                raise NotFoundError("회원 계정을 찾을 수 없습니다.")
+            if member.get("withdrawn_at") is not None:
+                return
+            affected = self.crud.execute(
+                connection,
+                "ADMIN_MEMBER_WITHDRAW",
+                {
+                    "userId": member_id,
+                    "withdrawnLoginId": new_id("withdrawn"),
+                },
+            )
+            if affected != 1:
+                raise ConflictError("회원 탈퇴 처리 중 계정 정보가 변경되었습니다.")
+            self.crud.execute(
+                connection, "ADMIN_MEMBER_SESSIONS_REVOKE", {"userId": member_id}
+            )
+            self.crud.execute(
+                connection,
+                "ADMIN_MEMBER_TENANT_CLOSE",
+                {
+                    "tenantId": str(member["tenant_id"]),
+                    "tenantName": "탈퇴 작업공간",
+                },
+            )
+
+    def create_admin_template_draft(
+        self,
+        user: UserRecord,
+        request: AdminTemplateDraftRequest,
+    ) -> AdminTemplateDraftView:
+        self._require_system_admin(user)
+        template = None
+        if request.template_code:
+            # Administrators may reopen an archived template as a draft even
+            # though the public template catalog intentionally hides it.
+            with self.pool.transaction() as connection:
+                self._seed_templates_if_empty(connection)
+                row = self.crud.fetch_one(
+                    connection,
+                    "ADMIN_TEMPLATE_DETAIL_LOCK",
+                    {"templateCode": request.template_code},
+                )
+                if row is None:
+                    raise NotFoundError("공용 템플릿을 찾을 수 없습니다.")
+                if str(row.get("status_code") or "").upper() == "DELETED":
+                    raise NotFoundError("공용 템플릿을 찾을 수 없습니다.")
+                source_survey_id = row.get("source_survey_id")
+                if source_survey_id is not None:
+                    try:
+                        source_row = self._survey_row(
+                            connection, user, str(source_survey_id)
+                        )
+                    except NotFoundError:
+                        source_row = None
+                    if (
+                        source_row is not None
+                        and str(source_row.get("admin_template_yn") or "N").upper()
+                        == "Y"
+                        and str(source_row.get("status_code") or "").upper()
+                        == "DRAFT"
+                    ):
+                        current = self._detail_from_row(source_row)
+                        return AdminTemplateDraftView(
+                            survey_id=current.id,
+                            source_survey_id=current.id,
+                            template_code=request.template_code,
+                            revision=current.revision,
+                        )
+                template = self._template_from_row(row)
+        detail = self.create_survey(
+            user,
+            SurveyCreateRequest(
+                title=request.title,
+                description=template.description if template else None,
+                category=template.category if template else "일반조사",
+                sections=(
+                    [section.model_copy(deep=True) for section in template.sections]
+                    if template
+                    else None
+                ),
+                settings=template.settings.model_copy(deep=True) if template else None,
+                theme=template.theme.model_copy(deep=True) if template else None,
+                skin=dict(template.skin) if template else None,
+                logic_rules=[dict(rule) for rule in template.logic_rules] if template else [],
+                languages=template.languages.model_copy(deep=True) if template else SurveyLanguages(),
+                translations=(
+                    {
+                        locale: value.model_copy(deep=True)
+                        for locale, value in template.translations.items()
+                    }
+                    if template
+                    else {}
+                ),
+            ),
+            admin_template=True,
+        )
+        if request.template_code:
+            with self.pool.transaction() as connection:
+                affected = self.crud.execute(
+                    connection,
+                    "ADMIN_TEMPLATE_DRAFT_LINK",
+                    {
+                        "templateCode": request.template_code,
+                        "sourceSurveyId": detail.id,
+                        "actorUserId": user.id,
+                    },
+                )
+                if affected != 1:
+                    raise ConflictError("공용 템플릿 편집 초안을 연결하지 못했습니다.")
+        return AdminTemplateDraftView(
+            survey_id=detail.id,
+            source_survey_id=detail.id,
+            template_code=request.template_code,
+            revision=detail.revision,
+        )
+
+    def delete_admin_template_draft(
+        self, user: UserRecord, survey_id: str
+    ) -> None:
+        self._require_system_admin(user)
+        with self.pool.transaction() as connection:
+            affected = self.crud.execute(
+                connection,
+                "ADMIN_TEMPLATE_DRAFT_DELETE",
+                {
+                    "surveyId": survey_id,
+                    "tenantId": user.tenant_id,
+                    "ownerUserId": user.id,
+                },
+            )
+            if affected != 1:
+                raise ConflictError(
+                    "작성 중인 독립 공용 템플릿 초안을 찾을 수 없거나 삭제할 수 없습니다."
+                )
+
+    def publish_admin_template(
+        self,
+        user: UserRecord,
+        code: str,
+        request: AdminTemplatePublishRequest,
+    ) -> AdminTemplateView:
+        self._require_system_admin(user)
+        normalized_code = code.strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,49}", normalized_code):
+            raise DomainValidationError("템플릿 코드는 영문 소문자·숫자·하이픈으로 3~50자여야 합니다.")
+        with self.pool.transaction() as connection:
+            # Hold the source draft lock through validation and snapshot writes.
+            # This prevents an editor update from racing template publication.
+            source_row = self._survey_row(
+                connection, user, request.source_survey_id, lock=True
+            )
+            source = self._detail_from_row(source_row)
+            if source.status != SurveyStatus.DRAFT or source.published_version:
+                raise ConflictError("작성 중인 관리자 초안만 공용 템플릿으로 등록할 수 있습니다.")
+            if str(source_row.get("admin_template_yn") or "N").upper() != "Y":
+                raise ConflictError("공용 템플릿 관리에서 만든 관리자 초안만 등록할 수 있습니다.")
+            try:
+                validate_publish_ready_sections(source.sections)
+            except ValueError as exc:
+                raise DomainValidationError(str(exc)) from exc
+            current = self.crud.fetch_one(
+                connection,
+                "ADMIN_TEMPLATE_DETAIL_LOCK",
+                {"templateCode": normalized_code},
+            )
+            version_no = int(current.get("current_version_no") or 0) + 1 if current else 1
+            template = SurveyTemplate(
+                code=normalized_code,
+                title=request.title,
+                description=request.description,
+                category=request.category,
+                sections=[section.model_copy(deep=True) for section in source.sections],
+                settings=source.settings.model_copy(deep=True),
+                theme=source.theme.model_copy(deep=True),
+                skin=dict(source.skin),
+                logic_rules=[dict(rule) for rule in source.logic_rules],
+                languages=source.languages.model_copy(deep=True),
+                translations={
+                    locale: value.model_copy(deep=True)
+                    for locale, value in source.translations.items()
+                },
+                version_no=version_no,
+            )
+            snapshot_json = template.model_dump_json(by_alias=True)
+            content_hash = hashlib.sha256(snapshot_json.encode("utf-8")).hexdigest()
+            upsert_parameters = {
+                "templateCode": normalized_code,
+                "templateTitle": template.title,
+                "categoryCode": template.category,
+                "description": template.description,
+                "contentJson": snapshot_json,
+                "versionNo": version_no,
+                "sourceSurveyId": source.id,
+                "actorUserId": user.id,
+            }
+            version_parameters = {
+                "templateCode": normalized_code,
+                "versionNo": version_no,
+                "sourceSurveyId": source.id,
+                "sourceSurveyRevision": source.revision,
+                "publishedBy": user.id,
+                "snapshotJson": snapshot_json,
+                "contentHash": content_hash,
+            }
+            self.crud.execute(
+                connection, "ADMIN_TEMPLATE_UPSERT", upsert_parameters
+            )
+            self.crud.execute(
+                connection, "ADMIN_TEMPLATE_VERSION_INSERT", version_parameters
+            )
+            row = self.crud.fetch_one(
+                connection,
+                "ADMIN_TEMPLATE_DETAIL",
+                {"templateCode": normalized_code},
+            )
+        if row is None:
+            raise ServiceUnavailableError("등록한 공용 템플릿을 다시 읽을 수 없습니다.")
+        return self._admin_template_view_from_row(row)
+
+    def patch_admin_template(
+        self,
+        user: UserRecord,
+        code: str,
+        request: AdminTemplatePatchRequest,
+    ) -> AdminTemplateView:
+        self._require_system_admin(user)
+        normalized_code = code.strip().lower()
+        with self.pool.transaction() as connection:
+            row = self.crud.fetch_one(
+                connection,
+                "ADMIN_TEMPLATE_DETAIL_LOCK",
+                {"templateCode": normalized_code},
+            )
+            if row is None:
+                raise NotFoundError("공용 템플릿을 찾을 수 없습니다.")
+            if str(row.get("status_code") or "").upper() == "DELETED":
+                raise NotFoundError("공용 템플릿을 찾을 수 없습니다.")
+            updates = request.model_fields_set
+            status_code = (
+                request.status.value.upper()
+                if "status" in updates and request.status is not None
+                else None
+            )
+            self.crud.execute(
+                connection,
+                "ADMIN_TEMPLATE_PATCH",
+                {
+                    "templateCode": normalized_code,
+                    "templateTitle": request.title if "title" in updates else None,
+                    "categoryCode": request.category if "category" in updates else None,
+                    "description": request.description if "description" in updates else None,
+                    "descriptionSet": "Y" if "description" in updates else "N",
+                    "statusCode": status_code,
+                    "actorUserId": user.id,
+                },
+            )
+            result = self.crud.fetch_one(
+                connection,
+                "ADMIN_TEMPLATE_DETAIL",
+                {"templateCode": normalized_code},
+            )
+        if result is None:
+            raise ServiceUnavailableError("수정한 공용 템플릿을 다시 읽을 수 없습니다.")
+        return self._admin_template_view_from_row(result)
+
+    def delete_admin_template(self, user: UserRecord, code: str) -> None:
+        self._require_system_admin(user)
+        normalized_code = code.strip().lower()
+        with self.pool.transaction() as connection:
+            row = self.crud.fetch_one(
+                connection,
+                "ADMIN_TEMPLATE_DETAIL_LOCK",
+                {"templateCode": normalized_code},
+            )
+            if (
+                row is None
+                or str(row.get("status_code") or "").upper() == "DELETED"
+            ):
+                raise NotFoundError("공용 템플릿을 찾을 수 없습니다.")
+            source_survey_id = row.get("source_survey_id")
+            if source_survey_id is not None:
+                self.crud.execute(
+                    connection,
+                    "ADMIN_TEMPLATE_SOURCE_DELETE",
+                    {
+                        "surveyId": str(source_survey_id),
+                        "actorUserId": user.id,
+                    },
+                )
+            affected = self.crud.execute(
+                connection,
+                "ADMIN_TEMPLATE_DELETE",
+                {
+                    "templateCode": normalized_code,
+                    "actorUserId": user.id,
+                },
+            )
+            if affected != 1:
+                raise ConflictError("공용 템플릿 삭제 중 상태가 변경되었습니다.")
+
+    @staticmethod
     def _draft_json(
         *,
         sections: list[SurveySection],
         settings: SurveySettings,
         theme: SurveyTheme,
         skin: dict[str, Any],
+        project_profile: SurveyProjectProfile,
         logic_rules: list[dict[str, Any]],
         languages: SurveyLanguages,
         translations: dict[str, SurveyTranslation],
@@ -531,6 +1129,7 @@ class OracleStore(MemoryStore):
                 "settings": settings.model_dump(by_alias=True, mode="json"),
                 "theme": theme.model_dump(by_alias=True, mode="json"),
                 "skin": skin,
+                "projectProfile": project_profile.model_dump(by_alias=True, mode="json"),
                 "logicRules": logic_rules,
                 "languages": languages.model_dump(by_alias=True, mode="json"),
                 "defaultLocale": languages.default_locale,
@@ -585,11 +1184,38 @@ class OracleStore(MemoryStore):
             template_code=(
                 str(row["template_code"]) if row.get("template_code") else None
             ),
+            template_version_no=(
+                int(row["template_version_no"])
+                if row.get("template_version_no") is not None
+                else None
+            ),
             revision=int(row["revision_no"]),
             sections=[SurveySection.model_validate(item) for item in draft.get("sections") or []],
             settings=SurveySettings.model_validate(draft.get("settings") or {}),
             theme=SurveyTheme.model_validate(draft.get("theme") or {}),
             skin=dict(draft.get("skin") or {}),
+            project_profile=SurveyProjectProfile(
+                starts_at=_as_aware(row.get("survey_start_at")),
+                closes_at=_as_aware(row.get("survey_closes_at")),
+                identified=str(row.get("identified_yn") or "N").upper() == "Y",
+                show_progress=str(row.get("show_progress_yn") or "Y").upper() == "Y",
+                target_audience=(
+                    str(row["target_audience"])
+                    if row.get("target_audience") is not None
+                    else None
+                ),
+                population_mode=str(row.get("population_mode_code") or "UNKNOWN").lower(),
+                population_size=(
+                    int(row["population_size"])
+                    if row.get("population_size") is not None
+                    else None
+                ),
+                target_response_count=(
+                    int(row["target_response_count"])
+                    if row.get("target_response_count") is not None
+                    else None
+                ),
+            ),
             logic_rules=[dict(item) for item in draft.get("logicRules") or []],
             languages=languages,
             default_locale=languages.default_locale,
@@ -597,7 +1223,13 @@ class OracleStore(MemoryStore):
             translations=translations,
         )
 
-    def create_survey(self, user: UserRecord, request: SurveyCreateRequest) -> SurveyDetail:
+    def create_survey(
+        self,
+        user: UserRecord,
+        request: SurveyCreateRequest,
+        *,
+        admin_template: bool = False,
+    ) -> SurveyDetail:
         template = self.template(request.template_code or request.template_id) if (
             request.template_code or request.template_id
         ) else None
@@ -629,7 +1261,11 @@ class OracleStore(MemoryStore):
             else {}
         )
         self._validate_translation_targets(sections, translations)
-        settings = request.settings or (template.settings if template else SurveySettings())
+        project_profile = request.project_profile.model_copy(deep=True)
+        settings = _settings_for_project_profile(
+            request.settings or (template.settings if template else SurveySettings()),
+            project_profile,
+        )
         theme = request.theme or (template.theme if template else SurveyTheme())
         skin = dict(request.skin) if request.skin is not None else _skin_from_theme(theme)
         survey_id = new_id("survey")
@@ -638,6 +1274,7 @@ class OracleStore(MemoryStore):
             settings=settings,
             theme=theme,
             skin=skin,
+            project_profile=project_profile,
             logic_rules=[dict(item) for item in request.logic_rules],
             languages=languages,
             translations=translations,
@@ -672,9 +1309,19 @@ class OracleStore(MemoryStore):
                     "tenantId": user.tenant_id,
                     "ownerUserId": user.id,
                     "templateCode": template.code if template else None,
+                    "templateVersionNo": template.version_no if template else None,
                     "surveyTitle": title,
                     "description": request.description if request.description is not None else template.description if template else None,
                     "categoryCode": request.category or (template.category if template else "일반조사"),
+                    "surveyStartAt": project_profile.starts_at,
+                    "surveyClosesAt": project_profile.closes_at,
+                    "identifiedYn": "Y" if project_profile.identified else "N",
+                    "showProgressYn": "Y" if project_profile.show_progress else "N",
+                    "targetAudience": project_profile.target_audience,
+                    "populationModeCode": project_profile.population_mode.value.upper(),
+                    "populationSize": project_profile.population_size,
+                    "targetResponseCount": project_profile.target_response_count,
+                    "adminTemplateYn": "Y" if admin_template else "N",
                     "draftJson": draft_json,
                 },
             )
@@ -698,6 +1345,47 @@ class OracleStore(MemoryStore):
             )
         return [self._summary_from_row(row) for row in rows]
 
+    def survey_page(
+        self,
+        user: UserRecord,
+        *,
+        page: int,
+        page_size: int,
+        status: SurveyStatus | None = None,
+        query: str = "",
+        sort: str = "updated-desc",
+    ) -> SurveyPage:
+        normalized_query = query.strip().lower()
+        params = {
+            "tenantId": user.tenant_id,
+            "ownerUserId": user.id,
+            "statusCode": status.value.upper() if status else None,
+            "queryPattern": f"%{normalized_query}%" if normalized_query else None,
+        }
+        with self.pool.connection() as connection:
+            counts = self.crud.fetch_one(
+                connection, "SURVEY_PAGE_COUNTS_BY_OWNER", params
+            ) or {"filtered_count": 0, "total_count": 0}
+            rows = self.crud.fetch_all(
+                connection,
+                "SURVEY_PAGE_BY_OWNER",
+                {
+                    **params,
+                    "sortCode": sort,
+                    "offsetRows": (page - 1) * page_size,
+                    "limitRows": page_size,
+                },
+            )
+        total = int(counts.get("filtered_count") or 0)
+        return SurveyPage(
+            items=[self._summary_from_row(row) for row in rows],
+            page=page,
+            page_size=page_size,
+            total=total,
+            total_all=int(counts.get("total_count") or 0),
+            has_next=page * page_size < total,
+        )
+
     def _survey_row(
         self, connection: Any, user: UserRecord, survey_id: str, *, lock: bool = False
     ) -> dict[str, Any]:
@@ -719,6 +1407,167 @@ class OracleStore(MemoryStore):
         with self.pool.connection() as connection:
             row = self._survey_row(connection, user, survey_id)
         return self._detail_from_row(row)
+
+    def apply_template(
+        self,
+        user: UserRecord,
+        survey_id: str,
+        request: SurveyTemplateApplyRequest,
+    ) -> SurveyDetail:
+        template = self.template(request.template_code)
+        with self.pool.transaction() as connection:
+            row = self._survey_row(connection, user, survey_id, lock=True)
+            detail = self._detail_from_row(row)
+            if (
+                request.expected_revision is not None
+                and request.expected_revision != detail.revision
+            ):
+                raise ConflictError(
+                    "다른 화면에서 프로젝트가 변경되었습니다. 최신 내용을 다시 불러온 뒤 템플릿을 선택해 주세요."
+                )
+            if detail.status != SurveyStatus.DRAFT or detail.published_version is not None:
+                raise ConflictError(
+                    "템플릿은 아직 확정하지 않은 작성 중 프로젝트에만 적용할 수 있습니다."
+                )
+            template_settings = template.settings.model_copy(deep=True)
+            template_settings.presentation_mode = detail.settings.presentation_mode
+            settings = _settings_for_project_profile(
+                template_settings, detail.project_profile
+            )
+            affected = self.crud.execute(
+                connection,
+                "SURVEY_APPLY_TEMPLATE_BY_OWNER",
+                {
+                    "surveyId": survey_id,
+                    "tenantId": user.tenant_id,
+                    "ownerUserId": user.id,
+                    "templateCode": template.code,
+                    "templateVersionNo": template.version_no,
+                    "draftJson": self._draft_json(
+                        sections=[
+                            section.model_copy(deep=True)
+                            for section in template.sections
+                        ],
+                        settings=settings,
+                        theme=detail.theme,
+                        skin=detail.skin,
+                        project_profile=detail.project_profile,
+                        logic_rules=[dict(rule) for rule in template.logic_rules],
+                        languages=template.languages.model_copy(deep=True),
+                        translations={
+                            key: value.model_copy(deep=True)
+                            for key, value in template.translations.items()
+                        },
+                    ),
+                },
+            )
+            if affected != 1:
+                raise ConflictError("템플릿 적용 중 프로젝트 상태가 변경되었습니다.")
+            self._sync_i18n(
+                connection,
+                user.tenant_id,
+                survey_id,
+                0,
+                template.languages,
+                template.translations,
+            )
+        return self.get_survey(user, survey_id)
+
+    def reset_template(
+        self,
+        user: UserRecord,
+        survey_id: str,
+        request: SurveyTemplateResetRequest,
+    ) -> SurveyDetail:
+        with self.pool.transaction() as connection:
+            row = self._survey_row(connection, user, survey_id, lock=True)
+            detail = self._detail_from_row(row)
+            if (
+                request.expected_revision is not None
+                and request.expected_revision != detail.revision
+            ):
+                raise ConflictError(
+                    "다른 화면에서 프로젝트가 변경되었습니다. 최신 내용을 다시 불러온 뒤 다시 시도해 주세요."
+                )
+            if detail.status != SurveyStatus.DRAFT or detail.published_version is not None:
+                raise ConflictError(
+                    "빈 설문으로 초기화하는 작업은 아직 확정하지 않은 작성 중 프로젝트에서만 가능합니다."
+                )
+            affected = self.crud.execute(
+                connection,
+                "SURVEY_APPLY_TEMPLATE_BY_OWNER",
+                {
+                    "surveyId": survey_id,
+                    "tenantId": user.tenant_id,
+                    "ownerUserId": user.id,
+                    "templateCode": None,
+                    "templateVersionNo": None,
+                    "draftJson": self._draft_json(
+                        sections=[SurveySection(title="설문 문항", questions=[])],
+                        settings=detail.settings,
+                        theme=detail.theme,
+                        skin=detail.skin,
+                        project_profile=detail.project_profile,
+                        logic_rules=[],
+                        languages=detail.languages,
+                        translations={},
+                    ),
+                },
+            )
+            if affected != 1:
+                raise ConflictError("빈 설문으로 초기화하는 중 프로젝트 상태가 변경되었습니다.")
+            self._sync_i18n(
+                connection,
+                user.tenant_id,
+                survey_id,
+                0,
+                detail.languages,
+                {},
+            )
+        return self.get_survey(user, survey_id)
+
+    def delete_survey(self, user: UserRecord, survey_id: str) -> None:
+        with self.pool.transaction() as connection:
+            row = self._survey_row(connection, user, survey_id, lock=True)
+            status = SurveyStatus(str(row["status_code"]).lower())
+            if status == SurveyStatus.PUBLISHED:
+                raise ConflictError(
+                    "진행 중인 설문 프로젝트는 삭제할 수 없습니다. 먼저 배포를 종료해 주세요."
+                )
+            affected = self.crud.execute(
+                connection,
+                "SURVEY_SOFT_DELETE_BY_OWNER",
+                {
+                    "surveyId": survey_id,
+                    "tenantId": user.tenant_id,
+                    "ownerUserId": user.id,
+                },
+            )
+            if affected != 1:
+                raise ConflictError("설문 삭제 중 상태가 변경되었습니다. 목록을 새로고침해 주세요.")
+
+    def close_survey(self, user: UserRecord, survey_id: str) -> SurveyDetail:
+        with self.pool.transaction() as connection:
+            row = self._survey_row(connection, user, survey_id, lock=True)
+            if SurveyStatus(str(row["status_code"]).lower()) != SurveyStatus.PUBLISHED:
+                raise ConflictError("진행 중인 설문 프로젝트만 배포를 종료할 수 있습니다.")
+            affected = self.crud.execute(
+                connection,
+                "SURVEY_CLOSE_BY_OWNER",
+                {
+                    "surveyId": survey_id,
+                    "tenantId": user.tenant_id,
+                    "ownerUserId": user.id,
+                },
+            )
+            if affected != 1:
+                raise ConflictError("배포 종료 중 프로젝트 상태가 변경되었습니다. 목록을 새로고침해 주세요.")
+            self.crud.execute(
+                connection,
+                "SURVEY_DEPLOYMENT_CLOSE",
+                {"surveyId": survey_id, "tenantId": user.tenant_id},
+            )
+        return self.get_survey(user, survey_id)
 
     def update_survey(
         self, user: UserRecord, survey_id: str, request: SurveyUpdateRequest
@@ -755,6 +1604,13 @@ class OracleStore(MemoryStore):
     ) -> None:
         row = self._survey_row(connection, user, survey_id, lock=True)
         detail = self._detail_from_row(row)
+        if (
+            request.expected_revision is not None
+            and request.expected_revision != detail.revision
+        ):
+            raise ConflictError(
+                "다른 화면에서 프로젝트가 변경되었습니다. 최신 내용을 다시 불러온 뒤 저장해 주세요."
+            )
         self._validate_source_locale_promotion(detail, request)
         fields = request.model_fields_set
         title = request.title if "title" in fields and request.title is not None else detail.title
@@ -774,6 +1630,17 @@ class OracleStore(MemoryStore):
                 "DB guest question limit has been exceeded."
             )
         settings = request.settings if "settings" in fields and request.settings else detail.settings
+        project_profile = (
+            request.project_profile
+            if "project_profile" in fields and request.project_profile is not None
+            else detail.project_profile
+        )
+        if "project_profile" in fields:
+            settings = _settings_for_project_profile(settings, project_profile)
+        elif "settings" in fields:
+            project_profile = _project_profile_for_settings(
+                project_profile, settings
+            )
         theme = request.theme if "theme" in fields and request.theme else detail.theme
         skin = dict(request.skin) if "skin" in fields and request.skin is not None else detail.skin
         if "theme" in fields and "skin" not in fields:
@@ -803,11 +1670,20 @@ class OracleStore(MemoryStore):
                 "surveyTitle": title,
                 "description": description,
                 "categoryCode": category,
+                "surveyStartAt": project_profile.starts_at,
+                "surveyClosesAt": project_profile.closes_at,
+                "identifiedYn": "Y" if project_profile.identified else "N",
+                "showProgressYn": "Y" if project_profile.show_progress else "N",
+                "targetAudience": project_profile.target_audience,
+                "populationModeCode": project_profile.population_mode.value.upper(),
+                "populationSize": project_profile.population_size,
+                "targetResponseCount": project_profile.target_response_count,
                 "draftJson": self._draft_json(
                     sections=sections,
                     settings=settings,
                     theme=theme,
                     skin=skin,
+                    project_profile=project_profile,
                     logic_rules=logic,
                     languages=languages,
                     translations=translations,
@@ -850,7 +1726,7 @@ class OracleStore(MemoryStore):
             detail = self._detail_from_row(row)
             if not detail.title.strip():
                 raise DomainValidationError(
-                    "The survey requires a title before publishing."
+                    "설문을 확정하려면 제목을 입력해야 합니다."
                 )
             try:
                 validate_publish_ready_sections(detail.sections)
@@ -880,6 +1756,7 @@ class OracleStore(MemoryStore):
                 settings=detail.settings,
                 theme=detail.theme,
                 skin=detail.skin,
+                project_profile=detail.project_profile,
                 logic_rules=detail.logic_rules,
                 languages=detail.languages,
                 default_locale=detail.default_locale,
@@ -1245,6 +2122,562 @@ class OracleStore(MemoryStore):
             questions=question_reports,
         )
 
+    def _delivery_context(
+        self,
+        connection: Any,
+        user: UserRecord,
+        survey_id: str,
+        *,
+        lock: bool = False,
+    ) -> tuple[dict[str, Any], PublicSurvey]:
+        survey_row = self._survey_row(connection, user, survey_id, lock=lock)
+        detail = self._detail_from_row(survey_row)
+        if (
+            detail.status != SurveyStatus.PUBLISHED
+            or detail.published_version is None
+            or not detail.slug
+        ):
+            raise ConflictError("확정된 설문 프로젝트만 배포할 수 있습니다.")
+        context = self.crud.fetch_one(
+            connection,
+            "DELIVERY_CONTEXT_BY_OWNER",
+            {
+                "tenantId": user.tenant_id,
+                "surveyId": survey_id,
+                "ownerUserId": user.id,
+            },
+        )
+        if context is None:
+            raise ConflictError(
+                "확정 버전과 활성 배포 정보가 일치하지 않습니다. 설문을 다시 확정해 주세요."
+            )
+        public = _public_snapshot(context["snapshot_json"])
+        context_version = int(context["survey_version_no"])
+        if (
+            public.survey_id != survey_id
+            or public.version != context_version
+            or context_version != detail.published_version
+            or public.slug != str(context["public_slug"])
+        ):
+            raise ServiceUnavailableError(
+                "배포할 확정 설문 버전의 무결성을 확인할 수 없습니다."
+            )
+        return context, public
+
+    @staticmethod
+    def _delivery_plan_json(request: DeploymentDraftRequest) -> str:
+        return _json_dump(
+            {
+                "channels": [channel.value for channel in request.channels],
+                "messagesByLanguage": {
+                    locale: messages.model_dump(by_alias=True, mode="json")
+                    for locale, messages in request.messages_by_language.items()
+                },
+                "schedule": request.schedule.model_dump(by_alias=True, mode="json"),
+                "status": "DRAFT",
+            }
+        )
+
+    def _deployment_from_rows(
+        self,
+        connection: Any,
+        context: dict[str, Any],
+        batch: dict[str, Any],
+    ) -> DeploymentDraftView:
+        if (
+            str(batch["deployment_id"]) != str(context["deployment_id"])
+            or str(batch["survey_id"]) != str(context["survey_id"])
+            or int(batch["survey_version_no"])
+            != int(context["survey_version_no"])
+        ):
+            raise ConflictError(
+                "설문 확정 버전이 변경되어 기존 배포 계획을 사용할 수 없습니다. "
+                "새 확정 버전에 맞는 배포 계획을 만들어 주세요."
+            )
+        query_params = {
+            "tenantId": str(batch["tenant_id"]),
+            "surveyId": str(batch["survey_id"]),
+            "surveyVersionNo": int(batch["survey_version_no"]),
+            "deploymentId": str(batch["deployment_id"]),
+            "batchId": str(batch["batch_id"]),
+        }
+        targets = self.crud.fetch_all(
+            connection, "DELIVERY_TARGET_LIST", query_params
+        )
+        endpoint_rows = self.crud.fetch_all(
+            connection, "DELIVERY_RECIPIENT_LIST", query_params
+        )
+        endpoint_fields = {
+            "EMAIL": "email",
+            "SMS": "mobile",
+            "FAX": "fax",
+            "KAKAO": "kakaoId",
+        }
+        contacts: dict[str, dict[str, str]] = defaultdict(dict)
+        for endpoint in endpoint_rows:
+            channel = str(endpoint["contact_type_code"]).upper()
+            field_name = endpoint_fields.get(channel)
+            if field_name is None or endpoint.get("target_id") is None:
+                raise ServiceUnavailableError(
+                    "저장된 배포 연락처 형식을 확인할 수 없습니다."
+                )
+            contacts[str(endpoint["target_id"])][field_name] = decrypt_contact(
+                self.settings.delivery_secret,
+                str(endpoint["contact_value_encrypted"]),
+            )
+
+        recipients: list[dict[str, Any]] = []
+        for target in targets:
+            attributes = _json_load(target.get("attributes_json"), {})
+            if not isinstance(attributes, dict):
+                raise ServiceUnavailableError(
+                    "저장된 배포 대상자 속성 형식을 확인할 수 없습니다."
+                )
+            target_id = str(target["target_id"])
+            recipient = {
+                "id": str(target["client_target_id"]),
+                "name": str(target["display_name"]),
+                "countryCode": str(target["country_code"]),
+                "preferredLanguage": str(target["preferred_lang_code"]),
+                "channels": list(attributes.get("channels") or []),
+                "email": None,
+                "mobile": None,
+                "fax": None,
+                "kakaoId": None,
+            }
+            recipient.update(contacts.get(target_id, {}))
+            recipients.append(recipient)
+
+        plan = _json_load(batch.get("plan_json"), {})
+        if not isinstance(plan, dict):
+            raise ServiceUnavailableError("저장된 배포 계획 형식을 확인할 수 없습니다.")
+        payload = {
+            "revision": int(batch["revision_no"]),
+            "recipients": recipients,
+            "channels": list(plan.get("channels") or []),
+            "messagesByLanguage": dict(plan.get("messagesByLanguage") or {}),
+            "schedule": dict(plan.get("schedule") or {}),
+            "status": "DRAFT",
+            "deploymentId": str(context["deployment_id"]),
+            "surveyId": str(context["survey_id"]),
+            "surveyVersion": int(context["survey_version_no"]),
+            "publicSlug": str(context["public_slug"]),
+            "updatedAt": _as_aware(batch.get("updated_at"))
+            or _as_aware(batch.get("created_at"))
+            or utcnow(),
+            "executionStatus": (
+                str(batch["execution_status_code"])
+                if batch.get("execution_status_code") is not None
+                else None
+            ),
+        }
+        try:
+            return DeploymentDraftView.model_validate(payload)
+        except (TypeError, ValueError) as exc:
+            raise ServiceUnavailableError(
+                "저장된 배포 계획의 무결성을 확인할 수 없습니다."
+            ) from exc
+
+    def _deployment_retention_until(
+        self, user: UserRecord, public: PublicSurvey, now: datetime
+    ) -> datetime:
+        candidates = [now + timedelta(days=90)]
+        if public.settings.closes_at and public.settings.closes_at > now:
+            candidates.append(public.settings.closes_at)
+        if user.tenant_expires_at and user.tenant_expires_at > now:
+            candidates.append(user.tenant_expires_at)
+        return min(candidates)
+
+    @staticmethod
+    def _validate_delivery_languages(
+        request: DeploymentDraftRequest, public: PublicSurvey
+    ) -> None:
+        unsupported = {
+            recipient.preferred_language
+            for recipient in request.recipients
+            if recipient.preferred_language not in public.supported_locales
+        }
+        if unsupported:
+            raise DomainValidationError(
+                "확정 버전에 포함되지 않은 수신 언어입니다: "
+                + ", ".join(sorted(unsupported))
+            )
+
+    def deployment(
+        self, user: UserRecord, survey_id: str
+    ) -> DeploymentDraftView:
+        with self.pool.connection() as connection:
+            context, _ = self._delivery_context(connection, user, survey_id)
+            params = {
+                "tenantId": user.tenant_id,
+                "surveyId": survey_id,
+                "deploymentId": str(context["deployment_id"]),
+                "surveyVersionNo": int(context["survey_version_no"]),
+            }
+            batch = self.crud.fetch_one(
+                connection,
+                "DELIVERY_BATCH_LATEST",
+                params,
+            )
+            if batch is None:
+                raise NotFoundError("저장된 배포 초안이 없습니다.")
+            value = self._deployment_from_rows(connection, context, batch)
+        return self._masked_deployment(value)
+
+    def save_deployment(
+        self,
+        user: UserRecord,
+        survey_id: str,
+        request: DeploymentDraftRequest,
+    ) -> DeploymentDraftView:
+        now = utcnow()
+        with self.pool.transaction() as connection:
+            context, public = self._delivery_context(
+                connection, user, survey_id, lock=True
+            )
+            params = {
+                "tenantId": user.tenant_id,
+                "surveyId": survey_id,
+                "deploymentId": str(context["deployment_id"]),
+                "surveyVersionNo": public.version,
+            }
+            batch = self.crud.fetch_one(
+                connection, "DELIVERY_BATCH_LATEST_FOR_UPDATE", params
+            )
+            current = (
+                self._deployment_from_rows(connection, context, batch)
+                if batch is not None
+                else None
+            )
+            previous = current
+            if request.revision is not None and (
+                current is None or request.revision != current.revision
+            ):
+                raise ConflictError(
+                    "다른 화면에서 배포 초안이 변경되었습니다. 최신 내용을 다시 불러와 주세요."
+                )
+            if (
+                batch is not None
+                and str(batch["status_code"]).upper() == "DRAFT"
+                and request.revision is None
+            ):
+                raise ConflictError(
+                    "기존 배포 초안을 변경하려면 최신 revision이 필요합니다. 초안을 다시 불러와 주세요."
+                )
+            if batch is not None and str(batch["status_code"]).upper() != "DRAFT":
+                if request.revision is not None:
+                    raise ConflictError(
+                        "이미 실행한 배포 계획은 변경할 수 없습니다. revision 없이 새 배포 계획을 만들어 주세요."
+                    )
+                batch = None
+                current = None
+            request = self._merge_masked_recipient_contacts(request, previous)
+            self._validate_delivery_languages(request, public)
+            if (
+                public.settings.closes_at is not None
+                and public.settings.closes_at <= now
+            ):
+                raise ConflictError("응답 기간이 종료된 설문은 배포할 수 없습니다.")
+            if (
+                request.schedule.scheduled_at is not None
+                and request.schedule.scheduled_at <= now
+            ):
+                raise DomainValidationError(
+                    "예약 발송 시각은 현재 시각보다 이후여야 합니다."
+                )
+            retention_until = self._deployment_retention_until(user, public, now)
+            if (
+                request.schedule.scheduled_at is not None
+                and request.schedule.scheduled_at >= retention_until
+            ):
+                raise DomainValidationError(
+                    "예약 발송 시각은 설문 응답 기간과 연락처 보유 기간 안이어야 합니다."
+                )
+
+            contact_fields = {
+                DeliveryChannel.EMAIL: ("email", "EMAIL"),
+                DeliveryChannel.SMS: ("mobile", "SMS"),
+                DeliveryChannel.KAKAO: ("kakao_id", "KAKAO"),
+                DeliveryChannel.FAX: ("fax", "FAX"),
+            }
+            seen_contacts: set[tuple[str, str]] = set()
+            target_rows: list[dict[str, Any]] = []
+            endpoint_rows: list[dict[str, Any]] = []
+            for recipient in request.recipients:
+                target_id = new_id("target")
+                target_rows.append(
+                    {
+                        "targetId": target_id,
+                        "clientTargetId": recipient.id,
+                        "tenantId": user.tenant_id,
+                        "surveyId": survey_id,
+                        "surveyVersionNo": public.version,
+                        "deploymentId": str(context["deployment_id"]),
+                        "batchId": None,
+                        "displayName": recipient.name,
+                        "countryCode": recipient.country_code,
+                        "preferredLangCode": recipient.preferred_language,
+                        "attributesJson": _json_dump(
+                            {
+                                "channels": [
+                                    channel.value for channel in recipient.channels
+                                ]
+                            }
+                        ),
+                        "retentionUntil": retention_until,
+                        "createdAt": now,
+                    }
+                )
+                for channel in recipient.channels:
+                    field_name, contact_type = contact_fields[channel]
+                    value = getattr(recipient, field_name)
+                    if not value or is_masked_contact(value):
+                        raise DomainValidationError(
+                            f"{recipient.name} 대상자의 {contact_type} 연락처를 다시 입력해 주세요."
+                        )
+                    value_hash = contact_hash(
+                        self.settings.delivery_secret, contact_type, value
+                    )
+                    duplicate_key = (contact_type, value_hash)
+                    if duplicate_key in seen_contacts:
+                        raise DomainValidationError(
+                            f"같은 {contact_type} 연락처를 배포 대상에 중복 등록할 수 없습니다."
+                        )
+                    seen_contacts.add(duplicate_key)
+                    endpoint_rows.append(
+                        {
+                            "recipientId": new_id("recipient"),
+                            "tenantId": user.tenant_id,
+                            "surveyId": survey_id,
+                            "surveyVersionNo": public.version,
+                            "deploymentId": str(context["deployment_id"]),
+                            "contactTypeCode": contact_type,
+                            "contactValueHash": value_hash,
+                            "contactValueEncrypted": encrypt_contact(
+                                self.settings.delivery_secret, value
+                            ),
+                            "displayName": recipient.name,
+                            "attributesJson": _json_dump({}),
+                            "retentionUntil": retention_until,
+                            "createdAt": now,
+                            "targetId": target_id,
+                        }
+                    )
+
+            if batch is None:
+                batch_id = new_id("batch")
+                for target_row in target_rows:
+                    target_row["batchId"] = batch_id
+                self.crud.execute(
+                    connection,
+                    "DELIVERY_BATCH_INSERT",
+                    {
+                        **params,
+                        "batchId": batch_id,
+                        "surveyVersionNo": public.version,
+                        "planJson": self._delivery_plan_json(request),
+                        "createdBy": user.id,
+                        "updatedAt": now,
+                    },
+                )
+            else:
+                batch_id = str(batch["batch_id"])
+                for target_row in target_rows:
+                    target_row["batchId"] = batch_id
+                affected = self.crud.execute(
+                    connection,
+                    "DELIVERY_BATCH_UPDATE_DRAFT",
+                    {
+                        **params,
+                        "batchId": batch_id,
+                        "expectedRevision": int(batch["revision_no"]),
+                        "planJson": self._delivery_plan_json(request),
+                        "updatedAt": now,
+                    },
+                )
+                if affected != 1:
+                    raise ConflictError(
+                        "배포 초안 저장 중 상태가 변경되었습니다. 최신 내용을 다시 불러와 주세요."
+                    )
+                delete_params = {**params, "batchId": batch_id}
+                self.crud.execute(
+                    connection, "DELIVERY_RECIPIENT_DELETE_DRAFT", delete_params
+                )
+                self.crud.execute(
+                    connection, "DELIVERY_TARGET_DELETE_DRAFT", delete_params
+                )
+            self.crud.executemany(
+                connection, "DELIVERY_TARGET_INSERT", target_rows
+            )
+            self.crud.executemany(
+                connection, "DELIVERY_RECIPIENT_INSERT", endpoint_rows
+            )
+        return self.deployment(user, survey_id)
+
+    def execute_deployment(
+        self,
+        user: UserRecord,
+        survey_id: str,
+        request: DeploymentDraftRequest,
+    ) -> DeploymentExecuteResult:
+        saved = self.save_deployment(user, survey_id, request)
+        now = utcnow()
+        with self.pool.transaction() as connection:
+            context, _ = self._delivery_context(
+                connection, user, survey_id, lock=True
+            )
+            params = {
+                "tenantId": user.tenant_id,
+                "surveyId": survey_id,
+                "deploymentId": str(context["deployment_id"]),
+                "surveyVersionNo": int(context["survey_version_no"]),
+            }
+            batch = self.crud.fetch_one(
+                connection, "DELIVERY_BATCH_LATEST_FOR_UPDATE", params
+            )
+            if (
+                batch is None
+                or str(batch["status_code"]).upper() != "DRAFT"
+                or int(batch["revision_no"]) != saved.revision
+            ):
+                raise ConflictError(
+                    "배포 실행 직전에 계획이 변경되었습니다. 최신 내용을 확인한 뒤 다시 실행해 주세요."
+                )
+            raw = self._deployment_from_rows(connection, context, batch)
+            batch_params = {**params, "batchId": str(batch["batch_id"])}
+            target_rows = self.crud.fetch_all(
+                connection, "DELIVERY_TARGET_LIST", batch_params
+            )
+            endpoint_rows = self.crud.fetch_all(
+                connection, "DELIVERY_RECIPIENT_LIST", batch_params
+            )
+            targets_by_client = {
+                str(row["client_target_id"]): str(row["target_id"])
+                for row in target_rows
+            }
+            endpoints = {
+                (str(row["target_id"]), str(row["contact_type_code"]).upper()): str(
+                    row["recipient_id"]
+                )
+                for row in endpoint_rows
+            }
+            providers = self.delivery_providers(user).providers
+            queue_rows: list[dict[str, Any]] = []
+            for recipient in raw.recipients:
+                available = [
+                    channel
+                    for channel in raw.channels
+                    if channel in recipient.channels
+                ]
+                if raw.schedule.strategy == "PRIORITY_FALLBACK" and available:
+                    ordered = [
+                        channel
+                        for channel in raw.schedule.priority
+                        if channel in available
+                    ]
+                    ready = [
+                        channel
+                        for channel in ordered
+                        if providers[channel.value.lower()].enabled
+                    ]
+                    available = [ready[0] if ready else ordered[0]]
+                target_id = targets_by_client.get(recipient.id)
+                if target_id is None:
+                    raise ServiceUnavailableError(
+                        "배포 대상자와 연락처를 연결할 수 없습니다."
+                    )
+                for channel in available:
+                    recipient_id = endpoints.get((target_id, channel.value))
+                    if recipient_id is None:
+                        raise ServiceUnavailableError(
+                            "배포 대상자의 선택 채널 연락처를 확인할 수 없습니다."
+                        )
+                    provider = providers[channel.value.lower()]
+                    queued = provider.enabled
+                    language = recipient.preferred_language
+                    message = raw.messages_by_language[language]
+                    queue_rows.append(
+                        {
+                            "deliveryId": new_id("delivery"),
+                            "tenantId": user.tenant_id,
+                            "surveyId": survey_id,
+                            "surveyVersionNo": raw.survey_version,
+                            "deploymentId": raw.deployment_id,
+                            "recipientId": recipient_id,
+                            "channelCode": channel.value,
+                            "providerCode": (
+                                provider.provider_code if queued else "disabled"
+                            ),
+                            "statusCode": "QUEUED" if queued else "DISABLED",
+                            "messageTemplateJson": _json_dump(
+                                {
+                                    "language": language,
+                                    "publicPath": f"/s/{raw.public_slug}?lang={language}",
+                                    "messages": message.model_dump(
+                                        by_alias=True, mode="json"
+                                    ),
+                                }
+                            ),
+                            "scheduledAt": raw.schedule.scheduled_at or now,
+                            "lastErrorCode": (
+                                None if queued else "PROVIDER_DISABLED"
+                            ),
+                            "createdAt": now,
+                            "batchId": str(batch["batch_id"]),
+                            "langCode": language,
+                        }
+                    )
+            self.crud.executemany(connection, "DELIVERY_QUEUE_INSERT", queue_rows)
+            queued_count = sum(row["statusCode"] == "QUEUED" for row in queue_rows)
+            disabled_count = sum(
+                row["statusCode"] == "DISABLED" for row in queue_rows
+            )
+            execution_status = (
+                "QUEUED"
+                if queued_count and not disabled_count
+                else "PARTIAL"
+                if queued_count
+                else "DISABLED"
+            )
+            affected = self.crud.execute(
+                connection,
+                "DELIVERY_BATCH_MARK_EXECUTED",
+                {
+                    **params,
+                    "batchId": str(batch["batch_id"]),
+                    "expectedRevision": saved.revision,
+                    "executionStatusCode": execution_status,
+                    "updatedAt": now,
+                },
+            )
+            if affected != 1:
+                raise ConflictError(
+                    "배포 실행 상태가 변경되었습니다. 실행 이력을 확인해 주세요."
+                )
+
+        deployment = self.deployment(user, survey_id)
+        channel_results: list[DeliveryChannelResult] = []
+        for channel in saved.channels:
+            provider = self.delivery_providers(user).providers[channel.value.lower()]
+            count = sum(
+                row["channelCode"] == channel.value for row in queue_rows
+            )
+            channel_results.append(
+                DeliveryChannelResult(
+                    channel=channel,
+                    status="QUEUED" if provider.enabled else "DISABLED",
+                    count=count,
+                    reason=None if provider.enabled else provider.reason,
+                )
+            )
+        return DeploymentExecuteResult(
+            deployment=deployment,
+            execution=DeploymentExecutionView(
+                execution_status=execution_status,
+                channel_results=channel_results,
+            ),
+        )
+
     def dashboard(self, user: UserRecord) -> DashboardView:
         surveys = self.list_surveys(user)
         with self.pool.connection() as connection:
@@ -1353,13 +2786,21 @@ class OracleStore(MemoryStore):
                         "ko": "Korean",
                         "en": "English",
                         "ja": "Japanese",
+                        "zh": "Chinese",
                         "zh-CN": "Chinese (Simplified)",
+                        "zh-TW": "Chinese (Traditional)",
+                        "vi": "Vietnamese",
+                        "fil": "Filipino",
                     }.get(locale, locale),
                     "nativeName": {
                         "ko": "한국어",
                         "en": "English",
                         "ja": "日本語",
+                        "zh": "中文",
                         "zh-CN": "简体中文",
+                        "zh-TW": "繁體中文",
+                        "vi": "Tiếng Việt",
+                        "fil": "Filipino",
                     }.get(locale, locale),
                     "directionCode": (
                         "RTL"
@@ -1430,9 +2871,9 @@ class OracleStore(MemoryStore):
             with self.pool.connection() as connection:
                 row = self.crud.fetch_one(connection, "AUTH_SCHEMA_READY")
             expected = {
-                "table_count": 20,
-                "critical_column_count": 9,
-                "critical_constraint_count": 6,
+                "table_count": 23,
+                "critical_column_count": 16,
+                "critical_constraint_count": 14,
                 "valid_function_count": 2,
                 "guest_sequence_count": 1,
             }

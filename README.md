@@ -24,11 +24,10 @@ Copy-Item .env.example .env
 
 ## 현재 MVP 구현 범위
 
-현재 소스는 회원가입·로그인, Oracle DB guest 계정 체험, 템플릿 기반 프로젝트 생성, 문항/섹션·다국어 편집, 불변 버전 배포, `/s/{slug}` 모바일 응답, 원자료 조회·CSV, 기본형 집계와 맞춤형 보고서 레이아웃 초안까지 한 흐름으로 실행할 수 있습니다.
+현재 소스는 회원가입·로그인, Oracle DB guest 계정 체험, 단계형 프로젝트 생성, 관리자 공용 템플릿, 문항/섹션·동적 문항·다국어 편집, 불변 버전 확정, 수신자별 다국어 배포 계획, `/s/{slug}` 모바일 응답, 원자료 조회·CSV, 기본형 집계·Excel/PDF 내보내기와 맞춤형 보고서 레이아웃 초안까지 한 흐름으로 실행할 수 있습니다.
 
-- 이메일 화면은 수신자와 본문 작성 흐름의 데모이며 실제 메일을 전송하지 않습니다.
-- 문자·카카오·QR provider는 adapter 연결 전 상태를 화면에 명시합니다.
-- Excel/PDF 내보내기와 맞춤형 보고서 영구 저장은 Beta/Demo로 표시합니다.
+- 이메일·문자·카카오·팩스 계획은 Oracle에 저장하며 현재 실행 API는 `QUEUED`/`DISABLED` 이력까지만 만듭니다. 실제 외부 전송 worker·adapter는 별도 운영 연동 대상입니다.
+- M05001 기본형 보고서는 현재 조회한 기준일·응답 상태·배포 버전을 적용해 Excel 집계표와 A4 PDF를 생성합니다. 맞춤형 보고서 영구 저장은 아직 Beta/Demo입니다.
 - Oracle 모드는 전역 lazy connection pool과 bind SQL repository를 사용합니다. 설정·연결·schema 검증이 실패하면 memory로 조용히 fallback하지 않고 오류를 명시합니다.
 
 ## 기술 구조
@@ -81,16 +80,22 @@ Tenant(회원사)
 | 대분류 | 메뉴 ID / HTML | 메뉴 | 역할 |
 |---|---|---|---|
 | 01 | `M01001.html` | 대시보드 | 작성·진행·종료 현황, 최근 프로젝트, 빠른 시작 |
-| 02 | `M02001.html` | 설문 프로젝트 | 프로젝트 목록, 상태, 복제, 버전과 권한 |
-| 02 | `M02002.html` | 설문 템플릿 | 분야별 템플릿 탐색과 미리보기 |
-| 02 | `M02003.html` | 설문 제작기 | 문항·섹션 편집, 조건 분기, 미리보기, 초안 저장·배포 준비 |
-| 03 | `M03001.html` | 배포·발송 | URL, QR, embed, 수신자와 채널별 발송 이력 |
+| 02 | `M02001.html` | 설문 프로젝트 | 목록과 STEP 01 프로젝트 기본정보 |
+| 02 | `M02002.html` | 템플릿 선택(호환 경로) | 기존 링크를 STEP 04 설문 편집기의 템플릿 레이어로 연결 |
+| 02 | `M02004.html` | 응답 UI 선택(내부 단계) | STEP 03 전체 스크롤 또는 한 문항씩 진행, 빠른 스킨 확인 |
+| 02 | `M02005.html` | 스킨 설정(내부 단계) | STEP 02 프로젝트별 테마, 로고, 공개 문구와 응답 화면 미리보기 |
+| 02 | `M02003.html` | 설문 제작기(내부 단계) | STEP 04 문항·동적 조건 편집, 템플릿 레이어 선택, 저장, 확정 |
+| 03 | `M03001.html` | 배포·발송 | 확정 프로젝트 목록과 대상·채널·언어·검토 단계 |
 | 04 | `M04001.html` | 원자료 응답 | 검색형 설문 선택, 섹션별 표시 열, 응답 상세, 복수응답 분석형·원본형 CSV |
 | 05 | `M05001.html` | 기본형 보고서 | 빈도·교차·기술통계와 표준 차트 |
 | 05 | `M05002.html` | 맞춤형 보고서 | 지표·필터·표·차트 배치와 보고서 실행 이력 |
-| 06 | `M06001.html` | 스킨·설정 | 프로젝트별 테마, 로고, 공개 문구, 조직 설정 |
+| 06 | `M06001.html` | 시스템 환경 설정 | IN-SURVEYONE 작업 화면 기본값과 보안 값을 제외한 실행 환경 상태 |
+| 07 | `M07001.html` | 공용 템플릿 관리 | 플랫폼 관리자의 템플릿 초안·불변 버전·공개 상태 관리 |
+| 07 | `M07002.html` | 회원 관리 | 가입 회원 조회·비밀번호 초기화·이용 상태 관리 |
 
 로그인·회원가입·계정 찾기와 공개 응답 화면은 업무 메뉴 ID와 별도의 인증/공개 라우트로 둡니다. 파일을 추가할 때 메뉴 정의, 접근 권한, 제목, breadcrumb, SPA route와 테스트를 함께 변경합니다.
+
+프로젝트처럼 계속 증가하는 업무 데이터는 `select` 콤보박스에 전체 항목을 넣지 않습니다. 검색 가능한 카드·목록과 서버 페이징을 사용하고, 콤보박스는 상태·정렬·언어처럼 값의 수가 작고 안정적인 코드 목록에만 사용합니다. 설문 프로젝트 목록은 한 페이지 24개를 조회하며 검색·상태·정렬 조건도 Oracle 쿼리에 적용합니다. 새 프로젝트와 기존 프로젝트 모두 기본정보 → 스킨 설정 → 응답 UI → 설문 편집의 동일한 STEP 01~04 흐름을 표시합니다. 템플릿은 별도 단계가 아니라 STEP 04의 검색 가능한 카드형 레이어에서 선택하고, 적용 전 구조 교체 범위를 확인합니다.
 
 ## 설문 제작
 
@@ -107,7 +112,9 @@ Tenant(회원사)
 - 신청·등록·사전 수요조사
 - 빈 설문과 기관 전용 맞춤 템플릿
 
-템플릿을 선택하면 소유 프로젝트의 편집 가능한 초안으로 복제합니다. 원본 템플릿의 후속 변경이 회원사의 기존 설문을 바꾸지 않습니다.
+템플릿을 선택하면 선택 시점의 불변 템플릿 버전을 소유 프로젝트의 편집 가능한 초안으로 복제합니다. 원본 템플릿의 후속 변경이 회원사의 기존 설문을 바꾸지 않습니다. 편집기에서 STEP 02로 돌아가는 동작만으로는 구조가 바뀌지 않으며, 다른 템플릿 또는 빈 설문을 명시적으로 적용하고 교체 경고를 확인해야 문항·동적 조건·섹션 분기·번역이 교체됩니다. 프로젝트 기본정보·스킨·응답 UI 방식은 유지됩니다.
+
+플랫폼 관리 권한은 tenant의 `OWNER`/`MEMBER`/`GUEST` 역할과 분리된 `INIT$SVY_TB_USER.SYSTEM_ADMIN_YN`으로 판정합니다. 회원가입에서 플랫폼 관리자 가입을 선택한 경우에만 서버의 `INIT_ADMIN_KEY`와 제출된 인증키를 상수 시간 비교하고, 일치할 때 `SYSTEM_ADMIN_YN='Y'`로 계정을 생성합니다. 인증키 원문은 사용자·세션·DB에 저장하지 않습니다. 일반 회원가입은 기존처럼 tenant `OWNER`이며 플랫폼 관리 권한은 부여되지 않습니다.
 
 ### 문항 유형
 
@@ -124,11 +131,11 @@ Tenant(회원사)
 - 반복표/반복 그룹
 - 날짜·시간·연락처 등 확장 필드
 
-제작기는 섹션, 복제, 순서 변경, 필수 응답, 선택지 무작위화, 응답 검증, 이전 응답 기반 조건 분기, 미리보기, 자동저장, 실행 취소/다시 실행, 접근성 안내를 지원하는 방향으로 설계합니다. 문항 스키마는 유형별 renderer와 validator가 공유하며 임의 HTML을 신뢰하지 않습니다.
+제작기는 섹션, 복제, 버튼·drag 기반 순서 변경, 고정필수·고정선택·동적필수·동적선택 문항, AND/OR 복합 선행조건, 응답 검증, 섹션 분기, 미리보기와 자동저장을 제공합니다. 동적 조건은 표시 순번이 아니라 안정적인 문항·선택지 ID를 참조하며, 브라우저의 초기 로딩과 `input`/`change` 이벤트 및 서버 제출 검증에서 동일하게 평가합니다. 숨겨진 문항의 위조 응답은 서버가 거부합니다.
 
 ### 다국어 설계
 
-- 한 설문의 기본 언어와 사용 언어 목록을 먼저 정하고 한국어(`ko`), 영어(`en`), 일본어(`ja`), 중국어(`zh`) 외 BCP 47 언어 코드도 확장할 수 있습니다.
+- 한 설문의 기본 언어와 사용 언어 목록을 먼저 정하고 한국어(`ko`), 영어(`en`), 일본어(`ja`), 중국어(`zh`), 베트남어(`vi`), 필리핀어(`fil`) 외 BCP 47 언어 코드도 확장할 수 있습니다.
 - 설문·섹션·문항·선택지의 안정적인 ID는 언어가 달라도 공유합니다. 번역은 ID와 field 단위로 분리하므로 번역 편집이 분기, 응답, 보고서 열을 바꾸지 않습니다.
 - 응답 화면은 `?lang=` 요청값, 브라우저 언어, 설문 기본 언어 순으로 선택하고, 번역이 비어 있으면 기본 언어 원문으로 fallback합니다.
 - 배포 버전에는 언어 목록과 번역 snapshot을 함께 고정합니다. 배포 이후 번역을 고치면 새 버전을 만들어 과거 응답의 표시 문구를 재현할 수 있게 합니다.
@@ -157,13 +164,14 @@ Oracle에서는 `INIT$SVY_TB_LANGUAGE`가 언어 카탈로그와 LTR/RTL 방향�
 
 ## 배포와 안내 발송
 
-배포 확정 시 불변 버전, 공개 slug, 기간, 응답 정책, 스킨 스냅샷을 함께 기록합니다. 채널은 `email`, `sms`, `kakao`, `qr`, `link`, `embed`의 공통 발송 계약 뒤에 provider adapter로 분리합니다.
+배포 작업은 확정된 프로젝트만 대상으로 하며 대상자 → 복수 채널·예약 → 언어별 안내문 → 검토·실행 순으로 진행합니다. 수신자마다 국가, 선호 언어, 이메일·휴대전화·카카오 ID·팩스와 복수 허용 채널을 저장하고 `?lang=` 공개 URL을 언어별 안내문에 넣습니다.
 
 - 수신자는 수집 목적과 보유 기간을 명확히 하고 tenant별로 격리합니다.
 - 실제 발송은 명시적 provider 설정과 운영 승인이 있을 때만 활성화합니다.
 - 메시지 템플릿, 예약 시각, provider message ID, 성공/실패/재시도 상태를 저장합니다.
 - 로그에 연락처 본문이나 provider secret을 남기지 않고 화면에서도 마스킹합니다.
 - guest는 외부 발송 대신 미리보기와 로컬 시뮬레이션만 사용할 수 있습니다.
+- 연락처는 `SURVEYONE_DELIVERY_SECRET`으로 암호화하고 별도 HMAC 검색 hash를 저장합니다. 운영에서는 이 값을 안정적인 secret으로 반드시 지정하며 임의 회전하지 않습니다.
 
 ## 저장 모드
 
@@ -192,6 +200,7 @@ Oracle 설정은 공통 `DB_*` 키를 사용합니다. 비밀번호와 Wallet은
 | `SURVEYONE_BASE_URL` | 실제 HTTPS 서비스 주소 |
 | `INIT_ALLOWED_ORIGINS` | 허용할 실제 HTTPS origin. 여러 개면 쉼표로 구분 |
 | `INIT_SECRET_KEY` | 배포 서비스가 생성한 충분히 긴 무작위 secret |
+| `INIT_ADMIN_KEY` | 플랫폼 관리자 가입 확인용 충분히 긴 무작위 secret. 가입 담당자에게만 별도 전달 |
 | `INIT_COOKIE_SECURE` | `Y` |
 | `INIT_COOKIE_SAMESITE` | 동일 도메인 서비스는 `lax` |
 | `DB_MODE` | `cloud` |
@@ -269,7 +278,7 @@ CONNECT surveyone_app@service_name
 - `INIT$SVY_FN_GUEST_CAN`은 tenant·user·기능 코드와 만료시각을 기준으로 DB guest 권한을 `Y/N`으로 판정합니다.
 - 가입 전환 시 사용자가 확인한 설문 구조만 새 tenant로 복사하며 수신자와 응답 개인정보를 자동 이전하지 않습니다.
 
-기본 guest 보존시간은 `SURVEYONE_GUEST_PROJECT_TTL_HOURS`로 조정합니다. 자원 남용을 막는 유한 quota는 `SURVEYONE_DB_GUEST_MAX_PROJECTS`(기본 10), `SURVEYONE_DB_GUEST_MAX_QUESTIONS`(설문당 기본 300), `SURVEYONE_DB_GUEST_MAX_RESPONSES`(설문당 기본 2,000)로 조정합니다. 실제 값은 신청 화면의 capability 안내에 표시됩니다. guest session cookie와 서버 session 만료는 tenant 만료시각을 넘지 않으며, 일반 회원 session은 `INIT_SESSION_TTL_SECONDS`를 따릅니다.
+기본 guest 보존시간은 `SURVEYONE_GUEST_PROJECT_TTL_HOURS`로 조정합니다. 자원 남용을 막는 유한 quota는 `SURVEYONE_DB_GUEST_MAX_PROJECTS`(기본 10), `SURVEYONE_DB_GUEST_MAX_QUESTIONS`(설문당 기본 300), `SURVEYONE_DB_GUEST_MAX_RESPONSES`(설문당 기본 2,000)로 조정합니다. 실제 값은 신청 화면의 capability 안내에 표시됩니다. 로그인 쿠키는 공용 PC 안전을 위해 기본적으로 브라우저 세션 쿠키로 발급하며, 사용자가 `로그인 상태 유지`를 명시적으로 선택한 경우에만 만료 시간이 있는 영속 쿠키를 발급합니다. guest session cookie와 서버 session 만료는 tenant 만료시각을 넘지 않으며, 일반 회원 session은 `INIT_SESSION_TTL_SECONDS`를 따릅니다.
 
 설문 편집기의 `저장`은 현재 미완성 초안을 Oracle에 보관하는 명시적 동작입니다. `배포 준비`는 먼저 저장을 성공시킨 다음 배포 센터로 이동하여 안내문·모바일 미리보기·기간·응답 정책을 점검하는 동작이며, 그 자체로 공개 버전을 생성하지 않습니다. 실제 공개 URL과 불변 버전은 배포 센터에서 사용자가 `배포`를 확정할 때만 생성합니다.
 
@@ -320,6 +329,8 @@ Git 배포는 자동 실행하지 않습니다. 사용자가 아래 스크립트
 
 ## Render 예시
 
-Render 배포는 `initgroup-members`와 동일하게 별도 `render.yaml` 없이 GitHub `main` 브랜치를 Web Service에 직접 연결합니다. Build Command는 `pip install -r requirements.txt`, Start Command는 `uvicorn main:app --host 0.0.0.0 --port $PORT`, Health Check Path는 `/api/health`로 설정합니다. 로컬 `.env`는 배포되지 않으므로 Environment Group과 Secret Files를 Render 대시보드에서 연결해야 합니다. 외부 발송은 provider secret과 adapter가 모두 준비된 채널만 활성화합니다.
+Render 배포는 별도 `render.yaml` 없이 GitHub `main` 브랜치를 Web Service에 직접 연결합니다. PDF 보고서에 필요한 Chromium과 한글 글꼴까지 배포 산출물에 포함해야 하므로 Build Command는 반드시 `bash scripts/render-build.sh`, Start Command는 `uvicorn main:app --host 0.0.0.0 --port $PORT`, Health Check Path는 `/api/health`로 설정합니다. 빌드 스크립트는 Python 의존성, Noto Sans KR 글꼴, Playwright Chromium headless shell을 설치한 뒤 Excel/PDF 생성 스모크 테스트가 성공해야만 배포를 계속합니다. 로컬 `.env`는 배포되지 않으므로 Environment Group과 Secret Files를 Render 대시보드에서 연결해야 합니다. 외부 발송은 provider secret과 adapter가 모두 준비된 채널만 활성화합니다.
+
+Excel은 집계표 생성과 셀 스타일·수식 주입 방어에 적합한 `openpyxl`을 사용합니다. PDF는 브라우저와 같은 CSS 출력 품질을 유지하기 위해 Python `playwright`와 Chromium을 사용하며, 외부 네트워크와 JavaScript를 차단한 자체 포함 HTML만 인쇄합니다. `@fontsource-variable/noto-sans-kr`는 빌드 시에만 설치하는 글꼴 자산이므로 PDF 생성 런타임에 시스템 한글 폰트나 외부 CDN이 필요하지 않습니다.
 
 Copyright © iNIT. All rights reserved.

@@ -160,7 +160,7 @@ def test_question_top_level_and_settings_are_canonical_and_equal() -> None:
         type=QuestionType.TABLE,
         title="Missing shape",
     )
-    with pytest.raises(ValueError, match="rows and columns"):
+    with pytest.raises(ValueError, match="행과 열"):
         validate_publish_ready_sections(
             [SurveySection(title="Section", questions=[incomplete_table])]
         )
@@ -194,11 +194,11 @@ def test_question_settings_reject_non_finite_design_numbers(
 @pytest.mark.parametrize(
     ("minimum", "maximum", "message"),
     [
-        (None, 5, "require min and max"),
-        (0.5, 5, "must be integers"),
-        (2, 5, "min must be either"),
-        (1, 11, "max must be between"),
-        (1, 1, "min must be less"),
+        (None, 5, "최솟값과 최댓값"),
+        (0.5, 5, "정수"),
+        (2, 5, "0 또는 1"),
+        (1, 11, "2에서 10 사이"),
+        (1, 1, "최댓값보다 작아야"),
     ],
 )
 def test_scale_design_contract_rejects_unsupported_ranges(
@@ -226,7 +226,7 @@ def test_scale_design_requires_unit_step() -> None:
         title="Invalid scale step",
         settings={"minValue": 1, "maxValue": 5, "step": 0.5},
     )
-    with pytest.raises(ValueError, match="step must be 1"):
+    with pytest.raises(ValueError, match="간격은 1"):
         validate_publish_ready_sections(
             [SurveySection(title="Section", questions=[question])]
         )
@@ -343,7 +343,134 @@ def test_incomplete_draft_can_save_but_cannot_publish() -> None:
 
         rejected = client.post(f"/api/surveys/{survey_id}/publish", json={})
         assert rejected.status_code == 422
-        assert "title" in rejected.json()["detail"].lower()
+        assert "제목" in rejected.json()["detail"]
+
+
+def test_dynamic_question_activation_is_enforced_on_client_contract_and_server() -> None:
+    with TestClient(app) as client:
+        _provision_and_login(client)
+        created = client.post(
+            "/api/surveys",
+            json={
+                "title": "Dynamic questions",
+                "questions": [
+                    {
+                        "id": "consent",
+                        "type": "single",
+                        "title": "Continue?",
+                        "behavior": "fixed_required",
+                        "options": [
+                            {"id": "yes", "label": "Yes"},
+                            {"id": "no", "label": "No"},
+                        ],
+                    },
+                    {
+                        "id": "detail",
+                        "type": "short_text",
+                        "title": "Required detail",
+                        "behavior": "dynamic_required",
+                        "activationCondition": {
+                            "combinator": "all",
+                            "conditions": [
+                                {
+                                    "sourceQuestionId": "consent",
+                                    "operator": "equals",
+                                    "value": "yes",
+                                }
+                            ],
+                        },
+                    },
+                    {
+                        "id": "followup",
+                        "type": "short_text",
+                        "title": "Optional follow-up",
+                        "behavior": "dynamic_optional",
+                        "activationCondition": {
+                            "combinator": "all",
+                            "conditions": [
+                                {
+                                    "sourceQuestionId": "consent",
+                                    "operator": "equals",
+                                    "value": "yes",
+                                },
+                                {
+                                    "sourceQuestionId": "detail",
+                                    "operator": "exists",
+                                },
+                            ],
+                        },
+                    },
+                ],
+                "settings": {"presentationMode": "one_at_a_time"},
+            },
+        )
+        assert created.status_code == 201, created.text
+        published = client.post(
+            f"/api/surveys/{created.json()['data']['id']}/publish",
+            json={"slug": f"dynamic-{uuid4().hex[:8]}"},
+        )
+        assert published.status_code == 200, published.text
+        slug = published.json()["data"]["slug"]
+        public = client.get(f"/api/public/surveys/{slug}")
+        assert public.json()["data"]["settings"]["presentationMode"] == "one_at_a_time"
+
+        skipped = client.post(
+            f"/api/public/surveys/{slug}/responses",
+            json={"answers": {"consent": "no"}},
+        )
+        assert skipped.status_code == 201, skipped.text
+
+        missing_dynamic_required = client.post(
+            f"/api/public/surveys/{slug}/responses",
+            json={"answers": {"consent": "yes"}},
+        )
+        assert missing_dynamic_required.status_code == 422
+        assert "Required detail" in missing_dynamic_required.json()["detail"]
+
+        accepted = client.post(
+            f"/api/public/surveys/{slug}/responses",
+            json={"answers": {"consent": "yes", "detail": "Provided"}},
+        )
+        assert accepted.status_code == 201, accepted.text
+
+        tampered = client.post(
+            f"/api/public/surveys/{slug}/responses",
+            json={
+                "answers": {
+                    "consent": "no",
+                    "detail": "Hidden answer",
+                    "followup": "Must not be activated by a hidden answer",
+                }
+            },
+        )
+        assert tampered.status_code == 422
+        assert "숨겨진 문항" in tampered.json()["detail"]
+
+
+def test_dynamic_question_may_only_reference_a_preceding_question() -> None:
+    with pytest.raises(ValueError, match="선행"):
+        SurveyCreateRequest.model_validate(
+            {
+                "title": "Invalid forward reference",
+                "questions": [
+                    {
+                        "id": "target",
+                        "type": "short_text",
+                        "title": "Target",
+                        "behavior": "dynamic_optional",
+                        "activationCondition": {
+                            "conditions": [
+                                {
+                                    "sourceQuestionId": "later",
+                                    "operator": "exists",
+                                }
+                            ]
+                        },
+                    },
+                    {"id": "later", "type": "short_text", "title": "Later"},
+                ],
+            }
+        )
 
 
 def test_table_and_repeat_table_response_shapes_are_strict_and_shared() -> None:

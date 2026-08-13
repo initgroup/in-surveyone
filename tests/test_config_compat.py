@@ -162,10 +162,28 @@ def test_production_requires_explicit_session_secret(monkeypatch) -> None:
             _read_settings()
 
 
+def test_production_requires_separate_delivery_secret(monkeypatch) -> None:
+    with monkeypatch.context() as environment:
+        _clear_database_environment(environment)
+        environment.setenv("SURVEYONE_ENV", "production")
+        environment.setenv("SURVEYONE_BASE_URL", "https://survey.example.com")
+        environment.setenv("INIT_COOKIE_SECURE", "true")
+        environment.setenv("INIT_SECRET_KEY", "production-session-secret-value")
+        environment.delenv("SURVEYONE_DELIVERY_SECRET", raising=False)
+
+        with pytest.raises(ValueError, match="SURVEYONE_DELIVERY_SECRET is required"):
+            _read_settings()
+
+        environment.setenv("SURVEYONE_DELIVERY_SECRET", "delivery-encryption-secret-value")
+        settings = _read_settings()
+        assert settings.delivery_secret == "delivery-encryption-secret-value"
+
+
 def test_members_init_environment_keys_are_used(monkeypatch) -> None:
     with monkeypatch.context() as environment:
         _clear_database_environment(environment)
         environment.setenv("INIT_SECRET_KEY", "members-compatible-secret-value")
+        environment.setenv("SURVEYONE_DELIVERY_SECRET", "delivery-encryption-secret-value")
         environment.setenv("INIT_ALLOWED_ORIGINS", "https://survey.example.com")
         environment.setenv("INIT_COOKIE_SECURE", "Y")
         environment.setenv("INIT_COOKIE_SAMESITE", "strict")
@@ -180,6 +198,16 @@ def test_members_init_environment_keys_are_used(monkeypatch) -> None:
         assert settings.cookie_secure is True
         assert settings.cookie_samesite == "strict"
         assert settings.session_ttl_seconds == 3600
+
+
+def test_admin_signup_key_is_loaded_as_a_non_repr_secret(monkeypatch) -> None:
+    with monkeypatch.context() as environment:
+        environment.setenv("INIT_ADMIN_KEY", "test-admin-key-value")
+
+        settings = _read_settings()
+
+        assert settings.admin_key == "test-admin-key-value"
+        assert "test-admin-key-value" not in repr(settings)
 
 
 def test_loopback_http_disables_secure_cookie_only_in_development(monkeypatch) -> None:
@@ -197,6 +225,7 @@ def test_production_rejects_insecure_cookie_or_http_origin(monkeypatch) -> None:
     with monkeypatch.context() as environment:
         environment.setenv("SURVEYONE_ENV", "production")
         environment.setenv("INIT_SECRET_KEY", "production-session-secret-value")
+        environment.setenv("SURVEYONE_DELIVERY_SECRET", "delivery-encryption-secret-value")
         environment.setenv("SURVEYONE_BASE_URL", "http://survey.example.com")
         environment.setenv("INIT_COOKIE_SECURE", "true")
 

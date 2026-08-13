@@ -123,10 +123,38 @@
 
     function debounce(callback, delay = 250) {
         let timer;
-        return (...args) => {
+        const debounced = (...args) => {
             clearTimeout(timer);
             timer = setTimeout(() => callback(...args), delay);
         };
+        debounced.cancel = () => {
+            clearTimeout(timer);
+            timer = null;
+        };
+        return debounced;
+    }
+
+    async function copyText(value) {
+        const text = String(value ?? "");
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+        const input = document.createElement("textarea");
+        input.value = text;
+        input.setAttribute("readonly", "");
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        input.style.pointerEvents = "none";
+        document.body.appendChild(input);
+        input.select();
+        input.setSelectionRange(0, input.value.length);
+        try {
+            if (!document.execCommand("copy")) throw new Error("Copy command was rejected.");
+            return true;
+        } finally {
+            input.remove();
+        }
     }
 
     function downloadCsv(filename, rows) {
@@ -153,5 +181,5 @@
         return [];
     }
 
-    window.Common = { api, request, icon, escapeHtml, formatNumber, formatDate, debounce, downloadCsv, questionsOf };
+    window.Common = { api, request, icon, escapeHtml, formatNumber, formatDate, debounce, copyText, downloadCsv, questionsOf };
 })();

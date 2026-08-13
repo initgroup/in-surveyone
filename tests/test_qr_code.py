@@ -18,6 +18,8 @@ def _signup(client: TestClient, prefix: str) -> None:
             "name": "QR 담당자",
             "email": f"{prefix}-{suffix}@example.test",
             "organizationName": "QR 테스트 기관",
+            "termsAccepted": True,
+            "privacyAccepted": True,
         },
     )
     assert response.status_code == 201, response.text

@@ -159,7 +159,13 @@ if (Test-Path -LiteralPath $venvPython -PathType Leaf) {
 
 $jsonFiles = @($projectFiles | Where-Object { $_.Extension -eq ".json" })
 foreach ($jsonFile in $jsonFiles) {
-    Get-Content -LiteralPath $jsonFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json | Out-Null
+    # Windows PowerShell ConvertFrom-Json rejects the empty object key used by
+    # modern npm package-lock.json files. Python's standard JSON parser accepts
+    # the complete JSON specification and is already required by this project.
+    & $venvPython -m json.tool $jsonFile.FullName | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "JSON syntax validation failed: $($jsonFile.FullName)"
+    }
 }
 Write-Host "JSON syntax OK: $($jsonFiles.Count) files" -ForegroundColor Green
 

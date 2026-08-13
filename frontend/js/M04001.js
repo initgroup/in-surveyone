@@ -33,8 +33,11 @@
             this.questions = [];
             this.visibleColumns = new Set();
             this.selectedSurveyId = "";
+            this.responseLoadToken = 0;
             this.page = 1;
             this.pageSize = 50;
+            this.projectFilter = "all";
+            this.projectLayout = localStorage.getItem("surveyone-rawdata-view") === "list" ? "list" : "grid";
             this.bind();
             await this.loadSurveys();
         },
@@ -56,39 +59,25 @@
                     this.page = 1;
                     this.renderTable();
                 }
-                if (event.target.matches("[data-response-survey-search]")) this.openSurveyOptions();
+                if (event.target.matches("[data-response-project-search]")) this.renderProjects();
             }, 120);
-            this.onFocus = (event) => {
-                if (event.target.matches("[data-response-survey-search]")) {
-                    event.target.select();
-                    this.openSurveyOptions("");
-                }
-            };
-            this.onKeydown = (event) => {
-                if (!event.target.matches("[data-response-survey-search]")) return;
-                if (event.key === "Escape") { this.closeSurveyOptions(); event.target.select(); }
-                if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    this.openSurveyOptions();
-                    this.root.querySelector("[data-survey-option]")?.focus();
-                }
-                if (event.key === "Enter") {
-                    const first = this.root.querySelector("[data-survey-option]");
-                    if (first) { event.preventDefault(); first.click(); }
-                }
-            };
             this.onClick = (event) => {
-                const surveyOption = event.target.closest("[data-survey-option]");
-                if (surveyOption) this.selectSurvey(surveyOption.dataset.surveyOption);
-                else if (event.target.closest("[data-survey-toggle]")) {
-                    const panel = this.root.querySelector("[data-response-survey-options]");
-                    if (panel.hidden) {
-                        const input = this.root.querySelector("[data-response-survey-search]");
-                        input.focus();
-                        input.select();
-                        this.openSurveyOptions("");
-                    } else this.closeSurveyOptions();
-                } else if (!event.target.closest("[data-survey-finder]")) this.closeSurveyOptions();
+                const filter = event.target.closest("[data-project-filter]");
+                if (filter) {
+                    this.projectFilter = filter.dataset.projectFilter;
+                    this.root.querySelectorAll("[data-project-filter]").forEach((button) => button.setAttribute("aria-selected", String(button === filter)));
+                    this.renderProjects();
+                }
+                const layout = event.target.closest("[data-response-project-layout]");
+                if (layout) {
+                    this.projectLayout = layout.dataset.responseProjectLayout;
+                    localStorage.setItem("surveyone-rawdata-view", this.projectLayout);
+                    this.root.querySelectorAll("[data-response-project-layout]").forEach((button) => button.setAttribute("aria-selected", String(button === layout)));
+                    this.renderProjects();
+                }
+                const project = event.target.closest("[data-open-response-project]");
+                if (project) void this.selectSurvey(project.dataset.openResponseProject);
+                if (event.target.closest("[data-response-project-back]")) this.showProjectList();
 
                 const preset = event.target.closest("[data-column-preset]");
                 if (preset) this.applyColumnPreset(preset.dataset.columnPreset);
@@ -105,11 +94,13 @@
                     this.root.querySelector("[data-response-state-host]")?.scrollTo({ top: 0 });
                 }
             };
+            this.onProjectSort = () => this.renderProjects();
             this.root.addEventListener("change", this.onChange);
             this.root.addEventListener("input", this.onInput);
-            this.root.addEventListener("focusin", this.onFocus);
-            this.root.addEventListener("keydown", this.onKeydown);
             this.root.addEventListener("click", this.onClick);
+            this.root.querySelector("[data-response-project-sort]").addEventListener("change", this.onProjectSort);
+            const initialLayout = this.root.querySelector(`[data-response-project-layout="${this.projectLayout}"]`);
+            if (initialLayout) this.root.querySelectorAll("[data-response-project-layout]").forEach((button) => button.setAttribute("aria-selected", String(button === initialLayout)));
         },
         async loadSurveys() {
             try {
@@ -117,12 +108,13 @@
                 const items = payload?.items || payload?.surveys || payload || [];
                 if (!Array.isArray(items)) throw new Error("설문 목록 형식이 올바르지 않습니다.");
                 this.surveys = items;
-                this.renderSurveyOptions("");
+                this.updateProjectCounts();
+                this.renderProjects();
                 const requested = window.SurveyOneApp.queryParams().get("surveyId");
                 if (requested && this.surveys.some((item) => String(item.id) === requested)) await this.selectSurvey(requested);
             } catch (error) {
-                this.renderError(error.message);
-                this.root.querySelector("[data-survey-finder-hint]").textContent = "설문 목록을 불러오지 못했습니다.";
+                this.surveys = [];
+                this.renderProjects(error.message);
             }
         },
         surveyStatus(item) {
@@ -131,43 +123,70 @@
             if (["closed", "ended"].includes(status)) return "종료";
             return "작성 중";
         },
-        renderSurveyOptions(query) {
-            const panel = this.root.querySelector("[data-response-survey-options]");
-            const keyword = text(query).toLowerCase();
-            const matched = this.surveys.filter((item) => {
-                const source = [item.title, item.category, item.templateName, item.status, this.surveyStatus(item)].map(text).join(" ").toLowerCase();
-                return !keyword || source.includes(keyword);
+        updateProjectCounts() {
+            this.root.querySelector("[data-project-count-all]").textContent = Common.formatNumber(this.surveys.length);
+            this.root.querySelector("[data-project-count-ready]").textContent = Common.formatNumber(this.surveys.filter((item) => Number(item.responseCount || 0) > 0).length);
+        },
+        normalizedSurveyStatus(item) {
+            return text(item?.status).toLowerCase() === "active" ? "published" : text(item?.status).toLowerCase();
+        },
+        renderProjects(errorMessage = "") {
+            const query = text(this.root.querySelector("[data-response-project-search]").value).toLowerCase();
+            const sort = this.root.querySelector("[data-response-project-sort]").value;
+            let items = this.surveys.filter((item) => {
+                const status = this.normalizedSurveyStatus(item);
+                const filterMatches = this.projectFilter === "all"
+                    || (this.projectFilter === "ready" ? Number(item.responseCount || 0) > 0 : status === this.projectFilter);
+                const searchSource = `${item.title || ""} ${item.category || ""} ${item.id || ""}`.toLowerCase();
+                return filterMatches && (!query || searchSource.includes(query));
             });
-            const limited = matched.slice(0, 60);
-            panel.innerHTML = limited.length ? limited.map((item) => {
-                const id = String(item.id);
-                const meta = [text(item.category || item.templateName), this.surveyStatus(item)].filter(Boolean).join(" · ");
-                return `<button type="button" role="option" aria-selected="${id === this.selectedSurveyId}" data-survey-option="${Common.escapeHtml(id)}"><span>${Common.escapeHtml(item.title || "제목 없는 설문")}</span><small>${Common.escapeHtml(meta || "설문 프로젝트")}</small></button>`;
-            }).join("") : `<div class="survey-option-empty">검색 결과가 없습니다.</div>`;
-            this.root.querySelector("[data-survey-finder-hint]").textContent = `${Common.formatNumber(matched.length)}개 설문${matched.length > limited.length ? ` 중 ${limited.length}개 표시` : ""}`;
+            items.sort((a, b) => {
+                if (sort === "title") return text(a.title).localeCompare(text(b.title), "ko");
+                if (sort === "updated") return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+                return Number(b.responseCount || 0) - Number(a.responseCount || 0)
+                    || new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+            });
+            const grid = this.root.querySelector("[data-response-project-grid]");
+            grid.className = `response-project-grid ${this.projectLayout === "list" ? "is-list" : ""}`;
+            if (!items.length) {
+                grid.innerHTML = `<section class="empty-state response-project-empty"><span class="empty-icon">${errorMessage ? "!" : "0"}</span><h2>${errorMessage ? "프로젝트를 불러오지 못했습니다" : "조건에 맞는 프로젝트가 없습니다"}</h2><p>${Common.escapeHtml(errorMessage || "검색어 또는 분석 상태 필터를 바꿔보세요.")}</p></section>`;
+                return;
+            }
+            grid.innerHTML = items.map((item) => this.projectCardMarkup(item)).join("");
         },
-        openSurveyOptions(queryOverride) {
-            const input = this.root.querySelector("[data-response-survey-search]");
-            const panel = this.root.querySelector("[data-response-survey-options]");
-            this.renderSurveyOptions(queryOverride === undefined ? input.value : queryOverride);
-            panel.hidden = false;
-            input.setAttribute("aria-expanded", "true");
-            this.root.querySelector("[data-survey-toggle]").setAttribute("aria-expanded", "true");
+        projectCardMarkup(item) {
+            const responseCount = Number(item.responseCount || 0);
+            const questionCount = Number(item.questionCount || 0);
+            const ready = responseCount > 0;
+            const status = this.normalizedSurveyStatus(item) || "draft";
+            const statusClass = status === "published" ? "published" : (status === "closed" ? "closed" : "draft");
+            const readiness = ready ? "분석 가능" : (status === "draft" ? "설계 중" : "응답 대기");
+            return `<article class="response-project-card"><header class="response-project-card-head"><span class="status-badge status-${statusClass}">${Common.escapeHtml(this.surveyStatus(item))}</span><span class="analysis-readiness ${ready ? "is-ready" : ""}"><i aria-hidden="true"></i>${readiness}</span></header><button class="response-project-card-main" type="button" data-open-response-project="${Common.escapeHtml(item.id)}"><span class="response-project-category">${Common.escapeHtml(item.category || "일반조사")}</span><h3>${Common.escapeHtml(item.title || "제목 없는 설문")}</h3><span class="response-project-id">프로젝트 ID <code>${Common.escapeHtml(item.id)}</code></span></button><dl class="response-project-stats"><div><dt>응답</dt><dd>${Common.formatNumber(responseCount)}<small>건</small></dd></div><div><dt>문항</dt><dd>${Common.formatNumber(questionCount)}<small>개</small></dd></div><div><dt>확정 버전</dt><dd>${item.publishedVersion ? `v${Common.formatNumber(item.publishedVersion)}` : "-"}</dd></div></dl><footer class="response-project-card-footer"><span>${Common.formatDate(item.updatedAt || item.createdAt)} 기준</span><button class="button button-small ${ready ? "button-primary" : ""}" type="button" data-open-response-project="${Common.escapeHtml(item.id)}">${ready ? "원자료 분석" : "응답 현황 열기"}</button></footer></article>`;
         },
-        closeSurveyOptions() {
-            if (!this.root) return;
-            const panel = this.root.querySelector("[data-response-survey-options]");
-            panel.hidden = true;
-            this.root.querySelector("[data-response-survey-search]").setAttribute("aria-expanded", "false");
-            this.root.querySelector("[data-survey-toggle]").setAttribute("aria-expanded", "false");
+        showProjectList() {
+            this.responseLoadToken += 1;
+            this.root.querySelector("[data-response-project-view]").hidden = false;
+            this.root.querySelector("[data-response-workspace]").hidden = true;
+            this.selectedSurveyId = "";
+            this.currentSurvey = null;
+            const route = window.location.hash.split("?")[0] || "#/M04001";
+            window.history.replaceState(null, "", route);
+            this.renderProjects();
+            this.root.querySelector("[data-response-project-search]").focus();
+        },
+        showWorkspace(survey) {
+            this.root.querySelector("[data-response-project-view]").hidden = true;
+            this.root.querySelector("[data-response-workspace]").hidden = false;
+            this.root.querySelector("[data-workspace-project-title]").textContent = survey.title || "제목 없는 설문";
+            this.root.querySelector("[data-workspace-project-status]").textContent = this.surveyStatus(survey);
+            this.root.querySelector("[data-workspace-project-id]").textContent = survey.id;
+            this.root.querySelector("[data-workspace-project-title]").focus({ preventScroll: true });
         },
         async selectSurvey(id) {
             const survey = this.surveys.find((item) => String(item.id) === String(id));
             if (!survey) return;
             this.selectedSurveyId = String(id);
-            this.root.querySelector("[data-response-survey]").value = this.selectedSurveyId;
-            this.root.querySelector("[data-response-survey-search]").value = survey.title || "제목 없는 설문";
-            this.closeSurveyOptions();
+            this.showWorkspace(survey);
             const route = window.location.hash.split("?")[0] || "#/M04001";
             window.history.replaceState(null, "", `${route}?surveyId=${encodeURIComponent(this.selectedSurveyId)}`);
             await this.loadResponses(this.selectedSurveyId);
@@ -194,12 +213,14 @@
         },
         async loadResponses(id) {
             if (!id) { this.responses = []; this.questionEntries = []; this.questions = []; this.setEnabled(false); this.renderEmpty(); return; }
+            const requestToken = ++this.responseLoadToken;
             this.renderLoading();
             try {
                 const [surveyPayload, responsePayload] = await Promise.all([
                     this.context.api.get(`/api/surveys/${encodeURIComponent(id)}`),
                     this.fetchAllResponses(id)
                 ]);
+                if (requestToken !== this.responseLoadToken || String(id) !== this.selectedSurveyId) return;
                 const survey = surveyPayload?.survey || surveyPayload;
                 this.currentSurvey = survey;
                 this.questionEntries = this.buildQuestionEntries(survey);
@@ -213,6 +234,7 @@
                 this.renderMetrics(responsePayload?.summary || {});
                 this.renderTable();
             } catch (error) {
+                if (requestToken !== this.responseLoadToken || String(id) !== this.selectedSurveyId) return;
                 this.responses = [];
                 this.currentSurvey = null;
                 this.setEnabled(false);
@@ -403,9 +425,9 @@
             this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="page-loading"><span class="spinner"></span><strong>응답 데이터를 불러오는 중</strong><p>문항과 응답 수에 따라 잠시 걸릴 수 있습니다.</p></div>`;
         },
         renderEmpty() {
-            this.root.querySelector("[data-response-title]").textContent = "설문을 선택하세요";
+            this.root.querySelector("[data-response-title]").textContent = "응답 레코드";
             this.root.querySelector("[data-column-summary]").textContent = "표시 문항을 선택하면 요약이 표시됩니다.";
-            this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="response-empty"><span>≡</span><strong>설문을 선택하면 응답이 표시됩니다.</strong><p>검색형 설문 선택기에서 분석할 프로젝트를 찾아보세요.</p></div>`;
+            this.root.querySelector("[data-response-state-host]").innerHTML = `<div class="response-empty"><span>≡</span><strong>프로젝트를 선택하면 응답이 표시됩니다.</strong><p>프로젝트 목록에서 분석할 설문을 선택해 주세요.</p></div>`;
             this.root.querySelector("[data-response-count]").textContent = "총 0건";
             this.root.querySelector("[data-response-pagination]").innerHTML = "";
         },
@@ -551,11 +573,11 @@
             this.context.openModal(`<p class="eyebrow">DATA GOVERNANCE</p><h2>응답 데이터 처리 원칙</h2><ol class="help-steps"><li><strong>최소 권한</strong><span>회원사와 프로젝트 권한을 서버에서 매 요청마다 확인합니다.</span></li><li><strong>최소 표시</strong><span>화면에는 업무에 필요한 문항만 선택해 표시합니다.</span></li><li><strong>분석 목적 구분</strong><span>분석형은 복수응답을 1/0 열로 변환하고 원본형은 제출 구조를 보존합니다.</span></li><li><strong>보유기간</strong><span>만료 정책에 따라 익명화하거나 안전하게 파기합니다.</span></li></ol>`);
         },
         destroy() {
+            this.onInput?.cancel?.();
             this.root?.removeEventListener("change", this.onChange);
             this.root?.removeEventListener("input", this.onInput);
-            this.root?.removeEventListener("focusin", this.onFocus);
-            this.root?.removeEventListener("keydown", this.onKeydown);
             this.root?.removeEventListener("click", this.onClick);
+            this.root?.querySelector("[data-response-project-sort]")?.removeEventListener("change", this.onProjectSort);
             this.root = null;
         }
     };

@@ -24,11 +24,21 @@
         routeGeneration: 0,
         routeController: null,
         routeTask: null,
+        refreshing: false,
         guestCapabilities: null,
         guestCapabilitiesPromise: null,
         issuedGuest: null,
         sessionInvalidHandling: false,
-        modalReturnFocus: null
+        modalReturnFocus: null,
+        modalDrag: null,
+        modalOffsetX: 0,
+        modalOffsetY: 0,
+        messageQueue: [],
+        activeMessage: null,
+        messageReturnFocus: null,
+        messageDrag: null,
+        messageOffsetX: 0,
+        messageOffsetY: 0
     };
 
     const dom = {};
@@ -53,6 +63,8 @@
         dom.pageHost = document.querySelector("#pageHost");
         dom.pageTitle = document.querySelector("[data-page-title]");
         dom.pageGroup = document.querySelector("[data-page-group]");
+        dom.pageGroupLink = document.querySelector("[data-page-group-link]");
+        dom.pageRefresh = document.querySelector("[data-page-refresh]");
         dom.userButton = document.querySelector("[data-user-button]");
         dom.userMenu = document.querySelector("[data-user-menu]");
         dom.authDialog = document.querySelector("[data-auth-dialog]");
@@ -61,21 +73,34 @@
         dom.guestCredentials = document.querySelector("[data-guest-credentials]");
         dom.modal = document.querySelector("[data-modal]");
         dom.modalBody = document.querySelector("[data-modal-body]");
+        dom.modalDragTitle = document.querySelector("[data-modal-drag-title]");
+        dom.messageDialog = document.querySelector("[data-message-dialog]");
+        dom.messageTitle = document.querySelector("[data-message-title]");
+        dom.messageText = document.querySelector("[data-message-text]");
+        dom.messageToneIcon = document.querySelector("[data-message-tone-icon]");
+        dom.messageCopy = document.querySelector("[data-message-copy]");
+        dom.messageCancel = document.querySelector("[data-message-cancel]");
+        dom.messageConfirm = document.querySelector("[data-message-confirm]");
+        dom.toastRegion = document.querySelector("[data-toast-region]");
     }
 
     function renderNavigation() {
-        dom.navigation.innerHTML = window.MENU_CONFIG.map((group) => `
+        const groups = window.MENU_CONFIG
+            .filter((group) => canAccessMenu(group))
+            .map((group) => ({ ...group, visibleItems: group.items.filter((item) => !item.hidden && canAccessMenu(item)) }))
+            .filter((group) => group.visibleItems.length);
+        dom.navigation.innerHTML = groups.map((group) => `
             <section class="nav-group" data-nav-group="${group.code}">
                 <button class="nav-group-label" type="button" aria-expanded="true">
                     <span>${Common.icon(group.icon, 18)} ${group.label}</span><i aria-hidden="true">⌄</i>
                 </button>
                 <div class="nav-group-items">
-                    ${group.items.map((item) => `<a href="#/${item.code}" data-route-link="${item.code}" title="${item.description}">${item.label}</a>`).join("")}
+                    ${group.visibleItems.map((item) => `<a href="#/${item.code}" data-route-link="${item.code}" title="${item.description}">${item.label}</a>`).join("")}
                 </div>
             </section>
         `).join("");
 
-        const quickCodes = ["M01001", "M02001", "M02003", "M04001", "M05001"];
+        const quickCodes = ["M01001", "M02001", "M03001", "M04001", "M05001"];
         dom.mobileNav.innerHTML = quickCodes.map((code) => {
             const page = window.PAGE_CONFIG[code];
             const group = window.MENU_CONFIG.find((candidate) => candidate.code === page.groupCode);
@@ -83,8 +108,16 @@
         }).join("");
     }
 
+    function canAccessMenu(item, user = state.user) {
+        const roles = Array.isArray(item?.roles) ? item.roles.map((role) => String(role).toUpperCase()) : [];
+        if (!roles.length) return true;
+        return roles.some((role) => role === "SYSTEM_ADMIN"
+            ? Boolean(user?.systemAdmin)
+            : role === String(user?.role || "").toUpperCase());
+    }
+
     function shortMobileLabel(code, label) {
-        return ({ M01001: "홈", M02001: "설문", M02003: "편집", M04001: "응답", M05001: "분석" })[code] || label;
+        return ({ M01001: "홈", M02001: "설문", M03001: "배포", M04001: "응답", M05001: "분석" })[code] || label;
     }
 
     function bindShellEvents() {
@@ -118,10 +151,12 @@
         });
 
         document.querySelector("[data-quick-create]").addEventListener("click", () => {
-            if (state.user) navigate("M02002"); else openAuth("guest");
+            if (state.user) navigate("M02001", { create: "1" }); else openAuth("guest");
         });
         document.querySelector("[data-help-button]").addEventListener("click", () => void showHelp());
+        dom.pageRefresh.addEventListener("click", () => void refreshCurrentPage());
         document.querySelector("[data-guest-start]").addEventListener("click", startGuest);
+        document.querySelector("[data-guest-capability-retry]").addEventListener("click", () => void loadGuestCapabilities({ force: true }));
         document.querySelector("[data-guest-login]").addEventListener("click", showIssuedGuestLogin);
         dom.guestCredentials.addEventListener("click", (event) => {
             const copy = event.target.closest("[data-copy-guest-credential]");
@@ -130,10 +165,35 @@
         document.querySelectorAll("[data-auth-tab]").forEach((tab) => tab.addEventListener("click", () => selectAuthTab(tab.dataset.authTab)));
         document.querySelector("[data-login-form]").addEventListener("submit", submitLogin);
         document.querySelector("[data-signup-form]").addEventListener("submit", submitSignup);
+        document.querySelector("[data-signup-admin-toggle]").addEventListener("change", syncSignupAdminFields);
+        syncSignupAdminFields();
         dom.modal.addEventListener("close", () => {
+            document.documentElement.classList.remove("app-modal-open");
+            dom.modal.classList.remove("modal-template-library");
+            dom.modal.classList.remove("modal-preview-simulator");
+            resetModalPosition();
             const target = state.modalReturnFocus;
             state.modalReturnFocus = null;
             if (target?.isConnected) target.focus({ preventScroll: true });
+            dom.modalBody.replaceChildren();
+            dom.modal.removeAttribute("aria-label");
+        });
+        dom.modal.addEventListener("pointerdown", startModalDrag);
+        dom.modal.addEventListener("pointermove", moveModalDrag);
+        dom.modal.addEventListener("pointerup", endModalDrag);
+        dom.modal.addEventListener("pointercancel", endModalDrag);
+        dom.modal.addEventListener("keydown", moveModalWithKeyboard);
+        dom.messageDialog.addEventListener("close", closeMessageLayer);
+        dom.messageDialog.addEventListener("pointerdown", startMessageDrag);
+        dom.messageDialog.addEventListener("pointermove", moveMessageDrag);
+        dom.messageDialog.addEventListener("pointerup", endMessageDrag);
+        dom.messageDialog.addEventListener("pointercancel", endMessageDrag);
+        dom.messageDialog.addEventListener("keydown", moveMessageWithKeyboard);
+        dom.messageCopy.addEventListener("click", () => void copyActiveMessage());
+        dom.toastRegion.addEventListener("click", (event) => void handleToastAction(event));
+        window.addEventListener("resize", () => {
+            if (dom.modal.open) resetModalPosition();
+            if (dom.messageDialog.open) resetMessagePosition();
         });
         dom.authDialog.addEventListener("close", clearIssuedGuest);
     }
@@ -186,7 +246,8 @@
         return window.PAGE_CONFIG[code] ? code : window.SURVEYONE_CONFIG.defaultRoute;
     }
 
-    function route() {
+    function route(options = {}) {
+        const refresh = options?.refresh === true;
         const requestedCode = routeCode();
         const generation = state.routeGeneration + 1;
         state.routeGeneration = generation;
@@ -199,7 +260,7 @@
                 try { await previousTask; } catch (error) { if (!isAbortError(error)) console.warn("이전 화면 정리를 완료하지 못했습니다.", error); }
             }
             if (!isCurrentRoute(generation, controller)) return;
-            await performRoute(requestedCode, generation, controller);
+            await performRoute(requestedCode, generation, controller, { refresh });
         })();
         state.routeTask = task;
         const clearTask = () => { if (state.routeTask === task) state.routeTask = null; };
@@ -207,24 +268,41 @@
         return task;
     }
 
-    async function performRoute(requestedCode, generation, controller) {
+    async function performRoute(requestedCode, generation, controller, { refresh = false } = {}) {
         let code = requestedCode;
         if (!state.user && code !== "M01001") {
             code = "M01001";
             history.replaceState(null, "", "#/M01001");
             toast("둘러보기에서는 메인 대시보드를 볼 수 있습니다. 설문 작업은 메인에서 시작 방식을 선택해 주세요.");
         }
+        const requestedPage = window.PAGE_CONFIG[code];
+        if (requestedPage && !canAccessMenu(requestedPage)) {
+            code = "M01001";
+            history.replaceState(null, "", "#/M01001");
+            toast("이 메뉴는 플랫폼 관리자만 사용할 수 있습니다.", "error");
+        }
         if (location.hash !== `#/${code}` && !location.hash.includes("?")) history.replaceState(null, "", `#/${code}`);
         const page = window.PAGE_CONFIG[code];
-        if (dom.modal.open) dom.modal.close();
+        const templateAdminRoute = code === "M02003"
+            && queryParams().get("templateAdmin") === "1"
+            && state.user?.systemAdmin;
+        const navigationPage = templateAdminRoute
+            ? window.PAGE_CONFIG.M07001
+            : page;
+        cancelMessageLayers();
+        resetModalForPageTransition();
         state.route = code;
-        updateActiveNavigation(code);
-        dom.pageTitle.textContent = page.label;
-        dom.pageGroup.textContent = window.MENU_CONFIG.find((group) => group.code === page.groupCode)?.label || "";
+        updateActiveNavigation(navigationPage.navigationCode || navigationPage.code || code);
+        dom.pageTitle.textContent = navigationPage.label;
+        const pageGroup = window.MENU_CONFIG.find((group) => group.code === navigationPage.groupCode);
+        dom.pageGroup.textContent = pageGroup?.label || "";
+        const groupLandingCode = pageGroup?.items?.[0]?.code || "M01001";
+        dom.pageGroupLink.href = `#/${groupLandingCode}`;
+        dom.pageGroupLink.setAttribute("aria-label", `${pageGroup?.label || "홈"} 메뉴로 이동`);
         const helpButton = document.querySelector("[data-help-button]");
-        helpButton.setAttribute("aria-label", `${page.label} 작성 도움말 열기`);
-        helpButton.title = `${page.label} 작성 도움말`;
-        document.title = `${page.label} | IN-SURVEYONE`;
+        helpButton.setAttribute("aria-label", `${navigationPage.label} 작성 도움말 열기`);
+        helpButton.title = `${navigationPage.label} 작성 도움말`;
+        document.title = `${navigationPage.label} | IN-SURVEYONE`;
         const routeRoot = document.createElement("div");
         routeRoot.className = "route-view";
         routeRoot.dataset.routeGeneration = String(generation);
@@ -238,6 +316,8 @@
             state.currentPage = null;
             await destroyPage(previousPage);
             assertCurrentRoute(generation, controller);
+
+            if (refresh) unloadPageAssets(code, page);
 
             candidateStyle = await loadPageStyle(page.style, { signal: controller.signal });
             assertCurrentRoute(generation, controller);
@@ -267,6 +347,7 @@
                     toast: (...args) => { if (active()) return toast(...args); },
                     navigate: (...args) => { if (active()) return navigate(...args); },
                     openModal: (...args) => { if (active()) return openModal(...args); },
+                    confirmMessage: (...args) => active() ? confirmMessage(...args) : Promise.resolve(false),
                     openAuth: (...args) => { if (active()) return openAuth(...args); },
                     loadGuestCapabilities: (...args) => active() ? loadGuestCapabilities(...args) : Promise.reject(abortError()),
                     user: state.user,
@@ -306,8 +387,66 @@
     }
 
     async function destroyPage(page) {
-        if (!page?.destroy) return;
-        try { await page.destroy(); } catch (error) { console.warn("화면 정리 중 오류가 발생했습니다.", error); }
+        if (!page) return;
+        try {
+            if (page.destroy) await page.destroy();
+        } catch (error) {
+            console.warn("화면 정리 중 오류가 발생했습니다.", error);
+        } finally {
+            page.destroyed = true;
+            Object.keys(page).forEach((key) => {
+                if (key !== "destroyed") page[key] = null;
+            });
+        }
+    }
+
+    function unloadPageAssets(code, page) {
+        state.loadedScripts.delete(page.script);
+        document.querySelectorAll("script[data-page-script]").forEach((script) => {
+            if (script.dataset.pageScript === page.script) script.remove();
+        });
+        if (window.Pages) delete window.Pages[code];
+        if (state.activeStyle) {
+            state.activeStyle.remove();
+            state.activeStyle = null;
+        }
+    }
+
+    function resetModalForPageTransition() {
+        state.modalReturnFocus = null;
+        if (dom.modal.open) dom.modal.close();
+        dom.modalBody.replaceChildren();
+        dom.modal.removeAttribute("aria-label");
+    }
+
+    async function refreshCurrentPage() {
+        if (state.refreshing || !state.currentPage) return;
+        try {
+            if (state.currentPage.beforeRefresh) {
+                const allowed = await state.currentPage.beforeRefresh();
+                if (allowed === false) return;
+            }
+        } catch (error) {
+            toast(`현재 화면을 새로고침할 수 없습니다. ${error.message}`, "error");
+            return;
+        }
+        state.refreshing = true;
+        dom.pageRefresh.disabled = true;
+        dom.pageRefresh.classList.add("is-refreshing");
+        dom.pageRefresh.setAttribute("aria-busy", "true");
+        const previousGeneration = state.routeGeneration;
+        try {
+            clearToasts();
+            await route({ refresh: true });
+            if (state.currentPage && state.routeGeneration > previousGeneration) {
+                toast("현재 화면 메모리를 초기화하고 최신 데이터로 새로고침했습니다.", "success");
+            }
+        } finally {
+            state.refreshing = false;
+            dom.pageRefresh.disabled = false;
+            dom.pageRefresh.classList.remove("is-refreshing");
+            dom.pageRefresh.removeAttribute("aria-busy");
+        }
     }
 
     function createRouteApi(signal) {
@@ -340,6 +479,7 @@
                 finish(abortError());
             };
             script.src = versionedAsset(src);
+            script.dataset.pageScript = src;
             script.onload = () => {
                 if (signal?.aborted) return onAbort();
                 state.loadedScripts.add(src);
@@ -506,7 +646,7 @@
         const value = values[field];
         if (!value) return;
         try {
-            await navigator.clipboard.writeText(value);
+            await Common.copyText(value);
             toast(field === "all" ? "자격정보를 모두 복사했습니다." : "자격정보를 복사했습니다.", "success");
         } catch {
             toast("브라우저에서 복사를 허용하지 않았습니다. 값을 직접 선택해 복사해 주세요.", "error");
@@ -540,6 +680,7 @@
     async function submitLogin(event) {
         event.preventDefault();
         const data = Object.fromEntries(new FormData(event.currentTarget));
+        data.keepSignedIn = data.keepSignedIn === "true";
         setAuthBusy(true, "로그인 중입니다.");
         try {
             const payload = await Common.api.post("/api/auth/login", data);
@@ -555,7 +696,9 @@
     async function submitSignup(event) {
         event.preventDefault();
         const data = Object.fromEntries(new FormData(event.currentTarget));
-        delete data.terms;
+        data.termsAccepted = data.termsAccepted === "true";
+        data.privacyAccepted = data.privacyAccepted === "true";
+        data.requestSystemAdmin = data.requestSystemAdmin === "true";
         setAuthBusy(true, "작업공간을 만들고 있습니다.");
         try {
             const payload = await Common.api.post("/api/auth/signup", data);
@@ -563,9 +706,31 @@
             updateUserUi();
             setAuthBusy(false, "");
             dom.authDialog.close();
-            toast("IN-SURVEYONE 작업공간이 생성되었습니다.", "success");
-            await route();
-        } catch (error) { setAuthBusy(false, error.message, true); }
+            event.currentTarget.reset();
+            syncSignupAdminFields();
+            if (state.user.systemAdmin) {
+                toast("플랫폼 관리자 작업공간이 생성되었습니다. 공용 템플릿 관리로 이동합니다.", "success");
+                navigate("M07001");
+            } else {
+                toast("IN-SURVEYONE 작업공간이 생성되었습니다.", "success");
+                await route();
+            }
+        } catch (error) {
+            const adminKey = event.currentTarget.elements.adminKey;
+            if (adminKey) adminKey.value = "";
+            setAuthBusy(false, error.message, true);
+        }
+    }
+
+    function syncSignupAdminFields() {
+        const toggle = document.querySelector("[data-signup-admin-toggle]");
+        const host = document.querySelector("[data-signup-admin-key]");
+        const input = document.querySelector("[data-signup-admin-key-input]");
+        if (!toggle || !host || !input) return;
+        host.hidden = !toggle.checked;
+        input.disabled = !toggle.checked;
+        input.required = toggle.checked;
+        if (!toggle.checked) input.value = "";
     }
 
     async function logout() {
@@ -579,12 +744,13 @@
 
     function updateUserUi() {
         const user = state.user;
+        renderNavigation();
         const name = user?.name || user?.displayName || "방문자";
         const tenant = String(user?.organizationName || user?.tenantName || "IN-SURVEYONE")
             .replace(/^DB\s*게스트\s*/i, "게스트 ");
         const guest = Boolean(user && (user.isGuest ?? user.role === "guest"));
         document.querySelector("[data-user-name]").textContent = name;
-        document.querySelector("[data-user-role]").textContent = !user ? "둘러보기" : (guest ? "게스트 계정" : (user.roleLabel || "설문 관리자"));
+        document.querySelector("[data-user-role]").textContent = !user ? "둘러보기" : (guest ? "게스트 계정" : (user.systemAdmin ? "플랫폼 관리자" : (user.roleLabel || "설문 관리자")));
         document.querySelector("[data-user-avatar]").textContent = name.trim().charAt(0).toUpperCase() || "G";
         document.querySelector("[data-tenant-name]").textContent = tenant;
         document.querySelector("[data-save-state]").innerHTML = user
@@ -594,6 +760,8 @@
             ? '<span aria-hidden="true">＋</span> 새 설문'
             : '<span aria-hidden="true">＋</span> 체험 시작';
         document.querySelector("[data-guest-upgrade]").hidden = Boolean(user && !guest);
+        const sessionSecurity = document.querySelector("[data-session-security]");
+        if (sessionSecurity) sessionSecurity.hidden = !user;
         document.querySelectorAll('[data-auth-action="logout"]').forEach((button) => { button.hidden = !user; });
         document.querySelectorAll('[data-auth-action="login"], [data-auth-action="signup"]').forEach((button) => { button.hidden = Boolean(user && !guest); });
     }
@@ -665,15 +833,17 @@
         };
     }
 
-    async function loadGuestCapabilities() {
+    async function loadGuestCapabilities({ force = false } = {}) {
         const cachedDatabase = state.guestCapabilities?.modes?.find((item) => item.mode === "database");
-        if (cachedDatabase?.available) {
+        if (!force && cachedDatabase?.available) {
             renderGuestCapabilities();
             return state.guestCapabilities;
         }
         if (state.guestCapabilitiesPromise) return state.guestCapabilitiesPromise;
         const status = document.querySelector("[data-guest-capability-status]");
         if (status) status.textContent = "게스트 계정 발급 상태를 확인하고 있습니다.";
+        const retry = document.querySelector("[data-guest-capability-retry]");
+        if (retry) retry.disabled = true;
         state.guestCapabilitiesPromise = Common.api.get("/api/auth/guest/capabilities?mode=database")
             .then((payload) => normalizeGuestCapabilities(payload))
             .catch((error) => fallbackGuestCapabilities(error.message))
@@ -707,9 +877,14 @@
         const card = document.querySelector("[data-guest-issue-card]");
         const reason = document.querySelector("[data-guest-account-reason]");
         const button = document.querySelector("[data-guest-start]");
+        const retry = document.querySelector("[data-guest-capability-retry]");
         const available = Boolean(database?.available);
         card?.classList.toggle("is-disabled", !available);
         if (button) button.disabled = !available;
+        if (retry) {
+            retry.hidden = available;
+            retry.disabled = available;
+        }
         const limits = limitSummary(database);
         const expiryHours = database?.expiresInHours ?? database?.expires_in_hours;
         const expirySummary = Number.isFinite(Number(expiryHours)) ? `발급 후 ${Common.formatNumber(expiryHours)}시간 유효` : "";
@@ -729,20 +904,291 @@
     }
 
     function toast(message, tone = "info") {
-        const region = document.querySelector("[data-toast-region]");
-        const element = document.createElement("div");
-        element.className = `toast toast-${tone}`;
-        element.innerHTML = `${Common.icon(tone === "success" ? "check" : "info", 18)}<span>${Common.escapeHtml(message)}</span>`;
-        region.appendChild(element);
-        setTimeout(() => element.classList.add("is-visible"), 10);
-        setTimeout(() => { element.classList.remove("is-visible"); setTimeout(() => element.remove(), 220); }, 3600);
+        const normalizedTone = ["success", "warning", "error"].includes(tone) ? tone : "info";
+        const labels = { success: "완료", warning: "주의", error: "오류", info: "안내" };
+        const element = document.createElement("section");
+        element.className = `toast toast-${normalizedTone}`;
+        element.dataset.message = String(message ?? "");
+        element.setAttribute("role", normalizedTone === "error" ? "alert" : "status");
+        element.innerHTML = `
+            <span class="toast-icon">${Common.icon(normalizedTone === "success" ? "check" : "info", 17)}</span>
+            <span class="toast-copy"><strong>${labels[normalizedTone]}</strong><span>${Common.escapeHtml(message)}</span></span>
+            <span class="toast-actions">
+                <button class="toast-action" type="button" data-toast-copy title="메시지 복사" aria-label="메시지 내용 복사">${Common.icon("copy", 16)}</button>
+                <button class="toast-action" type="button" data-toast-close title="닫기" aria-label="메시지 닫기">×</button>
+            </span>`;
+        while (dom.toastRegion.children.length >= 4) dismissToast(dom.toastRegion.firstElementChild, true);
+        dom.toastRegion.appendChild(element);
+        const duration = ["error", "warning"].includes(normalizedTone) ? 6500 : 3800;
+        const pause = () => clearTimeout(element.dismissTimer);
+        const resume = () => scheduleToastDismiss(element, duration);
+        element.addEventListener("mouseenter", pause);
+        element.addEventListener("mouseleave", resume);
+        element.addEventListener("focusin", pause);
+        element.addEventListener("focusout", resume);
+        element.showTimer = setTimeout(() => element.classList.add("is-visible"), 10);
+        scheduleToastDismiss(element, duration);
+        return element;
+    }
+
+    function scheduleToastDismiss(element, duration) {
+        clearTimeout(element.dismissTimer);
+        element.dismissTimer = setTimeout(() => dismissToast(element), duration);
+    }
+
+    function dismissToast(element, immediately = false) {
+        if (!element) return;
+        clearTimeout(element.showTimer);
+        clearTimeout(element.dismissTimer);
+        clearTimeout(element.removeTimer);
+        if (immediately) return element.remove();
+        element.classList.remove("is-visible");
+        element.removeTimer = setTimeout(() => element.remove(), 220);
+    }
+
+    function clearToasts() {
+        Array.from(dom.toastRegion.children).forEach((element) => dismissToast(element, true));
+    }
+
+    async function handleToastAction(event) {
+        const element = event.target.closest(".toast");
+        if (!element) return;
+        if (event.target.closest("[data-toast-close]")) return dismissToast(element);
+        const button = event.target.closest("[data-toast-copy]");
+        if (!button) return;
+        try {
+            await Common.copyText(element.dataset.message || "");
+            showCopyFeedback(button, true);
+        } catch {
+            showCopyFeedback(button, false);
+        }
+    }
+
+    function showCopyFeedback(button, success) {
+        const original = button.innerHTML;
+        const originalLabel = button.getAttribute("aria-label");
+        button.innerHTML = success ? Common.icon("check", 16) : "!";
+        button.setAttribute("aria-label", success ? "복사됨" : "복사 실패");
+        button.title = success ? "복사됨" : "복사 실패";
+        setTimeout(() => {
+            if (!button.isConnected) return;
+            button.innerHTML = original;
+            button.setAttribute("aria-label", originalLabel || "메시지 내용 복사");
+            button.title = "메시지 복사";
+        }, 1400);
+    }
+
+    function confirmMessage(message, options = {}) {
+        return new Promise((resolve) => {
+            state.messageQueue.push({
+                message: String(message ?? ""),
+                title: String(options.title || "확인이 필요합니다"),
+                confirmLabel: String(options.confirmLabel || "확인"),
+                cancelLabel: String(options.cancelLabel || "취소"),
+                tone: ["warning", "error"].includes(options.tone) ? options.tone : "info",
+                destructive: Boolean(options.destructive),
+                resolve
+            });
+            showNextMessageLayer();
+        });
+    }
+
+    function showNextMessageLayer() {
+        if (state.activeMessage || dom.messageDialog.open) return;
+        const request = state.messageQueue.shift();
+        if (!request) return;
+        state.activeMessage = request;
+        state.messageReturnFocus = document.activeElement;
+        resetMessagePosition();
+        dom.messageDialog.returnValue = "";
+        dom.messageDialog.classList.toggle("is-warning", request.tone === "warning");
+        dom.messageDialog.classList.toggle("is-error", request.tone === "error");
+        dom.messageTitle.textContent = request.title;
+        dom.messageText.textContent = request.message;
+        dom.messageToneIcon.textContent = request.tone === "error" ? "!" : request.tone === "warning" ? "!" : "?";
+        dom.messageCopy.innerHTML = '<span aria-hidden="true">⧉</span><span>복사</span>';
+        dom.messageCopy.setAttribute("aria-label", "메시지 내용 복사");
+        dom.messageCopy.title = "메시지 복사";
+        dom.messageCancel.textContent = request.cancelLabel;
+        dom.messageConfirm.textContent = request.confirmLabel;
+        dom.messageConfirm.className = `button ${request.destructive ? "button-danger" : "button-primary"}`;
+        document.documentElement.classList.add("app-message-open");
+        dom.messageDialog.showModal();
+        requestAnimationFrame(() => dom.messageConfirm.focus({ preventScroll: true }));
+    }
+
+    function closeMessageLayer() {
+        const request = state.activeMessage;
+        state.activeMessage = null;
+        document.documentElement.classList.remove("app-message-open");
+        resetMessagePosition();
+        const returnFocus = state.messageReturnFocus;
+        state.messageReturnFocus = null;
+        if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+        request?.resolve(dom.messageDialog.returnValue === "confirm");
+        queueMicrotask(showNextMessageLayer);
+    }
+
+    function cancelMessageLayers() {
+        const queued = state.messageQueue.splice(0);
+        queued.forEach((request) => request.resolve(false));
+        if (dom.messageDialog.open) {
+            dom.messageDialog.returnValue = "cancel";
+            dom.messageDialog.close();
+        } else if (state.activeMessage) {
+            const request = state.activeMessage;
+            state.activeMessage = null;
+            request.resolve(false);
+        }
+    }
+
+    async function copyActiveMessage() {
+        if (!state.activeMessage) return;
+        try {
+            await Common.copyText(state.activeMessage.message);
+            showCopyFeedback(dom.messageCopy, true);
+        } catch {
+            showCopyFeedback(dom.messageCopy, false);
+        }
+    }
+
+    function resetModalPosition() {
+        state.modalDrag = null;
+        state.modalOffsetX = 0;
+        state.modalOffsetY = 0;
+        dom.modal?.classList.remove("is-dragging");
+        dom.modal?.style.removeProperty("--modal-drag-x");
+        dom.modal?.style.removeProperty("--modal-drag-y");
+    }
+
+    function setModalPosition(x, y) {
+        state.modalOffsetX = x;
+        state.modalOffsetY = y;
+        dom.modal.style.setProperty("--modal-drag-x", `${x}px`);
+        dom.modal.style.setProperty("--modal-drag-y", `${y}px`);
+    }
+
+    function startModalDrag(event) {
+        const handle = event.target.closest("[data-modal-drag-handle]");
+        if (!handle || event.button !== 0) return;
+        if (event.target.closest("button, a, input, select, textarea, label")) return;
+        const rect = dom.modal.getBoundingClientRect();
+        state.modalDrag = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            baseX: state.modalOffsetX,
+            baseY: state.modalOffsetY,
+            minX: 8 - rect.left,
+            maxX: window.innerWidth - 8 - rect.right,
+            minY: 8 - rect.top,
+            maxY: window.innerHeight - 8 - rect.bottom
+        };
+        dom.modal.classList.add("is-dragging");
+        dom.modal.setPointerCapture(event.pointerId);
+        event.preventDefault();
+    }
+
+    function moveModalDrag(event) {
+        const drag = state.modalDrag;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        const deltaX = Math.min(drag.maxX, Math.max(drag.minX, event.clientX - drag.startX));
+        const deltaY = Math.min(drag.maxY, Math.max(drag.minY, event.clientY - drag.startY));
+        setModalPosition(drag.baseX + deltaX, drag.baseY + deltaY);
+    }
+
+    function endModalDrag(event) {
+        if (!state.modalDrag || state.modalDrag.pointerId !== event.pointerId) return;
+        if (dom.modal.hasPointerCapture(event.pointerId)) dom.modal.releasePointerCapture(event.pointerId);
+        state.modalDrag = null;
+        dom.modal.classList.remove("is-dragging");
+    }
+
+    function moveModalWithKeyboard(event) {
+        if (event.target !== event.target.closest("[data-modal-drag-handle]")) return;
+        const directions = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] };
+        const direction = directions[event.key];
+        if (!direction) return;
+        const rect = dom.modal.getBoundingClientRect();
+        const deltaX = Math.min(window.innerWidth - 8 - rect.right, Math.max(8 - rect.left, direction[0]));
+        const deltaY = Math.min(window.innerHeight - 8 - rect.bottom, Math.max(8 - rect.top, direction[1]));
+        setModalPosition(state.modalOffsetX + deltaX, state.modalOffsetY + deltaY);
+        event.preventDefault();
+    }
+
+    function resetMessagePosition() {
+        state.messageDrag = null;
+        state.messageOffsetX = 0;
+        state.messageOffsetY = 0;
+        dom.messageDialog?.classList.remove("is-dragging");
+        dom.messageDialog?.style.removeProperty("--message-drag-x");
+        dom.messageDialog?.style.removeProperty("--message-drag-y");
+    }
+
+    function setMessagePosition(x, y) {
+        state.messageOffsetX = x;
+        state.messageOffsetY = y;
+        dom.messageDialog.style.setProperty("--message-drag-x", `${x}px`);
+        dom.messageDialog.style.setProperty("--message-drag-y", `${y}px`);
+    }
+
+    function startMessageDrag(event) {
+        const handle = event.target.closest("[data-message-drag-handle]");
+        if (!handle || event.button !== 0 || event.target.closest("button, a, input, select, textarea, label")) return;
+        const rect = dom.messageDialog.getBoundingClientRect();
+        state.messageDrag = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            baseX: state.messageOffsetX,
+            baseY: state.messageOffsetY,
+            minX: 8 - rect.left,
+            maxX: window.innerWidth - 8 - rect.right,
+            minY: 8 - rect.top,
+            maxY: window.innerHeight - 8 - rect.bottom
+        };
+        dom.messageDialog.classList.add("is-dragging");
+        dom.messageDialog.setPointerCapture(event.pointerId);
+        event.preventDefault();
+    }
+
+    function moveMessageDrag(event) {
+        const drag = state.messageDrag;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        const deltaX = Math.min(drag.maxX, Math.max(drag.minX, event.clientX - drag.startX));
+        const deltaY = Math.min(drag.maxY, Math.max(drag.minY, event.clientY - drag.startY));
+        setMessagePosition(drag.baseX + deltaX, drag.baseY + deltaY);
+    }
+
+    function endMessageDrag(event) {
+        if (!state.messageDrag || state.messageDrag.pointerId !== event.pointerId) return;
+        if (dom.messageDialog.hasPointerCapture(event.pointerId)) dom.messageDialog.releasePointerCapture(event.pointerId);
+        state.messageDrag = null;
+        dom.messageDialog.classList.remove("is-dragging");
+    }
+
+    function moveMessageWithKeyboard(event) {
+        if (event.target !== event.target.closest("[data-message-drag-handle]")) return;
+        const directions = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] };
+        const direction = directions[event.key];
+        if (!direction) return;
+        const rect = dom.messageDialog.getBoundingClientRect();
+        const deltaX = Math.min(window.innerWidth - 8 - rect.right, Math.max(8 - rect.left, direction[0]));
+        const deltaY = Math.min(window.innerHeight - 8 - rect.bottom, Math.max(8 - rect.top, direction[1]));
+        setMessagePosition(state.messageOffsetX + deltaX, state.messageOffsetY + deltaY);
+        event.preventDefault();
     }
 
     function openModal(content, options = {}) {
+        if (!dom.modal.open || !options.templateLibrary) resetModalPosition();
         state.modalReturnFocus = document.activeElement;
         dom.modalBody.innerHTML = content;
         dom.modal.classList.toggle("modal-wide", Boolean(options.wide));
+        dom.modal.classList.toggle("modal-template-library", Boolean(options.templateLibrary));
+        dom.modal.classList.toggle("modal-preview-simulator", Boolean(options.previewSimulator));
         dom.modal.setAttribute("aria-label", options.label || "안내");
+        dom.modalDragTitle.textContent = options.label || "레이어 창";
+        document.documentElement.classList.add("app-modal-open");
         if (!dom.modal.open) dom.modal.showModal();
         requestAnimationFrame(() => {
             const target = options.initialFocus ? dom.modal.querySelector(options.initialFocus) : dom.modal.querySelector("[autofocus]");
@@ -815,5 +1261,5 @@
     }
 
     window.Pages = window.Pages || {};
-    window.SurveyOneApp = { navigate, queryParams, toast, openModal, get user() { return state.user; } };
+    window.SurveyOneApp = { navigate, queryParams, toast, openModal, confirmMessage, refreshCurrentPage, get user() { return state.user; } };
 })();

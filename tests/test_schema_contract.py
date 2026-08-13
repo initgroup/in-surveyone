@@ -17,7 +17,9 @@ EXPECTED_TABLES = {
     "INIT$SVY_TB_AUDIT_LOG",
     "INIT$SVY_TB_AUTH_SESSION",
     "INIT$SVY_TB_DELIVERY",
+    "INIT$SVY_TB_DELIVERY_BATCH",
     "INIT$SVY_TB_DELIVERY_RECIPIENT",
+    "INIT$SVY_TB_DELIVERY_TARGET",
     "INIT$SVY_TB_GUEST_CAP",
     "INIT$SVY_TB_LANGUAGE",
     "INIT$SVY_TB_PAGE_HELP",
@@ -32,6 +34,7 @@ EXPECTED_TABLES = {
     "INIT$SVY_TB_SURVEY_SKIN",
     "INIT$SVY_TB_SURVEY_VERSION",
     "INIT$SVY_TB_TEMPLATE",
+    "INIT$SVY_TB_TEMPLATE_VERSION",
     "INIT$SVY_TB_TENANT",
     "INIT$SVY_TB_USER",
 }
@@ -215,6 +218,28 @@ def test_ddl_and_alt_have_identical_final_table_definitions() -> None:
         assert _normalize_sql(ddl_tables[table_name]) == _normalize_sql(alt_tables[table_name])
 
 
+def test_upgrade_additions_preserve_fresh_install_column_order() -> None:
+    ddl_tables = _table_definitions(_read(DDL_PATH))
+    alt = _read(ALT_PATH)
+    additions: dict[str, list[str]] = {}
+    for arguments in _literal_call_arguments(alt, "ADD_COLUMN_IF_MISSING"):
+        table_name = _decode_sql_literal_expression(arguments[0])
+        column_name = _decode_sql_literal_expression(arguments[1])
+        additions.setdefault(table_name, []).append(column_name)
+
+    assert additions
+    for table_name, added_columns in additions.items():
+        create_table = ddl_tables[table_name]
+        opening_index = create_table.find("(")
+        closing_index = _find_matching_parenthesis(create_table, opening_index)
+        final_columns = []
+        for item in _split_top_level(create_table[opening_index + 1 : closing_index]):
+            match = re.match(r'^"([A-Z0-9_]+)"\s+', item)
+            if match is not None:
+                final_columns.append(match.group(1))
+        assert final_columns[-len(added_columns) :] == added_columns, table_name
+
+
 def test_ddl_and_alt_have_identical_executed_index_and_sequence_definitions() -> None:
     ddl = _read(DDL_PATH)
     alt = _read(ALT_PATH)
@@ -248,6 +273,17 @@ def test_ddl_and_alt_have_identical_function_definitions() -> None:
     assert ddl_definitions
     assert set(ddl_definitions) == set(alt_definitions)
     assert ddl_definitions == alt_definitions
+
+
+def test_ddl_and_alt_have_identical_table_comments() -> None:
+    pattern = re.compile(
+        r"RUN_DDL\(q'\[(COMMENT ON TABLE .*?)\]'\s*,\s*'COMMENT [^']+'\);"
+    )
+    ddl_comments = {_normalize_sql(value) for value in pattern.findall(_read(DDL_PATH))}
+    alt_comments = {_normalize_sql(value) for value in pattern.findall(_read(ALT_PATH))}
+
+    assert ddl_comments
+    assert ddl_comments == alt_comments
 
 
 def test_alt_constraint_upgrades_match_final_ddl_definitions() -> None:
@@ -290,9 +326,9 @@ def test_all_declared_oracle_identifiers_use_project_prefix_and_fit_30_bytes() -
     assert all(name.startswith(PREFIX) for name in names)
     assert all(len(name.encode("ascii")) <= 30 for name in names)
 
-    assert len(re.findall(r'CREATE TABLE "INIT\$SVY_', ddl)) == 20
-    assert len(set(re.findall(r'CREATE (?:UNIQUE )?INDEX "(INIT\$SVY_[A-Z0-9_]+)"', ddl))) == 20
-    assert len(set(re.findall(r'CONSTRAINT "(INIT\$SVY_[A-Z0-9_]+)"', ddl))) == 123
+    assert len(re.findall(r'CREATE TABLE "INIT\$SVY_', ddl)) == 23
+    assert len(set(re.findall(r'CREATE (?:UNIQUE )?INDEX "(INIT\$SVY_[A-Z0-9_]+)"', ddl))) == 25
+    assert len(set(re.findall(r'CONSTRAINT "(INIT\$SVY_[A-Z0-9_]+)"', ddl))) == 164
     assert len(re.findall(r'CREATE OR REPLACE FUNCTION "INIT\$SVY_', ddl)) == 2
     assert ddl.count('CREATE SEQUENCE "INIT$SVY_SQ_GUEST_LOGIN"') == 1
 
@@ -313,6 +349,7 @@ def test_install_and_upgrade_scripts_are_idempotent_and_non_destructive() -> Non
     assert "CREATE_INDEX_IF_MISSING" in alt
     assert "CREATE_SEQUENCE_IF_MISSING" in ddl
     assert "CREATE_SEQUENCE_IF_MISSING" in alt
+    assert "ADD_COLUMN_IF_MISSING" in ddl
     assert "ADD_COLUMN_IF_MISSING" in alt
     assert "SVY$_TB_" in alt
     assert "RENAME TO" in alt
@@ -321,6 +358,63 @@ def test_install_and_upgrade_scripts_are_idempotent_and_non_destructive() -> Non
     assert alt.count('CREATE OR REPLACE FUNCTION "INIT$SVY_FN_') == 2
     for source in (ddl, alt):
         assert "WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK" in source
+
+
+def test_equivalent_existing_indexes_are_safe_on_ddl_and_alt_reruns() -> None:
+    for source in (_read(DDL_PATH), _read(ALT_PATH)):
+        procedure_start = source.index("PROCEDURE CREATE_INDEX_IF_MISSING")
+        procedure_end = source.index("PROCEDURE CREATE_SEQUENCE_IF_MISSING", procedure_start)
+        procedure = source[procedure_start:procedure_end]
+
+        assert "EXECUTE IMMEDIATE P_DDL" in procedure
+        assert "IF SQLCODE = -1408" in procedure
+        assert "equivalent column list under another index" in procedure
+        assert "RAISE;" in procedure
+
+
+def test_rerunnable_install_and_upgrade_add_columns_in_identical_table_order() -> None:
+    ddl = _read(DDL_PATH)
+    alt = _read(ALT_PATH)
+
+    def additions_by_table(source: str) -> dict[str, list[str]]:
+        result: dict[str, list[str]] = {}
+        for arguments in _literal_call_arguments(source, "ADD_COLUMN_IF_MISSING"):
+            table_name = _decode_sql_literal_expression(arguments[0])
+            result.setdefault(table_name, []).append(
+                _decode_sql_literal_expression(arguments[1])
+            )
+        return result
+
+    ddl_additions = additions_by_table(ddl)
+    alt_additions = additions_by_table(alt)
+
+    assert "FUNCTION COLUMN_EXISTS" in ddl
+    assert ddl_additions == alt_additions
+    final_tables = _table_definitions(ddl)
+    for table_name, added_columns in ddl_additions.items():
+        final_table = final_tables[table_name]
+        opening_index = final_table.find("(")
+        closing_index = _find_matching_parenthesis(final_table, opening_index)
+        final_columns = [
+            match.group(1)
+            for item in _split_top_level(
+                final_table[opening_index + 1 : closing_index]
+            )
+            if (match := re.match(r'^"([A-Z0-9_]+)"\s+', item)) is not None
+        ]
+        assert final_columns[-len(added_columns) :] == added_columns, table_name
+
+    for source in (ddl, alt):
+        assert source.index("'TEMPLATE_VERSION_NO', 'NUMBER'") < source.index(
+            "'INIT$SVY_FK_SURVEY_TPL_VER'"
+        )
+        assert source.index(
+            "'STATUS_CODE', 'VARCHAR2(20 BYTE) DEFAULT ''ACTIVE'' NOT NULL ENABLE'"
+        ) < source.index("'INIT$SVY_IX_TEMPLATE_STATUS'")
+
+    assert ddl.rindex("ADD_COLUMN_IF_MISSING(") < ddl.index(
+        "'INIT$SVY_IX_GCAP_EXP'"
+    )
 
 
 def test_guest_login_sequence_has_identical_rerunnable_definition() -> None:
@@ -335,6 +429,83 @@ def test_guest_login_sequence_has_identical_rerunnable_definition() -> None:
         assert "CREATE_SEQUENCE_IF_MISSING" in source
         assert source.count(definition) == 1
     assert "GUEST_SEQUENCE_COUNT" in _read(DATABASE / "auth.sql")
+
+
+def test_survey_soft_delete_status_is_supported_by_fresh_and_upgrade_schema() -> None:
+    ddl = _read(DDL_PATH)
+    alt = _read(ALT_PATH)
+    status_constraint = (
+        'CHECK ("STATUS_CODE" IN (\'DRAFT\', \'PUBLISHED\', \'CLOSED\', \'DELETED\')) ENABLE'
+    )
+
+    assert status_constraint in ddl
+    assert status_constraint in alt
+    assert "PROCEDURE ENSURE_SURVEY_STATUS_CONSTRAINT" in alt
+    assert "SEARCH_CONDITION_VC" in alt
+    assert "already supports DELETED" in alt
+    assert "STATUS_CODE IN ('DRAFT', 'CLOSED')" in _read(DATABASE / "surveys.sql")
+
+
+def test_delivery_upgrade_preserves_legacy_targets_without_reusing_the_plan() -> None:
+    alt = _read(ALT_PATH)
+    migration = alt.split(
+        "/* Preserve pre-batch target rows in a deterministic cancelled history batch.",
+        1,
+    )[1].split('UPDATE /*+ NO_PARALLEL(T) */ "INIT$SVY_TB_DELIVERY_TARGET" T', 1)[0]
+
+    assert 'INSERT /*+ NOAPPEND NO_PARALLEL */ INTO "INIT$SVY_TB_DELIVERY_BATCH"' in migration
+    assert "LOWER(RAWTOHEX(STANDARD_HASH(" in migration
+    assert "'CANCELLED'" in migration
+    assert "TO_CLOB('{\"migration\":\"legacy-targets\"}')" in migration
+    assert 'WHERE T."BATCH_ID" IS NULL' in migration
+    assert "NOT EXISTS" in migration
+    assert alt.index("REMOVE_OBSOLETE_BATCH_DEPLOY_KEY;") < alt.index(
+        'INSERT /*+ NOAPPEND NO_PARALLEL */ INTO "INIT$SVY_TB_DELIVERY_BATCH"'
+    )
+
+
+def test_alt_forces_schema_backfills_to_run_without_parallel_dml() -> None:
+    alt = _read(ALT_PATH)
+
+    commit_position = alt.index("COMMIT;")
+    disable_position = alt.index("ALTER SESSION DISABLE PARALLEL DML;")
+    first_block_position = alt.index("DECLARE")
+    assert commit_position < disable_position < first_block_position
+
+    for statement in (
+        'UPDATE /*+ NO_PARALLEL */ "INIT$SVY_TB_USER"',
+        'UPDATE /*+ NO_PARALLEL(T) */ "INIT$SVY_TB_TENANT" T',
+        'UPDATE /*+ NO_PARALLEL(S) */ "INIT$SVY_TB_SURVEY" S',
+        'UPDATE /*+ NO_PARALLEL */ "INIT$SVY_TB_TEMPLATE"',
+        'UPDATE /*+ NO_PARALLEL(V) */ "INIT$SVY_TB_SURVEY_VERSION" V',
+        'UPDATE /*+ NO_PARALLEL(A) */ "INIT$SVY_TB_RESPONSE_ANSWER" A',
+        'INSERT /*+ NOAPPEND NO_PARALLEL */ INTO "INIT$SVY_TB_DELIVERY_BATCH"',
+        'UPDATE /*+ NO_PARALLEL(T) */ "INIT$SVY_TB_DELIVERY_TARGET" T',
+    ):
+        assert statement in alt
+
+
+def test_template_seed_hashes_the_exact_clob_outside_oracle_sql() -> None:
+    templates = _read(DATABASE / "templates.sql")
+    statement = templates.split("-- [TEMPLATE_VERSION_SEED]", 1)[1].split(
+        "-- [ADMIN_TEMPLATE_LIST]", 1
+    )[0]
+
+    assert ":contentHash" in statement
+    assert "STANDARD_HASH(T.CONTENT_JSON" not in statement
+
+
+def test_template_status_upgrade_preserves_lifecycle_state_on_rerun() -> None:
+    alt = _read(ALT_PATH)
+
+    assert 'SET "STATUS_CODE" = \'ARCHIVED\'' in alt
+    assert 'WHERE "STATUS_CODE" = \'ACTIVE\'' in alt
+    assert 'SET "USE_YN" = \'N\'' in alt
+    assert 'WHERE "STATUS_CODE" IN (\'DRAFT\', \'ARCHIVED\')' in alt
+    assert (
+        'SET "STATUS_CODE" = CASE WHEN "USE_YN" = \'Y\' THEN \'ACTIVE\' ELSE \'ARCHIVED\' END'
+        not in alt
+    )
 
 
 def test_guest_login_collision_check_includes_inactive_and_expired_users() -> None:
@@ -403,7 +574,7 @@ def test_guest_language_help_and_destructive_utility_contracts() -> None:
     alt_seed = seed_pattern.search(alt)
     assert ddl_seed is not None and alt_seed is not None
     assert _normalize_sql(ddl_seed.group(0)) == _normalize_sql(alt_seed.group(0))
-    for language_code in ("ko", "en", "ja", "zh"):
+    for language_code in ("ko", "en", "ja", "zh", "vi", "fil"):
         assert f"SELECT '{language_code}'" in ddl_seed.group(0)
     locale_lookup = (
         'LOWER(I."LANG_CODE") = LOWER(REPLACE(TRIM(P_LANG_CODE), \'_\', \'-\'))'
@@ -474,7 +645,7 @@ def test_response_retry_and_answer_tenant_upgrade_contract() -> None:
         "TENANT_ID",
     ]
     assert 'ADD_COLUMN_IF_MISSING(\n        \'INIT$SVY_TB_RESPONSE_ANSWER\'' in alt
-    assert 'UPDATE "INIT$SVY_TB_RESPONSE_ANSWER" A' in alt
+    assert 'UPDATE /*+ NO_PARALLEL(A) */ "INIT$SVY_TB_RESPONSE_ANSWER" A' in alt
     assert re.search(
         r'WHERE\s+R\."RESPONSE_ID"\s*=\s*A\."RESPONSE_ID"',
         alt,
@@ -509,3 +680,15 @@ def test_temporary_legacy_drop_is_confirmed_and_prefix_scoped() -> None:
     assert "DROP TABLE " in legacy_drop
     assert "DBMS_ASSERT.ENQUOTE_NAME" not in legacy_drop
     assert "INIT$SVY_" in legacy_drop  # The header explicitly documents exclusion.
+
+
+def test_member_withdrawal_marker_is_present_in_fresh_and_upgrade_schema() -> None:
+    ddl_tables = _table_definitions(_read(DDL_PATH))
+    alt = _read(ALT_PATH)
+
+    assert '"WITHDRAWN_AT" TIMESTAMP (6) WITH TIME ZONE' in ddl_tables[
+        "INIT$SVY_TB_USER"
+    ]
+    assert "'INIT$SVY_TB_USER'" in alt
+    assert "'WITHDRAWN_AT'" in alt
+    assert "irreversible member withdrawal marker" in alt

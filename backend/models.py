@@ -12,6 +12,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SecretStr,
     computed_field,
     field_serializer,
     field_validator,
@@ -146,9 +147,46 @@ class UserView(ApiModel):
     tenant_id: str
     organization_name: str
     role: UserRole
+    system_admin: bool = False
     is_guest: bool
     guest_mode: GuestMode | None = None
     created_at: datetime
+
+
+class AdminMemberView(ApiModel):
+    id: str
+    login_id: str
+    name: str
+    email: str | None = None
+    tenant_id: str
+    organization_name: str
+    role: UserRole
+    system_admin: bool = False
+    is_guest: bool = False
+    guest_mode: GuestMode | None = None
+    active: bool = True
+    expires_at: datetime | None = None
+    withdrawn_at: datetime | None = None
+    created_at: datetime
+    last_login_at: datetime | None = None
+
+
+class AdminMemberPage(ApiModel):
+    items: list[AdminMemberView]
+    page: int
+    page_size: int
+    total: int
+    has_next: bool
+
+
+class AdminMemberStatusRequest(ApiModel):
+    active: bool
+
+
+class AdminPasswordResetView(ApiModel):
+    user_id: str
+    login_id: str
+    temporary_password: str = Field(repr=False)
 
 
 class GuestSessionRequest(ApiModel):
@@ -195,6 +233,10 @@ class SignupRequest(ApiModel):
     name: str = Field(min_length=1, max_length=100)
     email: str | None = Field(default=None, max_length=320)
     organization_name: str = Field(min_length=2, max_length=200)
+    terms_accepted: bool
+    privacy_accepted: bool
+    request_system_admin: bool = False
+    admin_key: SecretStr | None = Field(default=None, repr=False)
 
     @field_validator("login_id")
     @classmethod
@@ -210,10 +252,19 @@ class SignupRequest(ApiModel):
             raise ValueError("A valid email address is required.")
         return value
 
+    @model_validator(mode="after")
+    def require_signup_agreements_and_admin_key(self) -> SignupRequest:
+        if not self.terms_accepted or not self.privacy_accepted:
+            raise ValueError("이용약관과 개인정보 수집·이용에 모두 동의해야 합니다.")
+        if self.request_system_admin and not self.admin_key:
+            raise ValueError("플랫폼 관리자 가입에는 관리자 인증키가 필요합니다.")
+        return self
+
 
 class LoginRequest(ApiModel):
     login_id: str = Field(min_length=1, max_length=50)
     password: str = Field(min_length=1, max_length=128)
+    keep_signed_in: bool = False
 
 
 class GuestCredentialView(ApiModel):
@@ -252,6 +303,48 @@ class QuestionType(str, Enum):
 class QuestionOption(ApiModel):
     id: StableId = Field(default_factory=lambda: uuid4().hex[:12])
     label: str = Field(default="", max_length=500)
+
+
+class QuestionBehavior(str, Enum):
+    FIXED_REQUIRED = "fixed_required"
+    FIXED_OPTIONAL = "fixed_optional"
+    DYNAMIC_REQUIRED = "dynamic_required"
+    DYNAMIC_OPTIONAL = "dynamic_optional"
+
+
+class QuestionCondition(ApiModel):
+    source_question_id: StableId
+    operator: Literal[
+        "equals",
+        "not_equals",
+        "contains",
+        "in",
+        "exists",
+        "not_exists",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+    ] = "equals"
+    value: str | int | float | bool | list[str | int | float | bool] | None = None
+
+    @model_validator(mode="after")
+    def validate_condition_value(self) -> "QuestionCondition":
+        if self.operator in {"exists", "not_exists"}:
+            self.value = None
+        elif self.value is None or self.value == []:
+            raise ValueError("값 비교 조건에는 비교 값을 입력해야 합니다.")
+        if isinstance(self.value, list) and len(self.value) > 50:
+            raise ValueError("한 조건의 비교 값은 최대 50개까지 입력할 수 있습니다.")
+        values = self.value if isinstance(self.value, list) else [self.value]
+        if any(isinstance(item, float) and not math.isfinite(item) for item in values):
+            raise ValueError("조건 비교 값에는 유한한 숫자만 사용할 수 있습니다.")
+        return self
+
+
+class QuestionConditionGroup(ApiModel):
+    combinator: Literal["all", "any"] = "all"
+    conditions: list[QuestionCondition] = Field(min_length=1, max_length=20)
 
 
 class QuestionSettings(ApiModel):
@@ -302,6 +395,8 @@ class Question(ApiModel):
     title: str = Field(default="", max_length=1000)
     description: str | None = Field(default=None, max_length=4000)
     required: bool = False
+    behavior: QuestionBehavior = QuestionBehavior.FIXED_OPTIONAL
+    activation_condition: QuestionConditionGroup | None = None
     options: list[QuestionOption] = Field(default_factory=list, max_length=200)
     settings: QuestionSettings = Field(default_factory=QuestionSettings)
     min: float | None = None
@@ -319,6 +414,12 @@ class Question(ApiModel):
         if not isinstance(value, dict):
             return value
         payload = dict(value)
+        if "behavior" not in payload:
+            payload["behavior"] = (
+                QuestionBehavior.FIXED_REQUIRED.value
+                if bool(payload.get("required"))
+                else QuestionBehavior.FIXED_OPTIONAL.value
+            )
         aliases = {
             "single": QuestionType.SINGLE_CHOICE.value,
             "multiple": QuestionType.MULTIPLE_CHOICE.value,
@@ -396,8 +497,22 @@ class Question(ApiModel):
 
     @model_validator(mode="after")
     def validate_question_shape(self) -> "Question":
-        if self.type == QuestionType.TEXT and self.required:
-            raise ValueError("text blocks cannot be required.")
+        dynamic = self.behavior in {
+            QuestionBehavior.DYNAMIC_REQUIRED,
+            QuestionBehavior.DYNAMIC_OPTIONAL,
+        }
+        if dynamic and self.activation_condition is None:
+            raise ValueError("동적 문항에는 선행 문항 조건이 필요합니다.")
+        if not dynamic and self.activation_condition is not None:
+            raise ValueError("고정 문항에는 활성화 조건을 설정할 수 없습니다.")
+        self.required = self.behavior in {
+            QuestionBehavior.FIXED_REQUIRED,
+            QuestionBehavior.DYNAMIC_REQUIRED,
+        }
+        if self.type == QuestionType.TEXT and (
+            self.required or dynamic
+        ):
+            raise ValueError("안내 텍스트는 고정선택문항으로만 사용할 수 있습니다.")
         identifiers = [option.id for option in self.options]
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("Question option IDs must be unique.")
@@ -453,7 +568,33 @@ class SurveySection(ApiModel):
         return self
 
 
+def validate_question_activation_references(sections: list[SurveySection]) -> None:
+    ordered = [
+        question
+        for section in sections
+        for question in section.questions
+    ]
+    index_by_id = {question.id: index for index, question in enumerate(ordered)}
+    for target_index, question in enumerate(ordered):
+        group = question.activation_condition
+        if group is None:
+            continue
+        for condition in group.conditions:
+            source_index = index_by_id.get(condition.source_question_id)
+            if source_index is None:
+                raise ValueError(
+                    f"동적 문항 조건이 존재하지 않는 문항 ID를 참조합니다: {condition.source_question_id}"
+                )
+            if source_index >= target_index:
+                raise ValueError(
+                    "동적 문항 조건은 현재 문항보다 앞에 있는 선행 문항만 참조할 수 있습니다."
+                )
+            if ordered[source_index].type == QuestionType.TEXT:
+                raise ValueError("안내 텍스트는 동적 문항의 조건 문항으로 사용할 수 없습니다.")
+
+
 def validate_publish_ready_sections(sections: list[SurveySection]) -> None:
+    validate_question_activation_references(sections)
     answerable = False
     option_types = {
         QuestionType.SINGLE_CHOICE,
@@ -462,51 +603,47 @@ def validate_publish_ready_sections(sections: list[SurveySection]) -> None:
     }
     for section in sections:
         if not section.title.strip():
-            raise ValueError("Each section requires a title before publishing.")
+            raise ValueError("설문을 확정하려면 모든 섹션에 제목을 입력해야 합니다.")
         for question in section.questions:
             if not question.title.strip():
-                raise ValueError("Each question requires a title before publishing.")
+                raise ValueError("설문을 확정하려면 모든 문항에 제목을 입력해야 합니다.")
             if question.type != QuestionType.TEXT:
                 answerable = True
             if question.type in option_types:
                 if not question.options:
-                    raise ValueError(
-                        f"{question.type.value} questions require at least one option."
-                    )
+                    raise ValueError("선택형 문항에는 보기 항목이 한 개 이상 필요합니다.")
                 if any(not option.label.strip() for option in question.options):
-                    raise ValueError("Every answer option requires a label.")
+                    raise ValueError("모든 보기 항목에 내용을 입력해야 합니다.")
             if question.type in {QuestionType.MATRIX, QuestionType.TABLE}:
                 if not question.settings.rows or not question.settings.columns:
-                    raise ValueError(
-                        f"{question.type.value} questions require rows and columns."
-                    )
+                    raise ValueError("매트릭스와 표 문항에는 행과 열이 필요합니다.")
                 if any(
                     not item.label.strip()
                     for item in question.settings.rows + question.settings.columns
                 ):
-                    raise ValueError("Every row and column requires a label.")
+                    raise ValueError("모든 행과 열에 이름을 입력해야 합니다.")
             if question.type == QuestionType.REPEAT_TABLE:
                 if not question.settings.columns:
-                    raise ValueError("repeat_table questions require columns.")
+                    raise ValueError("반복표 문항에는 열이 한 개 이상 필요합니다.")
                 if any(not item.label.strip() for item in question.settings.columns):
-                    raise ValueError("Every repeat-table column requires a label.")
+                    raise ValueError("반복표의 모든 열에 이름을 입력해야 합니다.")
             if question.type == QuestionType.SCALE:
                 if question.min is None or question.max is None:
-                    raise ValueError("scale questions require min and max values.")
+                    raise ValueError("척도 문항에는 최솟값과 최댓값이 필요합니다.")
                 if not float(question.min).is_integer() or not float(
                     question.max
                 ).is_integer():
-                    raise ValueError("scale min and max must be integers.")
+                    raise ValueError("척도의 최솟값과 최댓값은 정수여야 합니다.")
                 if question.min not in {0, 1}:
-                    raise ValueError("scale min must be either 0 or 1.")
+                    raise ValueError("척도의 최솟값은 0 또는 1이어야 합니다.")
                 if question.min >= question.max:
-                    raise ValueError("scale min must be less than max.")
+                    raise ValueError("척도의 최솟값은 최댓값보다 작아야 합니다.")
                 if not 2 <= question.max <= 10:
-                    raise ValueError("scale max must be between 2 and 10.")
+                    raise ValueError("척도의 최댓값은 2에서 10 사이여야 합니다.")
                 if question.settings.step is not None and question.settings.step != 1:
-                    raise ValueError("scale step must be 1.")
+                    raise ValueError("척도의 간격은 1이어야 합니다.")
     if not answerable:
-        raise ValueError("A survey requires at least one answerable question.")
+        raise ValueError("설문을 확정하려면 응답 가능한 문항을 한 개 이상 추가해야 합니다.")
 
 
 class SurveyTheme(ApiModel):
@@ -523,6 +660,11 @@ class SurveyTheme(ApiModel):
         return _validate_asset_url(value)
 
 
+class SurveyPresentationMode(str, Enum):
+    SCROLL = "scroll"
+    ONE_AT_A_TIME = "one_at_a_time"
+
+
 class SurveySettings(ApiModel):
     collect_email: bool = False
     show_progress_bar: bool = True
@@ -536,6 +678,7 @@ class SurveySettings(ApiModel):
     starts_at: datetime | None = None
     closes_at: datetime | None = None
     anonymous: bool = True
+    presentation_mode: SurveyPresentationMode = SurveyPresentationMode.SCROLL
     show_progress: bool | None = None
     one_response: bool | None = None
     allow_edit: bool | None = None
@@ -790,6 +933,14 @@ class SurveyTemplate(SurveyLocaleMixin):
     sections: list[SurveySection]
     settings: SurveySettings = Field(default_factory=SurveySettings)
     theme: SurveyTheme = Field(default_factory=SurveyTheme)
+    skin: dict[str, Any] = Field(default_factory=dict)
+    logic_rules: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
+    version_no: int = Field(default=1, ge=1)
+
+    @field_validator("skin")
+    @classmethod
+    def validate_skin(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _validate_skin_assets(value) or {}
 
     @computed_field
     @property
@@ -817,21 +968,357 @@ class SurveyTemplate(SurveyLocaleMixin):
 
     @computed_field
     @property
-    def skin(self) -> dict[str, Any]:
-        return {
-            "preset": self.theme.code,
-            "primary": self.theme.primary_color,
-            "surface": self.theme.background_color,
-            "card": self.theme.card_color,
-            "font": self.theme.font_family,
-            "headerImageUrl": self.theme.logo_url,
-        }
+    def has_logic(self) -> bool:
+        return bool(self.logic_rules) or any(
+            question.activation_condition is not None
+            for section in self.sections
+            for question in section.questions
+        )
+
+    @model_validator(mode="after")
+    def validate_activation_conditions(self) -> "SurveyTemplate":
+        if not self.skin:
+            self.skin = {
+                "preset": self.theme.code,
+                "primary": self.theme.primary_color,
+                "surface": self.theme.background_color,
+                "card": self.theme.card_color,
+                "font": self.theme.font_family,
+                "headerImageUrl": self.theme.logo_url,
+            }
+        validate_question_activation_references(self.sections)
+        return self
 
 
 class SurveyStatus(str, Enum):
     DRAFT = "draft"
     PUBLISHED = "published"
     CLOSED = "closed"
+    DELETED = "deleted"
+
+
+class AdminTemplateStatus(str, Enum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+    DELETED = "deleted"
+
+
+class AdminTemplateDraftRequest(ApiModel):
+    title: str = Field(min_length=1, max_length=500)
+    template_code: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=50,
+        pattern=r"^[a-z0-9][a-z0-9-]{2,49}$",
+    )
+
+
+class AdminTemplateDraftView(ApiModel):
+    survey_id: str
+    source_survey_id: str
+    template_code: str | None = None
+    revision: int
+
+
+class AdminTemplatePublishRequest(ApiModel):
+    source_survey_id: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
+    category: str = Field(min_length=1, max_length=100)
+
+
+class AdminTemplatePatchRequest(ApiModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    category: str | None = Field(default=None, min_length=1, max_length=100)
+    status: AdminTemplateStatus | None = None
+
+    @model_validator(mode="after")
+    def require_change(self) -> "AdminTemplatePatchRequest":
+        if not self.model_fields_set:
+            raise ValueError("At least one template field must be supplied.")
+        if any(getattr(self, field_name) is None for field_name in self.model_fields_set):
+            raise ValueError("Template fields cannot be null.")
+        if self.status == AdminTemplateStatus.DELETED:
+            raise ValueError("Use the template delete endpoint to delete a template.")
+        return self
+
+
+class AdminTemplateView(ApiModel):
+    code: str
+    title: str
+    description: str
+    category: str
+    status: AdminTemplateStatus
+    version_no: int = Field(ge=0)
+    source_survey_id: str | None = None
+    draft_only: bool = False
+    question_count: int = Field(ge=0)
+    use_count: int = Field(default=0, ge=0)
+    published_at: datetime | None = None
+    updated_at: datetime
+
+
+class DeliveryChannel(str, Enum):
+    EMAIL = "EMAIL"
+    SMS = "SMS"
+    KAKAO = "KAKAO"
+    FAX = "FAX"
+
+
+class DeliveryRecipientInput(ApiModel):
+    id: StableId = Field(default_factory=lambda: uuid4().hex[:12])
+    name: str = Field(min_length=1, max_length=200)
+    country_code: str = Field(min_length=2, max_length=3, pattern=r"^[A-Z]{2,3}$")
+    preferred_language: str
+    email: str | None = Field(default=None, max_length=320)
+    mobile: str | None = Field(default=None, max_length=80)
+    fax: str | None = Field(default=None, max_length=80)
+    kakao_id: str | None = Field(default=None, max_length=200)
+    channels: list[DeliveryChannel] = Field(min_length=1, max_length=4)
+
+    @field_validator("preferred_language")
+    @classmethod
+    def validate_preferred_language(cls, value: str) -> str:
+        return _normalize_locale(value)
+
+    @field_validator("email", "mobile", "fax", "kakao_id")
+    @classmethod
+    def normalize_contact(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def validate_available_channels(self) -> "DeliveryRecipientInput":
+        if len(self.channels) != len(set(self.channels)):
+            raise ValueError("응답자별 발송 채널은 중복해서 선택할 수 없습니다.")
+        channel_fields = {
+            DeliveryChannel.EMAIL: self.email,
+            DeliveryChannel.SMS: self.mobile,
+            DeliveryChannel.KAKAO: self.kakao_id,
+            DeliveryChannel.FAX: self.fax,
+        }
+        missing = [channel.value for channel in self.channels if not channel_fields[channel]]
+        if missing:
+            raise ValueError(
+                "선택한 발송 채널에 필요한 연락처가 없습니다: " + ", ".join(missing)
+            )
+        if self.email and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", self.email):
+            raise ValueError("유효한 이메일 주소를 입력해 주세요.")
+        return self
+
+
+class DeliveryMessages(ApiModel):
+    email_subject: str = Field(default="", max_length=500)
+    email_body: str = Field(default="", max_length=10000)
+    sms_body: str = Field(default="", max_length=1000)
+    kakao_body: str = Field(default="", max_length=1000)
+    fax_title: str = Field(default="", max_length=500)
+    fax_body: str = Field(default="", max_length=10000)
+
+
+class DeliverySchedule(ApiModel):
+    mode: Literal["NOW", "SCHEDULED"] = "NOW"
+    scheduled_at: datetime | None = None
+    strategy: Literal["ALL_AVAILABLE", "PRIORITY_FALLBACK"] = "ALL_AVAILABLE"
+    priority: list[DeliveryChannel] = Field(default_factory=list, max_length=4)
+
+    @field_validator("scheduled_at")
+    @classmethod
+    def normalize_scheduled_at(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("예약 발송 시각에는 시간대 정보가 포함되어야 합니다.")
+        return value.astimezone(timezone.utc)
+
+    @model_validator(mode="after")
+    def validate_schedule(self) -> "DeliverySchedule":
+        if len(self.priority) != len(set(self.priority)):
+            raise ValueError("대체 발송 우선순위에는 같은 채널을 중복할 수 없습니다.")
+        if self.mode == "SCHEDULED" and self.scheduled_at is None:
+            raise ValueError("예약 발송 시각을 입력해 주세요.")
+        if (
+            self.mode == "SCHEDULED"
+            and self.scheduled_at is not None
+            and self.scheduled_at <= datetime.now(timezone.utc)
+        ):
+            raise ValueError("예약 발송 시각은 현재 시각보다 이후여야 합니다.")
+        if self.mode == "NOW":
+            self.scheduled_at = None
+        return self
+
+
+class DeploymentDraftRequest(ApiModel):
+    revision: int | None = Field(default=None, ge=1)
+    recipients: list[DeliveryRecipientInput] = Field(min_length=1, max_length=2000)
+    channels: list[DeliveryChannel] = Field(min_length=1, max_length=4)
+    messages_by_language: dict[str, DeliveryMessages] = Field(
+        min_length=1, max_length=20
+    )
+    schedule: DeliverySchedule = Field(default_factory=DeliverySchedule)
+    status: Literal["DRAFT"] = "DRAFT"
+
+    @field_validator("messages_by_language")
+    @classmethod
+    def normalize_message_locales(
+        cls, value: dict[str, DeliveryMessages]
+    ) -> dict[str, DeliveryMessages]:
+        return {_normalize_locale(locale): messages for locale, messages in value.items()}
+
+    @model_validator(mode="after")
+    def validate_delivery_plan(self) -> "DeploymentDraftRequest":
+        recipient_ids = [recipient.id for recipient in self.recipients]
+        if len(recipient_ids) != len(set(recipient_ids)):
+            raise ValueError("배포 대상자 ID는 배포 계획 안에서 고유해야 합니다.")
+        if len(self.channels) != len(set(self.channels)):
+            raise ValueError("배포 채널은 중복해서 선택할 수 없습니다.")
+        selected = set(self.channels)
+        unreachable = [
+            recipient.id
+            for recipient in self.recipients
+            if not selected.intersection(recipient.channels)
+        ]
+        if unreachable:
+            raise ValueError(
+                "선택한 채널로 전송할 수 없는 대상자가 있습니다: "
+                + ", ".join(unreachable[:10])
+            )
+        unavailable = [
+            channel.value
+            for channel in self.channels
+            if not any(channel in recipient.channels for recipient in self.recipients)
+        ]
+        if unavailable:
+            raise ValueError(
+                "선택한 채널로 전송 가능한 대상자가 없습니다: "
+                + ", ".join(unavailable)
+            )
+        recipient_locales = {recipient.preferred_language for recipient in self.recipients}
+        missing_locales = recipient_locales - set(self.messages_by_language)
+        if missing_locales:
+            raise ValueError(
+                "선호 언어별 안내문이 없습니다: " + ", ".join(sorted(missing_locales))
+            )
+        required_fields = {
+            DeliveryChannel.EMAIL: ("email_subject", "email_body"),
+            DeliveryChannel.SMS: ("sms_body",),
+            DeliveryChannel.KAKAO: ("kakao_body",),
+            DeliveryChannel.FAX: ("fax_title", "fax_body"),
+        }
+        required_by_locale: dict[str, set[DeliveryChannel]] = {
+            locale: set() for locale in recipient_locales
+        }
+        for recipient in self.recipients:
+            required_by_locale[recipient.preferred_language].update(
+                selected.intersection(recipient.channels)
+            )
+        for locale in recipient_locales:
+            messages = self.messages_by_language[locale]
+            for channel in required_by_locale[locale]:
+                for field_name in required_fields[channel]:
+                    if not getattr(messages, field_name).strip():
+                        raise ValueError(
+                            f"{locale} 안내문의 {channel.value} 필수 문안을 입력해 주세요."
+                        )
+        if self.schedule.strategy == "PRIORITY_FALLBACK":
+            if (
+                set(self.schedule.priority) != selected
+                or len(self.schedule.priority) != len(selected)
+            ):
+                raise ValueError("대체 발송 우선순위에는 선택한 채널을 모두 한 번씩 포함해 주세요.")
+        return self
+
+
+class DeploymentDraftView(DeploymentDraftRequest):
+    deployment_id: str
+    survey_id: str
+    survey_version: int
+    public_slug: str
+    revision: int
+    updated_at: datetime
+    execution_status: str | None = None
+
+
+class DeliveryProviderView(ApiModel):
+    enabled: bool
+    status: Literal["READY", "DISABLED"]
+    provider_code: str
+    reason: str
+
+
+class DeliveryProvidersView(ApiModel):
+    providers: dict[str, DeliveryProviderView]
+
+
+class DeliveryChannelResult(ApiModel):
+    channel: DeliveryChannel
+    status: Literal["QUEUED", "DISABLED"]
+    count: int = Field(ge=0)
+    reason: str | None = None
+
+
+class DeploymentExecutionView(ApiModel):
+    execution_status: Literal["QUEUED", "PARTIAL", "DISABLED"]
+    channel_results: list[DeliveryChannelResult]
+
+
+class DeploymentExecuteResult(ApiModel):
+    deployment: DeploymentDraftView
+    execution: DeploymentExecutionView
+
+
+class PopulationMode(str, Enum):
+    KNOWN = "known"
+    UNKNOWN = "unknown"
+
+
+class SurveyProjectProfile(ApiModel):
+    starts_at: datetime | None = None
+    closes_at: datetime | None = None
+    identified: bool = False
+    show_progress: bool = True
+    target_audience: str | None = Field(default=None, max_length=1000)
+    population_mode: PopulationMode = PopulationMode.UNKNOWN
+    population_size: int | None = Field(default=None, ge=1, le=1_000_000_000)
+    target_response_count: int | None = Field(default=None, ge=1, le=1_000_000_000)
+
+    @field_validator("starts_at", "closes_at")
+    @classmethod
+    def normalize_aware_datetime(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("조사 기간에는 시간대 정보가 포함되어야 합니다.")
+        return value.astimezone(timezone.utc)
+
+    @model_validator(mode="after")
+    def validate_profile(self) -> "SurveyProjectProfile":
+        if self.starts_at and self.closes_at and self.starts_at >= self.closes_at:
+            raise ValueError("조사 시작일은 종료일보다 빨라야 합니다.")
+        if self.population_mode == PopulationMode.KNOWN and self.population_size is None:
+            raise ValueError("모집단 크기를 알고 있는 경우 모집단 크기를 입력해 주세요.")
+        if self.population_mode == PopulationMode.UNKNOWN and self.population_size is not None:
+            raise ValueError("모집단 크기를 모르는 경우 모집단 크기를 비워 주세요.")
+        if (
+            self.population_size is not None
+            and self.target_response_count is not None
+            and self.target_response_count > self.population_size
+        ):
+            raise ValueError("목표 응답자 수는 모집단 크기보다 클 수 없습니다.")
+        return self
+
+
+class SurveyTemplateApplyRequest(ApiModel):
+    template_code: str = Field(min_length=1, max_length=100)
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class SurveyTemplateResetRequest(ApiModel):
+    expected_revision: int | None = Field(default=None, ge=1)
 
 
 class SurveyCreateRequest(SurveyLocaleMixin):
@@ -845,6 +1332,7 @@ class SurveyCreateRequest(SurveyLocaleMixin):
     settings: SurveySettings | None = None
     theme: SurveyTheme | None = None
     skin: dict[str, Any] | None = None
+    project_profile: SurveyProjectProfile = Field(default_factory=SurveyProjectProfile)
     logic_rules: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
 
     @field_validator("skin")
@@ -852,8 +1340,19 @@ class SurveyCreateRequest(SurveyLocaleMixin):
     def validate_skin(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
         return _validate_skin_assets(value)
 
+    @model_validator(mode="after")
+    def validate_activation_conditions(self) -> "SurveyCreateRequest":
+        if self.sections is not None:
+            validate_question_activation_references(self.sections)
+        elif self.questions is not None:
+            validate_question_activation_references(
+                [SurveySection(title="설문 문항", questions=self.questions)]
+            )
+        return self
+
 
 class SurveyUpdateRequest(ApiModel):
+    expected_revision: int | None = Field(default=None, ge=1)
     title: str | None = Field(default=None, max_length=500)
     description: str | None = Field(default=None, max_length=4000)
     category: str | None = Field(default=None, min_length=1, max_length=100)
@@ -862,6 +1361,7 @@ class SurveyUpdateRequest(ApiModel):
     settings: SurveySettings | None = None
     theme: SurveyTheme | None = None
     skin: dict[str, Any] | None = None
+    project_profile: SurveyProjectProfile | None = None
     logic_rules: list[dict[str, Any]] | None = Field(default=None, max_length=500)
     default_locale: str | None = None
     supported_locales: list[str] | None = Field(default=None, max_length=20)
@@ -911,6 +1411,12 @@ class SurveyUpdateRequest(ApiModel):
     ) -> "SurveyUpdateRequest":
         if self.sections is not None and self.translations is not None:
             validate_translation_references(self.translations, self.sections)
+        if self.sections is not None:
+            validate_question_activation_references(self.sections)
+        elif self.questions is not None:
+            validate_question_activation_references(
+                [SurveySection(title="설문 문항", questions=self.questions)]
+            )
         return self
 
 
@@ -929,14 +1435,25 @@ class SurveySummary(ApiModel):
     published_at: datetime | None = None
 
 
+class SurveyPage(ApiModel):
+    items: list[SurveySummary]
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=100)
+    total: int = Field(ge=0)
+    total_all: int = Field(ge=0)
+    has_next: bool
+
+
 class SurveyDetail(SurveySummary):
     description: str | None = None
     template_code: str | None = None
+    template_version_no: int | None = None
     revision: int
     sections: list[SurveySection]
     settings: SurveySettings
     theme: SurveyTheme
     skin: dict[str, Any] = Field(default_factory=dict)
+    project_profile: SurveyProjectProfile = Field(default_factory=SurveyProjectProfile)
     logic_rules: list[dict[str, Any]] = Field(default_factory=list)
     default_locale: str = "ko"
     supported_locales: list[str] = Field(default_factory=lambda: ["ko"])
@@ -951,6 +1468,7 @@ class SurveyDetail(SurveySummary):
     @model_validator(mode="after")
     def validate_translation_targets(self) -> "SurveyDetail":
         validate_translation_references(self.translations, self.sections)
+        validate_question_activation_references(self.sections)
         return self
 
     @computed_field
@@ -999,6 +1517,7 @@ class PublicSurvey(SurveyLocaleMixin):
     settings: SurveySettings
     theme: SurveyTheme
     skin: dict[str, Any] = Field(default_factory=dict)
+    project_profile: SurveyProjectProfile = Field(default_factory=SurveyProjectProfile)
     logic_rules: list[dict[str, Any]] = Field(default_factory=list)
     published_at: datetime
     requested_locale: str | None = None
@@ -1009,6 +1528,11 @@ class PublicSurvey(SurveyLocaleMixin):
     @classmethod
     def validate_skin(cls, value: dict[str, Any]) -> dict[str, Any]:
         return _validate_skin_assets(value) or {}
+
+    @model_validator(mode="after")
+    def validate_activation_conditions(self) -> "PublicSurvey":
+        validate_question_activation_references(self.sections)
+        return self
 
     @computed_field
     @property
