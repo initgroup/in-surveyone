@@ -280,7 +280,9 @@ CONNECT surveyone_app@service_name
 
 기본 guest 보존시간은 `SURVEYONE_GUEST_PROJECT_TTL_HOURS`로 조정합니다. 자원 남용을 막는 유한 quota는 `SURVEYONE_DB_GUEST_MAX_PROJECTS`(기본 10), `SURVEYONE_DB_GUEST_MAX_QUESTIONS`(설문당 기본 300), `SURVEYONE_DB_GUEST_MAX_RESPONSES`(설문당 기본 2,000)로 조정합니다. 실제 값은 신청 화면의 capability 안내에 표시됩니다. 로그인 쿠키는 공용 PC 안전을 위해 기본적으로 브라우저 세션 쿠키로 발급하며, 사용자가 `로그인 상태 유지`를 명시적으로 선택한 경우에만 만료 시간이 있는 영속 쿠키를 발급합니다. guest session cookie와 서버 session 만료는 tenant 만료시각을 넘지 않으며, 일반 회원 session은 `INIT_SESSION_TTL_SECONDS`를 따릅니다.
 
-설문 편집기의 `저장`은 현재 미완성 초안을 Oracle에 보관하는 명시적 동작입니다. `배포 준비`는 먼저 저장을 성공시킨 다음 배포 센터로 이동하여 안내문·모바일 미리보기·기간·응답 정책을 점검하는 동작이며, 그 자체로 공개 버전을 생성하지 않습니다. 실제 공개 URL과 불변 버전은 배포 센터에서 사용자가 `배포`를 확정할 때만 생성합니다.
+설문 편집기의 `저장`은 현재 미완성 초안을 Oracle에 보관하는 명시적 동작입니다. STEP 04의 `저장·확정 및 URL 발급`은 초안을 저장한 뒤 불변 `SurveyVersion`을 생성하고 공개 `/s/{slug}` URL을 발급합니다. M03001 배포 센터는 이미 발급된 URL을 사용해 대상자·채널·언어별 안내문을 저장하고, STEP 04에서 Oracle 발송 대기열에 `QUEUED` 또는 `DISABLED` 작업을 등록합니다. URL을 바꾸는 예외 동작은 명시적 `URL 재발급`뿐입니다.
+
+M02001의 설문 시작·종료 입력은 접속 브라우저와 Oracle Cloud DB 지역 설정에 관계없이 `Asia/Seoul`(KST, UTC+9)로 해석한 뒤 UTC instant로 저장합니다. 공개 URL의 기간 판정은 애플리케이션 서버의 UTC 시각과 확정 버전에 저장된 UTC instant를 비교하며, 표시만 KST로 변환합니다.
 
 공개 응답 JSON은 의미 데이터 기준 기본 256 KiB(`SURVEYONE_PUBLIC_SUBMIT_MAX_BYTES`), 전송 본문 기준 기본 512 KiB(`SURVEYONE_PUBLIC_BODY_MAX_BYTES`)로 제한합니다. guest·로그인·가입 본문은 각각 `SURVEYONE_GUEST_BODY_MAX_BYTES`, `SURVEYONE_AUTH_BODY_MAX_BYTES`로 JSON 파싱 전에 차단합니다. 서버는 전체 byte 크기뿐 아니라 중첩 깊이, 노드·문자열·컨테이너 수를 검증하고, 재시도는 `Idempotency-Key`로 같은 제출 결과를 재사용합니다.
 

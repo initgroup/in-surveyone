@@ -6,7 +6,7 @@
             pageTitle: "설문 참여", skipToSurvey: "설문 본문 바로가기", safeSurvey: "안전한 온라인 설문", surveyLanguage: "설문 언어", surveyLanguageAria: "설문 표시 언어",
             loadingTitle: "설문을 불러오고 있습니다.", loadingMessage: "잠시만 기다려 주세요.", estimatedTimeLabel: "예상 소요", questionCountLabel: "문항 수", responseModeLabel: "응답 방식",
             validationTitle: "확인이 필요한 문항이 있습니다.", pagerAria: "문항 이동", previous: "이전", next: "다음", draftLocal: "이 탭에 임시 저장됩니다.", notSentBeforeSubmit: "제출 전에는 서버에 전송하지 않습니다.", submit: "응답 제출하기",
-            invalidUrlTitle: "설문 주소가 올바르지 않습니다.", invalidUrlMessage: "전달받은 링크를 다시 확인해 주세요.", openFailedTitle: "설문을 열 수 없습니다.", descriptionFallback: "설문에 참여해 주세요.",
+            invalidUrlTitle: "설문 주소가 올바르지 않습니다.", invalidUrlMessage: "전달받은 링크를 다시 확인해 주세요.", openFailedTitle: "설문을 열 수 없습니다.", descriptionFallback: "설문에 참여해 주세요.", scheduledTitle: "아직 설문 기간이 시작되지 않았습니다.", scheduledMessage: "{title} 설문은 {start}부터 참여할 수 있습니다. 시작 시간 이후 이 페이지를 새로고침해 주세요.", closedTitle: "설문 기간이 종료되었습니다.", closedMessage: "{title} 설문은 {end}에 종료되어 더 이상 응답을 제출할 수 없습니다.",
             languageChangeFailed: "언어를 바꾸지 못했습니다. {message}", retry: "다시 시도해 주세요.", languageChangeTitle: "설문 언어를 바꾸지 못했습니다.", languageChangeRefresh: "페이지를 새로 고침한 뒤 다시 시도해 주세요.",
             expiryPolicy: "운영 정책에 따른 만료 시각", expiryUnknown: "확인되지 않은 만료 시각", demoBanner: "체험용 설문 · {expiry}까지만 접근할 수 있습니다. 실제 개인정보를 입력하지 마세요.",
             minutes: "약 {count}분", questions: "{count}개", identified: "기명", anonymous: "익명", required: "필수", selectPlaceholder: "선택하세요", shortPlaceholder: "답변을 입력하세요", longPlaceholder: "의견을 자유롭게 입력하세요", numberPlaceholder: "숫자 입력",
@@ -18,7 +18,7 @@
             pageTitle: "Survey participation", skipToSurvey: "Skip to survey", safeSurvey: "Secure online survey", surveyLanguage: "Survey language", surveyLanguageAria: "Survey display language",
             loadingTitle: "Loading the survey.", loadingMessage: "Please wait a moment.", estimatedTimeLabel: "Estimated time", questionCountLabel: "Questions", responseModeLabel: "Response mode",
             validationTitle: "Some questions need your attention.", pagerAria: "Question navigation", previous: "Previous", next: "Next", draftLocal: "Your draft is saved in this tab.", notSentBeforeSubmit: "Nothing is sent to the server before submission.", submit: "Submit response",
-            invalidUrlTitle: "This survey address is invalid.", invalidUrlMessage: "Please check the link you received.", openFailedTitle: "The survey could not be opened.", descriptionFallback: "Please take part in this survey.",
+            invalidUrlTitle: "This survey address is invalid.", invalidUrlMessage: "Please check the link you received.", openFailedTitle: "The survey could not be opened.", descriptionFallback: "Please take part in this survey.", scheduledTitle: "This survey has not started yet.", scheduledMessage: "{title} will open on {start}. Refresh this page after the start time.", closedTitle: "This survey has ended.", closedMessage: "{title} closed on {end} and no longer accepts responses.",
             languageChangeFailed: "The language could not be changed. {message}", retry: "Please try again.", languageChangeTitle: "The survey language could not be changed.", languageChangeRefresh: "Refresh the page and try again.",
             expiryPolicy: "the expiry time set by policy", expiryUnknown: "an unknown expiry time", demoBanner: "Demo survey · Available only until {expiry}. Do not enter real personal information.",
             minutes: "About {count} min", questions: "{count}", identified: "Identified", anonymous: "Anonymous", required: "Required", selectPlaceholder: "Select an option", shortPlaceholder: "Enter your answer", longPlaceholder: "Enter your comments", numberPlaceholder: "Enter a number",
@@ -30,7 +30,7 @@
             pageTitle: "アンケートに回答", skipToSurvey: "アンケート本文へ移動", safeSurvey: "安全なオンラインアンケート", surveyLanguage: "アンケート言語", surveyLanguageAria: "アンケートの表示言語",
             loadingTitle: "アンケートを読み込んでいます。", loadingMessage: "しばらくお待ちください。", estimatedTimeLabel: "所要時間", questionCountLabel: "設問数", responseModeLabel: "回答方式",
             validationTitle: "確認が必要な設問があります。", pagerAria: "設問の移動", previous: "前へ", next: "次へ", draftLocal: "このタブに一時保存されます。", notSentBeforeSubmit: "送信するまでサーバーには送られません。", submit: "回答を送信",
-            invalidUrlTitle: "アンケートのURLが正しくありません。", invalidUrlMessage: "受け取ったリンクをもう一度確認してください。", openFailedTitle: "アンケートを開けません。", descriptionFallback: "アンケートにご協力ください。",
+            invalidUrlTitle: "アンケートのURLが正しくありません。", invalidUrlMessage: "受け取ったリンクをもう一度確認してください。", openFailedTitle: "アンケートを開けません。", descriptionFallback: "アンケートにご協力ください。", scheduledTitle: "アンケート期間はまだ始まっていません。", scheduledMessage: "{title}は{start}から回答できます。開始時刻後にこのページを再読み込みしてください。", closedTitle: "アンケート期間は終了しました。", closedMessage: "{title}は{end}に終了したため、回答を送信できません。",
             languageChangeFailed: "言語を変更できませんでした。{message}", retry: "もう一度お試しください。", languageChangeTitle: "アンケートの言語を変更できませんでした。", languageChangeRefresh: "ページを再読み込みして、もう一度お試しください。",
             expiryPolicy: "運用ポリシーで定められた有効期限", expiryUnknown: "確認できない有効期限", demoBanner: "体験用アンケート · {expiry}まで利用できます。実際の個人情報は入力しないでください。",
             minutes: "約{count}分", questions: "{count}問", identified: "記名", anonymous: "匿名", required: "必須", selectPlaceholder: "選択してください", shortPlaceholder: "回答を入力してください", longPlaceholder: "ご意見を自由に入力してください", numberPlaceholder: "数値を入力",
@@ -42,7 +42,7 @@
             pageTitle: "参与问卷", skipToSurvey: "跳到问卷正文", safeSurvey: "安全的在线问卷", surveyLanguage: "问卷语言", surveyLanguageAria: "问卷显示语言",
             loadingTitle: "正在加载问卷。", loadingMessage: "请稍候。", estimatedTimeLabel: "预计用时", questionCountLabel: "题目数", responseModeLabel: "答题方式",
             validationTitle: "有题目需要检查。", pagerAria: "题目导航", previous: "上一题", next: "下一题", draftLocal: "草稿将保存在此标签页。", notSentBeforeSubmit: "提交前不会发送到服务器。", submit: "提交答卷",
-            invalidUrlTitle: "问卷地址无效。", invalidUrlMessage: "请重新检查您收到的链接。", openFailedTitle: "无法打开问卷。", descriptionFallback: "请参与本次问卷。",
+            invalidUrlTitle: "问卷地址无效。", invalidUrlMessage: "请重新检查您收到的链接。", openFailedTitle: "无法打开问卷。", descriptionFallback: "请参与本次问卷。", scheduledTitle: "问卷尚未开始。", scheduledMessage: "{title}将于{start}开始。请在开始时间后刷新此页面。", closedTitle: "问卷已结束。", closedMessage: "{title}已于{end}结束，无法继续提交答卷。",
             languageChangeFailed: "无法切换语言。{message}", retry: "请重试。", languageChangeTitle: "无法切换问卷语言。", languageChangeRefresh: "请刷新页面后重试。",
             expiryPolicy: "按运营政策设定的到期时间", expiryUnknown: "未知的到期时间", demoBanner: "体验问卷 · 仅可使用至{expiry}。请勿填写真实个人信息。",
             minutes: "约{count}分钟", questions: "{count}题", identified: "实名", anonymous: "匿名", required: "必填", selectPlaceholder: "请选择", shortPlaceholder: "请输入答案", longPlaceholder: "请自由填写意见", numberPlaceholder: "请输入数字",
@@ -54,7 +54,7 @@
             pageTitle: "Tham gia khảo sát", skipToSurvey: "Đi đến nội dung khảo sát", safeSurvey: "Khảo sát trực tuyến an toàn", surveyLanguage: "Ngôn ngữ khảo sát", surveyLanguageAria: "Ngôn ngữ hiển thị khảo sát",
             loadingTitle: "Đang tải khảo sát.", loadingMessage: "Vui lòng chờ trong giây lát.", estimatedTimeLabel: "Thời gian dự kiến", questionCountLabel: "Số câu hỏi", responseModeLabel: "Hình thức trả lời",
             validationTitle: "Có câu hỏi cần được kiểm tra.", pagerAria: "Điều hướng câu hỏi", previous: "Trước", next: "Tiếp", draftLocal: "Bản nháp được lưu trong thẻ này.", notSentBeforeSubmit: "Dữ liệu chưa được gửi đến máy chủ trước khi nộp.", submit: "Gửi câu trả lời",
-            invalidUrlTitle: "Địa chỉ khảo sát không hợp lệ.", invalidUrlMessage: "Vui lòng kiểm tra lại liên kết bạn nhận được.", openFailedTitle: "Không thể mở khảo sát.", descriptionFallback: "Vui lòng tham gia khảo sát này.",
+            invalidUrlTitle: "Địa chỉ khảo sát không hợp lệ.", invalidUrlMessage: "Vui lòng kiểm tra lại liên kết bạn nhận được.", openFailedTitle: "Không thể mở khảo sát.", descriptionFallback: "Vui lòng tham gia khảo sát này.", scheduledTitle: "Khảo sát chưa bắt đầu.", scheduledMessage: "{title} sẽ mở vào {start}. Hãy tải lại trang sau thời gian bắt đầu.", closedTitle: "Khảo sát đã kết thúc.", closedMessage: "{title} đã kết thúc vào {end} và không còn nhận phản hồi.",
             languageChangeFailed: "Không thể đổi ngôn ngữ. {message}", retry: "Vui lòng thử lại.", languageChangeTitle: "Không thể đổi ngôn ngữ khảo sát.", languageChangeRefresh: "Hãy tải lại trang rồi thử lại.",
             expiryPolicy: "thời điểm hết hạn theo chính sách", expiryUnknown: "thời điểm hết hạn chưa xác định", demoBanner: "Khảo sát dùng thử · Chỉ truy cập được đến {expiry}. Không nhập thông tin cá nhân thật.",
             minutes: "Khoảng {count} phút", questions: "{count} câu", identified: "Có danh tính", anonymous: "Ẩn danh", required: "Bắt buộc", selectPlaceholder: "Vui lòng chọn", shortPlaceholder: "Nhập câu trả lời", longPlaceholder: "Tự do nhập ý kiến", numberPlaceholder: "Nhập số",
@@ -66,7 +66,7 @@
             pageTitle: "Pagsagot sa survey", skipToSurvey: "Pumunta sa survey", safeSurvey: "Ligtas na online survey", surveyLanguage: "Wika ng survey", surveyLanguageAria: "Wika ng pagpapakita ng survey",
             loadingTitle: "Nilo-load ang survey.", loadingMessage: "Mangyaring maghintay sandali.", estimatedTimeLabel: "Tinatayang oras", questionCountLabel: "Mga tanong", responseModeLabel: "Paraan ng pagsagot",
             validationTitle: "May mga tanong na kailangang suriin.", pagerAria: "Paglipat sa mga tanong", previous: "Nakaraan", next: "Susunod", draftLocal: "Naka-save ang draft sa tab na ito.", notSentBeforeSubmit: "Hindi ito ipapadala sa server bago isumite.", submit: "Isumite ang sagot",
-            invalidUrlTitle: "Hindi wasto ang address ng survey.", invalidUrlMessage: "Pakisuring muli ang link na natanggap mo.", openFailedTitle: "Hindi mabuksan ang survey.", descriptionFallback: "Mangyaring lumahok sa survey na ito.",
+            invalidUrlTitle: "Hindi wasto ang address ng survey.", invalidUrlMessage: "Pakisuring muli ang link na natanggap mo.", openFailedTitle: "Hindi mabuksan ang survey.", descriptionFallback: "Mangyaring lumahok sa survey na ito.", scheduledTitle: "Hindi pa nagsisimula ang survey.", scheduledMessage: "Magbubukas ang {title} sa {start}. I-refresh ang pahinang ito pagkatapos ng oras ng pagsisimula.", closedTitle: "Tapos na ang survey.", closedMessage: "Nagsara ang {title} noong {end} at hindi na tumatanggap ng mga sagot.",
             languageChangeFailed: "Hindi mapalitan ang wika. {message}", retry: "Pakisubukang muli.", languageChangeTitle: "Hindi mapalitan ang wika ng survey.", languageChangeRefresh: "I-refresh ang pahina at subukang muli.",
             expiryPolicy: "oras ng pag-expire ayon sa patakaran", expiryUnknown: "hindi matukoy na oras ng pag-expire", demoBanner: "Demo survey · Maa-access lamang hanggang {expiry}. Huwag maglagay ng totoong personal na impormasyon.",
             minutes: "Humigit-kumulang {count} min", questions: "{count}", identified: "May pangalan", anonymous: "Anonymous", required: "Kailangan", selectPlaceholder: "Pumili", shortPlaceholder: "Ilagay ang sagot", longPlaceholder: "Malayang ilagay ang iyong opinyon", numberPlaceholder: "Maglagay ng numero",
@@ -429,11 +429,51 @@
         }
     }
 
+    function formatSurveyBoundary(value) {
+        const date = new Date(value || "");
+        if (Number.isNaN(date.getTime())) return "-";
+        try {
+            return new Intl.DateTimeFormat(state.locale, {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: "Asia/Seoul",
+                timeZoneName: "short"
+            }).format(date);
+        } catch {
+            return date.toLocaleString();
+        }
+    }
+
+    function renderAvailabilityState() {
+        const status = String(state.survey.availabilityStatus || state.survey.availability_status || "OPEN").toUpperCase();
+        const title = localizedSurveyField("title");
+        if (status === "SCHEDULED") {
+            showState("◷", text("scheduledTitle"), text("scheduledMessage", {
+                title,
+                start: formatSurveyBoundary(setting("startsAt", "starts_at", null))
+            }));
+            return true;
+        }
+        if (status === "CLOSED") {
+            showState("■", text("closedTitle"), text("closedMessage", {
+                title,
+                end: formatSurveyBoundary(setting("closesAt", "closes_at", null))
+            }));
+            return true;
+        }
+        return false;
+    }
+
     function render() {
         applySkin();
         renderLanguageSelector();
+        dom.state.hidden = true;
         document.title = `${localizedSurveyField("title")} | IN-SURVEYONE`;
         document.querySelector("[data-public-organization]").textContent = state.survey.organizationName || state.survey.tenantName || text("safeSurvey");
+        if (renderAvailabilityState()) return;
         document.querySelector("[data-public-category]").textContent = (state.survey.category || "ONLINE SURVEY").toUpperCase();
         document.querySelector("[data-public-title]").textContent = localizedSurveyField("title");
         document.querySelector("[data-public-description]").textContent = localizedSurveyField("description") || text("descriptionFallback");
@@ -456,6 +496,7 @@
             questionIndex += section.questions.filter((question) => question.type !== "notice").length;
             return result;
         }).join("");
+        renderCustomCode();
 
         const showProgress = setting("showProgressBar", "showProgress", true);
         document.querySelector(".public-progress").hidden = !showProgress;
@@ -489,6 +530,78 @@
         if (headerImage) {
             image.classList.add("has-image");
             image.style.backgroundImage = `linear-gradient(90deg,rgba(7,22,45,.25),rgba(7,22,45,0)),url("${headerImage}")`;
+        }
+    }
+
+    function splitSelectorList(value) {
+        const selectors = [];
+        let start = 0;
+        let depth = 0;
+        let quote = "";
+        for (let index = 0; index < value.length; index += 1) {
+            const character = value[index];
+            if (quote) {
+                if (character === quote && value[index - 1] !== "\\") quote = "";
+                continue;
+            }
+            if (character === '"' || character === "'") quote = character;
+            else if (character === "(" || character === "[") depth += 1;
+            else if (character === ")" || character === "]") depth = Math.max(0, depth - 1);
+            else if (character === "," && depth === 0) { selectors.push(value.slice(start, index)); start = index + 1; }
+        }
+        selectors.push(value.slice(start));
+        return selectors.map((item) => item.trim()).filter(Boolean);
+    }
+
+    function scopedCustomCss(source) {
+        const value = String(source || "");
+        if (!value.trim() || /@import|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:|position\s*:\s*fixed|url\s*\(/i.test(value)) return "";
+        try {
+            const sheet = new CSSStyleSheet();
+            sheet.replaceSync(value);
+            const serialize = (rules) => [...rules].map((rule) => {
+                if (rule.type === CSSRule.STYLE_RULE) {
+                    const selector = splitSelectorList(rule.selectorText).map((item) => item.includes(":scope") ? item.replaceAll(":scope", ".public-form") : `.public-form ${item}`).join(",");
+                    return selector ? `${selector}{${rule.style.cssText}}` : "";
+                }
+                if (rule.type === CSSRule.MEDIA_RULE) return `@media ${rule.conditionText}{${serialize(rule.cssRules)}}`;
+                if (rule.type === CSSRule.SUPPORTS_RULE) return `@supports ${rule.conditionText}{${serialize(rule.cssRules)}}`;
+                if (rule.type === CSSRule.KEYFRAMES_RULE) return rule.cssText;
+                return "";
+            }).join("");
+            return serialize(sheet.cssRules);
+        } catch {
+            return "";
+        }
+    }
+
+    function renderCustomCode() {
+        const frame = document.querySelector("[data-public-custom-code]");
+        let style = document.querySelector("[data-public-custom-style]");
+        if (!style) {
+            style = document.createElement("style");
+            style.dataset.publicCustomStyle = "";
+            document.head.append(style);
+        }
+        const source = window.SurveyCodeEditor.normalize(state.survey.skin?.customCode);
+        style.textContent = source.enabled ? scopedCustomCss(source.css) : "";
+        frame.hidden = true;
+        frame.dataset.enabled = "false";
+        frame.removeAttribute("srcdoc");
+        if (!source.enabled || (!source.html.trim() && !source.javascript.trim())) return;
+        frame.dataset.enabled = "true";
+        frame.dataset.placement = source.placement;
+        if (source.placement === "afterQuestions") dom.list.after(frame); else dom.list.before(frame);
+        frame.srcdoc = window.SurveyCodeEditor.sandboxDocument(source);
+        frame.hidden = false;
+        if (!state.customMessageHandler) {
+            state.customMessageHandler = (event) => {
+                const currentFrame = document.querySelector("[data-public-custom-code]");
+                if (event.source !== currentFrame?.contentWindow || event.data?.type !== "surveyone-custom-resize") return;
+                const height = Math.max(80, Math.min(1600, Number(event.data.height) || 100));
+                currentFrame.style.height = `${height}px`;
+            };
+            window.addEventListener("message", state.customMessageHandler);
         }
     }
 
@@ -844,8 +957,15 @@
         dom.form.classList.toggle("is-one-at-a-time", paged);
         dom.pager.hidden = !paged;
         const cards = activeQuestionCards();
+        const customFrame = document.querySelector("[data-public-custom-code]");
+        const updateCustomFrame = () => {
+            if (!customFrame) return;
+            const afterLastQuestion = customFrame.dataset.placement === "afterQuestions";
+            customFrame.hidden = customFrame.dataset.enabled !== "true" || (paged && afterLastQuestion && state.activeQuestionIndex < cards.length - 1);
+        };
         if (!paged) {
             cards.forEach((card) => card.classList.remove("is-current-question"));
+            updateCustomFrame();
             return;
         }
         state.activeQuestionIndex = Math.min(Math.max(0, state.activeQuestionIndex), Math.max(0, cards.length - 1));
@@ -853,6 +973,7 @@
         dom.previous.disabled = state.activeQuestionIndex === 0;
         dom.next.hidden = state.activeQuestionIndex >= cards.length - 1;
         dom.pageStatus.textContent = text("pageStatus", { current: cards.length ? state.activeQuestionIndex + 1 : 0, total: cards.length });
+        updateCustomFrame();
     }
 
     function moveQuestionPage(delta) {
@@ -1088,7 +1209,9 @@
     function showState(icon, title, message) {
         dom.loading.hidden = true;
         dom.form.hidden = true;
+        document.querySelector(".public-progress").hidden = true;
         dom.state.hidden = false;
         dom.state.innerHTML = `<span class="public-state-icon">${Common.escapeHtml(icon)}</span><h1>${Common.escapeHtml(title)}</h1><p>${Common.escapeHtml(message)}</p><a href="/">${Common.escapeHtml(text("home"))}</a>`;
+        document.querySelector("#surveyMain")?.focus({ preventScroll: true });
     }
 })();

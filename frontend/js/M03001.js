@@ -29,7 +29,7 @@
         1: "배포 대상자를 준비하세요.",
         2: "복수 채널과 발송 방식을 정하세요.",
         3: "언어별 설문 URL과 안내문을 확인하세요.",
-        4: "최종 발송 계획을 검토하세요."
+        4: "최종 발송 계획을 검토하고 대기열에 등록하세요."
     };
 
     function uid(prefix = "recipient") {
@@ -52,6 +52,7 @@
             this.root = context.root;
             this.items = [];
             this.current = null;
+            this.publishedSurvey = null;
             this.draft = null;
             this.providers = this.normalizeProviders({});
             this.publicBaseUrl = location.origin;
@@ -64,6 +65,7 @@
             this.recipientPage = 1;
             this.recipientPageSize = 25;
             this.importingRecipients = false;
+            this.regeneratingUrl = false;
             this.bind();
             await this.load();
         },
@@ -83,6 +85,8 @@
                 if (recipientPage && !recipientPage.disabled) return this.changeRecipientPage(Number(recipientPage.dataset.recipientPage));
                 const remove = event.target.closest("[data-remove-recipient]");
                 if (remove) return this.removeRecipient(remove.dataset.removeRecipient);
+                const replaceContact = event.target.closest("[data-replace-recipient-contact]");
+                if (replaceContact) return this.replaceMaskedContact(replaceContact);
                 const target = event.target.closest("[data-distribution-step-target]");
                 if (target && !target.disabled) return this.goStep(Number(target.dataset.distributionStepTarget));
                 if (event.target.closest("[data-distribution-previous]")) return this.goStep(Math.max(1, this.step - 1));
@@ -91,6 +95,9 @@
                 if (event.target.closest("[data-distribution-execute]")) return this.execute();
                 if (event.target.closest("[data-new-distribution-batch]")) return this.startNewBatch();
                 if (event.target.closest("[data-edit-survey-languages]")) return this.context.navigate("M02003", { surveyId: this.current.id });
+                const emailEditor = event.target.closest("[data-edit-email-html]");
+                if (emailEditor) return this.openEmailEditor(emailEditor.dataset.editEmailHtml);
+                if (event.target.closest("[data-regenerate-public-url]")) return this.regeneratePublicUrl();
                 const copy = event.target.closest("[data-copy-language-url]");
                 if (copy) return this.copyLanguageUrl(copy.dataset.copyLanguageUrl);
             };
@@ -206,7 +213,17 @@
             const version = Number(item.publishedVersion || item.version || 1);
             const deploymentStatus = String(item.deploymentStatus || "").toUpperCase();
             const deploymentLabel = ({ DRAFT: "배포 설정 저장됨", QUEUED: "발송 대기", RUNNING: "발송 중", COMPLETE: "발송 완료", DISABLED: "발송 보류" })[deploymentStatus] || "대상·채널 설정";
-            return `<article class="distribution-project-card"><header><span class="status-badge status-published">확정 v${version}</span><span class="distribution-project-state">${deploymentLabel}</span></header><button type="button" class="distribution-project-main" data-open-distribution-project="${Common.escapeHtml(item.id)}"><span class="project-category">${Common.escapeHtml(item.category || "설문")}</span><h3>${Common.escapeHtml(item.title || "제목 없는 설문")}</h3><span class="project-id">프로젝트 ID <code>${Common.escapeHtml(item.id)}</code></span><p>${Common.escapeHtml(item.description || "대상자와 채널을 설정해 배포를 시작하세요.")}</p></button><dl><div><dt>확정 버전</dt><dd>v${version}</dd></div><div><dt>문항</dt><dd>${Common.formatNumber(item.questionCount || 0)}</dd></div><div><dt>응답</dt><dd>${Common.formatNumber(responses)}</dd></div></dl><footer><span>${Common.formatDate(item.publishedAt || item.updatedAt)} 확정</span><button class="button button-small button-primary" type="button" data-open-distribution-project="${Common.escapeHtml(item.id)}">배포 작업</button></footer></article>`;
+            const publicUrl = this.publicUrlFor(item);
+            const startsAt = item.startsAt || item.starts_at;
+            const closesAt = item.closesAt || item.closes_at;
+            const formatPeriod = (value, fallback) => value
+                ? `${Common.formatDate(value, { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Seoul" })} KST`
+                : fallback;
+            const periodMarkup = `<span class="distribution-project-period"><small>설문 기간 · M02001 설정</small><strong>${Common.escapeHtml(formatPeriod(startsAt, "즉시 시작"))} ~ ${Common.escapeHtml(formatPeriod(closesAt, "종료 제한 없음"))}</strong></span>`;
+            const urlMarkup = publicUrl
+                ? `<div class="distribution-project-public-url"><span>설문 URL</span><a href="${Common.escapeHtml(publicUrl)}" target="_blank" rel="noopener noreferrer" title="${Common.escapeHtml(publicUrl)}"><code>${Common.escapeHtml(publicUrl)}</code><b aria-hidden="true">↗</b><span class="sr-only">새 탭에서 설문 열기</span></a><small>${Common.formatDate(item.publishedAt || item.updatedAt)} 확정</small></div>`
+                : `<span>${Common.formatDate(item.publishedAt || item.updatedAt)} 확정</span>`;
+            return `<article class="distribution-project-card"><header><span class="status-badge status-published">확정 v${version}</span><span class="distribution-project-state">${deploymentLabel}</span></header><button type="button" class="distribution-project-main" data-open-distribution-project="${Common.escapeHtml(item.id)}"><span class="project-category">${Common.escapeHtml(item.category || "설문")}</span><h3>${Common.escapeHtml(item.title || "제목 없는 설문")}</h3><span class="project-id">프로젝트 ID <code>${Common.escapeHtml(item.id)}</code></span><p>${Common.escapeHtml(item.description || "대상자와 채널을 설정해 배포를 시작하세요.")}</p>${periodMarkup}</button><dl><div><dt>확정 버전</dt><dd>v${version}</dd></div><div><dt>문항</dt><dd>${Common.formatNumber(item.questionCount || 0)}</dd></div><div><dt>응답</dt><dd>${Common.formatNumber(responses)}</dd></div></dl><footer>${urlMarkup}<button class="button button-small button-primary" type="button" data-open-distribution-project="${Common.escapeHtml(item.id)}">배포 작업</button></footer></article>`;
         },
 
         async openProject(id) {
@@ -220,6 +237,7 @@
                 ]);
                 this.current = detailPayload?.survey || detailPayload;
                 if (!this.current || !this.isFinalized(this.current)) throw new Error("확정된 프로젝트만 배포할 수 있습니다.");
+                this.publishedSurvey = await this.loadPublishedSurveyState(this.current);
                 this.draft = this.normalizeDraft(deploymentPayload?.deployment || deploymentPayload);
                 this.recipientPage = 1;
                 this.step = 1;
@@ -231,6 +249,7 @@
                 this.root.querySelector("[data-distribution-survey-title]").textContent = this.current.title;
                 this.root.querySelector("[data-distribution-project-id]").textContent = this.current.id;
                 this.root.querySelector("[data-distribution-version]").textContent = `v${this.current.publishedVersion || this.current.version || 1}`;
+                this.renderProjectContext();
                 this.renderProviderAlert();
                 this.renderRecipients();
                 this.renderChannels();
@@ -356,6 +375,114 @@
                 : `<strong>외부 발송 provider 준비 완료</strong><span>선택한 채널의 수신 동의와 최종 대상 수를 STEP 04에서 다시 확인하세요.</span>`;
         },
 
+        async loadPublishedSurveyState(survey) {
+            const slug = String(survey?.slug || survey?.publicUrl || survey?.public_url || "")
+                .split("?")[0]
+                .split("/")
+                .filter(Boolean)
+                .pop();
+            if (!slug) return null;
+            try {
+                const payload = await this.context.api.get(`/api/public/surveys/${encodeURIComponent(slug)}`);
+                return payload?.survey || payload;
+            } catch {
+                return null;
+            }
+        },
+
+        periodFromSurvey(survey) {
+            const settings = survey?.settings || {};
+            const profile = survey?.projectProfile || survey?.project_profile || {};
+            return {
+                startsAt: profile.startsAt || profile.starts_at || settings.startsAt || settings.starts_at || null,
+                closesAt: profile.closesAt || profile.closes_at || settings.closesAt || settings.closes_at || null
+            };
+        },
+
+        surveyPeriod() {
+            return this.periodFromSurvey(this.current);
+        },
+
+        publishedSurveyPeriod() {
+            return this.publishedSurvey
+                ? this.periodFromSurvey(this.publishedSurvey)
+                : this.surveyPeriod();
+        },
+
+        renderProjectContext() {
+            if (!this.root || !this.current) return;
+            const version = Number(this.current.publishedVersion || this.current.version || 1);
+            const configuredPeriod = this.surveyPeriod();
+            const publishedPeriod = this.publishedSurveyPeriod();
+            const configuredStartsAt = configuredPeriod.startsAt ? new Date(configuredPeriod.startsAt) : null;
+            const configuredClosesAt = configuredPeriod.closesAt ? new Date(configuredPeriod.closesAt) : null;
+            const startsAt = publishedPeriod.startsAt ? new Date(publishedPeriod.startsAt) : null;
+            const closesAt = publishedPeriod.closesAt ? new Date(publishedPeriod.closesAt) : null;
+            const serverTime = this.publishedSurvey?.serverTime || this.publishedSurvey?.server_time;
+            const parsedServerTime = serverTime ? new Date(serverTime) : null;
+            const now = parsedServerTime && !Number.isNaN(parsedServerTime.getTime()) ? parsedServerTime : new Date();
+            const validStart = startsAt && !Number.isNaN(startsAt.getTime()) ? startsAt : null;
+            const validClose = closesAt && !Number.isNaN(closesAt.getTime()) ? closesAt : null;
+            const validConfiguredStart = configuredStartsAt && !Number.isNaN(configuredStartsAt.getTime()) ? configuredStartsAt : null;
+            const validConfiguredClose = configuredClosesAt && !Number.isNaN(configuredClosesAt.getTime()) ? configuredClosesAt : null;
+            const formatBoundary = (value) => `${Common.formatDate(value, { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Seoul" })} KST`;
+            const sameBoundary = (left, right) => (left?.getTime?.() ?? null) === (right?.getTime?.() ?? null);
+            const periodMatchesPublished = sameBoundary(validConfiguredStart, validStart)
+                && sameBoundary(validConfiguredClose, validClose);
+
+            let responseLabel = "응답 진행 중 · 기간 제한 없음";
+            let responseClass = "is-active";
+            const availability = upper(this.publishedSurvey?.availabilityStatus || this.publishedSurvey?.availability_status);
+            if (availability === "SCHEDULED" || (validStart && now < validStart)) {
+                responseLabel = "응답 시작 전";
+                responseClass = "is-scheduled";
+            } else if (availability === "CLOSED" || (validClose && now >= validClose)) {
+                responseLabel = "응답 기간 종료";
+                responseClass = "is-ended";
+            } else if (validStart || validClose) responseLabel = "응답 진행 중";
+
+            const summary = this.items.find((item) => String(item.id) === String(this.current.id));
+            const executionStatus = upper(this.draft?.executionStatus || "");
+            const summaryStatus = upper(summary?.deploymentStatus || "");
+            const deliveryLabels = {
+                QUEUED: "발송 대기",
+                RUNNING: "발송 진행 중",
+                COMPLETE: "발송 완료",
+                DISABLED: "발송 보류"
+            };
+            const deliveryLabel = deliveryLabels[executionStatus]
+                || (summaryStatus === "ACTIVE" ? "배포 진행 중" : this.draft?.revision ? `배포 초안 r${this.draft.revision}` : "배포 설정 전");
+            const deliveryClass = ["QUEUED", "RUNNING", "COMPLETE"].includes(executionStatus) || summaryStatus === "ACTIVE" ? "is-active" : executionStatus === "DISABLED" ? "is-scheduled" : "";
+            const surveyStatus = String(this.current.status || "published").toLowerCase();
+            const surveyLabel = surveyStatus === "closed" ? "설문 종료" : `설문 확정 v${version}`;
+
+            this.root.querySelector("[data-distribution-context-title]").textContent = this.publishedSurvey?.title || this.current.title || "제목 없는 설문";
+            this.root.querySelector("[data-distribution-context-project-id]").textContent = this.current.id;
+            this.root.querySelector("[data-distribution-context-version]").textContent = `v${version}`;
+            this.root.querySelector("[data-distribution-context-start]").textContent = validConfiguredStart
+                ? formatBoundary(validConfiguredStart)
+                : "즉시 시작 · 제한 없음";
+            this.root.querySelector("[data-distribution-context-end]").textContent = validConfiguredClose
+                ? formatBoundary(validConfiguredClose)
+                : "종료 제한 없음";
+            const surveyState = this.root.querySelector("[data-distribution-context-survey-state]");
+            surveyState.textContent = surveyLabel;
+            surveyState.className = surveyStatus === "closed" ? "is-ended" : "is-active";
+            const responseState = this.root.querySelector("[data-distribution-context-response-state]");
+            responseState.textContent = responseLabel;
+            responseState.className = responseClass;
+            const periodSync = this.root.querySelector("[data-distribution-context-period-sync]");
+            periodSync.textContent = !this.publishedSurvey
+                ? "확정본 기간 확인 불가"
+                : periodMatchesPublished
+                ? "M02001 기간 · 확정본 반영"
+                : "M02001 기간 변경 미확정 · 재확정 필요";
+            periodSync.className = periodMatchesPublished && this.publishedSurvey ? "is-active" : "is-scheduled";
+            const deploymentState = this.root.querySelector("[data-distribution-context-deployment-state]");
+            deploymentState.textContent = deliveryLabel;
+            deploymentState.className = deliveryClass;
+        },
+
         renderRecipients() {
             const host = this.root.querySelector("[data-recipient-list]");
             const total = this.draft.recipients.length;
@@ -392,7 +519,11 @@
             const countries = COUNTRIES.map((country) => `<option value="${country.code}" ${country.code === recipient.countryCode ? "selected" : ""}>${country.label}</option>`).join("");
             const enabled = new Set(this.enabledLocales());
             const languages = this.localeCatalog().map((locale) => `<option value="${locale.code}" ${locale.code === recipient.preferredLanguage ? "selected" : ""} ${enabled.has(locale.code) ? "" : "disabled"}>${Common.escapeHtml(locale.nativeLabel || locale.label)}${enabled.has(locale.code) ? "" : " · 번역 미확정"}</option>`).join("");
-            const contacts = CHANNELS.map((channel) => `<label class="recipient-contact"><span>${channel.label}</span><input type="${channel.code === "EMAIL" ? "email" : "text"}" value="${Common.escapeHtml(recipient[channel.field])}" placeholder="${channel.placeholder}" data-recipient-field="${channel.field}"></label>`).join("");
+            const contacts = CHANNELS.map((channel) => {
+                const value = String(recipient[channel.field] || "");
+                const masked = this.isMaskedContact(value);
+                return `<label class="recipient-contact${masked ? " is-masked" : ""}"><span>${channel.label}${masked ? "<small>저장된 값</small>" : ""}</span><span class="recipient-contact-control"><input type="${channel.code === "EMAIL" && !masked ? "email" : "text"}" value="${Common.escapeHtml(value)}" placeholder="${channel.placeholder}" data-recipient-field="${channel.field}" ${masked ? "readonly aria-label=\"마스킹된 연락처. 전체 값을 변경하려면 변경 버튼을 누르세요.\"" : ""}>${masked ? `<button class="button button-small" type="button" data-replace-recipient-contact="${channel.field}">변경</button>` : ""}</span></label>`;
+            }).join("");
             const channelChecks = CHANNELS.map((channel) => `<label class="recipient-channel ${this.providerReady(channel.code) ? "" : "is-provider-disabled"}"><input type="checkbox" value="${channel.code}" data-recipient-channel="${channel.code}" ${recipient.channels.includes(channel.code) ? "checked" : ""}><span>${channel.label}<small data-recipient-channel-status="${channel.code}"></small></span></label>`).join("");
             return `<article class="distribution-recipient" data-recipient-row="${Common.escapeHtml(recipient.id)}"><div class="recipient-identity"><span class="recipient-number">${String(index + 1).padStart(2, "0")}</span><label><span>대상자명 또는 코드</span><input required value="${Common.escapeHtml(recipient.name)}" placeholder="예: 응답자 A001" data-recipient-field="name"></label><label><span>국가</span><select data-recipient-field="countryCode">${countries}</select></label></div><label class="recipient-language"><span>선호 언어</span><select data-recipient-field="preferredLanguage">${languages}</select></label><div class="recipient-contacts">${contacts}</div><fieldset class="recipient-channels"><legend>전송 가능한 채널</legend>${channelChecks}</fieldset><button class="icon-button recipient-remove" type="button" data-remove-recipient="${Common.escapeHtml(recipient.id)}" aria-label="${Common.escapeHtml(recipient.name || `${index + 1}번 대상자`)} 삭제">×</button></article>`;
         },
@@ -400,6 +531,29 @@
         recipientByElement(element) {
             const id = element.closest("[data-recipient-row]")?.dataset.recipientRow;
             return this.draft.recipients.find((item) => String(item.id) === String(id));
+        },
+
+        isMaskedContact(value) {
+            return String(value || "").includes("*");
+        },
+
+        replaceMaskedContact(button) {
+            const recipient = this.recipientByElement(button);
+            const field = button.dataset.replaceRecipientContact;
+            const channel = CHANNELS.find((item) => item.field === field);
+            const row = button.closest("[data-recipient-row]");
+            const input = row?.querySelector(`[data-recipient-field="${field}"]`);
+            if (!recipient || !channel || !input || !this.isMaskedContact(recipient[field])) return;
+            recipient[field] = "";
+            input.value = "";
+            input.readOnly = false;
+            input.type = channel.code === "EMAIL" ? "email" : "text";
+            input.setAttribute("aria-label", `${channel.label} 전체 값 입력`);
+            button.closest(".recipient-contact")?.classList.remove("is-masked");
+            button.closest(".recipient-contact")?.querySelector("small")?.remove();
+            button.remove();
+            input.focus();
+            this.markDirty();
         },
 
         updateRecipientField(element, changed = false) {
@@ -666,11 +820,12 @@
             const messages = this.draft.messagesByLanguage[locale];
             const selected = new Set(this.draft.channels);
             const fields = [];
-            if (selected.has("EMAIL")) fields.push(`<label class="form-field">이메일 제목<input data-message-locale="${locale}" data-message-field="emailSubject" value="${Common.escapeHtml(messages.emailSubject)}"></label><label class="form-field">이메일 본문<textarea rows="5" data-message-locale="${locale}" data-message-field="emailBody">${Common.escapeHtml(messages.emailBody)}</textarea></label>`);
+            if (selected.has("EMAIL")) fields.push(`<label class="form-field">이메일 제목<input data-message-locale="${locale}" data-message-field="emailSubject" value="${Common.escapeHtml(messages.emailSubject)}"></label><div class="form-field distribution-email-html-field"><div class="distribution-message-field-heading"><span>이메일 본문</span><button class="button button-small button-secondary" type="button" data-edit-email-html="${locale}">&lt;/&gt; HTML 편집기</button></div><textarea rows="5" aria-label="${Common.escapeHtml(this.localeLabel(locale))} 이메일 본문" data-message-locale="${locale}" data-message-field="emailBody">${Common.escapeHtml(messages.emailBody)}</textarea><small>일반 문구 또는 HTML을 입력할 수 있으며 512KB까지 CLOB 배포 계획에 저장됩니다.</small></div>`);
             if (selected.has("SMS")) fields.push(`<label class="form-field">문자 안내문<textarea rows="3" maxlength="1000" data-message-locale="${locale}" data-message-field="smsBody">${Common.escapeHtml(messages.smsBody)}</textarea></label>`);
             if (selected.has("KAKAO")) fields.push(`<label class="form-field">카카오 안내문<textarea rows="3" maxlength="1000" data-message-locale="${locale}" data-message-field="kakaoBody">${Common.escapeHtml(messages.kakaoBody)}</textarea></label>`);
             if (selected.has("FAX")) fields.push(`<label class="form-field">팩스 표지 제목<input data-message-locale="${locale}" data-message-field="faxTitle" value="${Common.escapeHtml(messages.faxTitle)}"></label><label class="form-field">팩스 안내문<textarea rows="4" data-message-locale="${locale}" data-message-field="faxBody">${Common.escapeHtml(messages.faxBody)}</textarea></label>`);
-            return `<details class="distribution-message-card" ${open ? "open" : ""}><summary><span><strong>${Common.escapeHtml(this.localeLabel(locale))}</strong><small>${Common.formatNumber(this.draft.recipients.filter((item) => this.localeCode(item.preferredLanguage) === locale).length)}명 대상</small></span><b>${this.enabledLocales().includes(locale) ? "확정 번역 사용" : "기본 언어 대체"}</b></summary><div class="distribution-language-url"><label>설문 URL<input readonly value="${Common.escapeHtml(this.languageUrl(locale))}"></label><button class="button button-small" type="button" data-copy-language-url="${locale}">URL 복사</button></div><div class="distribution-message-fields">${fields.join("") || '<p class="muted">STEP 02에서 발송 채널을 선택하면 안내문 입력란이 표시됩니다.</p>'}</div></details>`;
+            const languageUrl = this.languageUrl(locale);
+            return `<details class="distribution-message-card" ${open ? "open" : ""}><summary><span><strong>${Common.escapeHtml(this.localeLabel(locale))}</strong><small>${Common.formatNumber(this.draft.recipients.filter((item) => this.localeCode(item.preferredLanguage) === locale).length)}명 대상</small></span><b>${this.enabledLocales().includes(locale) ? "확정 번역 사용" : "기본 언어 대체"}</b></summary><div class="distribution-language-url"><label>설문 URL<input readonly value="${Common.escapeHtml(languageUrl)}"></label><div class="distribution-url-actions"><button class="button button-small" type="button" data-regenerate-public-url>URL 재발급</button><button class="button button-small" type="button" data-copy-language-url="${locale}">URL 복사</button><a class="button button-small distribution-open-url" href="${Common.escapeHtml(languageUrl)}" target="_blank" rel="noopener noreferrer" title="새 탭에서 설문 열기" aria-label="${Common.escapeHtml(this.localeLabel(locale))} 설문을 새 탭에서 열기"><span aria-hidden="true">↗</span></a></div></div><div class="distribution-message-fields">${fields.join("") || '<p class="muted">STEP 02에서 발송 채널을 선택하면 안내문 입력란이 표시됩니다.</p>'}</div></details>`;
         },
 
         updateMessageField(element) {
@@ -680,12 +835,97 @@
             this.markDirty();
         },
 
-        publicUrl() {
-            const slug = this.current?.publicSlug || this.current?.slug;
-            const value = this.current?.publicUrl || (slug ? `/s/${encodeURIComponent(slug)}` : "");
+        async openEmailEditor(value) {
+            const locale = this.localeCode(value);
+            this.draft.messagesByLanguage[locale] ||= this.invitationDefaults(locale);
+            await window.SurveyCodeEditor.open({
+                context: this.context,
+                title: `${this.localeLabel(locale)} · 이메일 HTML 안내문`,
+                description: "이메일 본문 HTML을 문법 강조와 격리 미리보기로 작성합니다. 이메일에서는 JavaScript가 실행되지 않습니다.",
+                tabs: ["html"],
+                allowEnable: false,
+                allowPlacement: false,
+                email: true,
+                sources: { enabled: true, html: this.draft.messagesByLanguage[locale].emailBody },
+                onApply: (source) => {
+                    this.draft.messagesByLanguage[locale].emailBody = source.html;
+                    const textarea = [...this.root.querySelectorAll('[data-message-field="emailBody"]')].find((item) => this.localeCode(item.dataset.messageLocale) === locale);
+                    if (textarea) textarea.value = source.html;
+                    this.markDirty();
+                    this.context.toast(`${this.localeLabel(locale)} 이메일 HTML 안내문을 배포 초안에 반영했습니다.`, "success");
+                }
+            });
+        },
+
+        publicUrlFor(item) {
+            const slug = item?.publicSlug || item?.slug;
+            const value = item?.publicUrl || (slug ? `/s/${encodeURIComponent(slug)}` : "");
             if (!value) return "";
             try { return new URL(String(value), this.publicBaseUrl || location.origin).href; }
             catch { return ""; }
+        },
+
+        publicUrl() {
+            return this.publicUrlFor(this.current);
+        },
+
+        replaceDraftPublicUrl(previousUrl, nextUrl) {
+            if (!previousUrl || !nextUrl || previousUrl === nextUrl) return;
+            let previousPath = "";
+            let nextPath = "";
+            try {
+                previousPath = new URL(previousUrl).pathname;
+                nextPath = new URL(nextUrl).pathname;
+            } catch { /* absolute URLs are expected; exact replacement still applies. */ }
+            Object.values(this.draft.messagesByLanguage || {}).forEach((messages) => {
+                Object.keys(messages || {}).forEach((key) => {
+                    if (typeof messages[key] !== "string") return;
+                    messages[key] = messages[key].replaceAll(previousUrl, nextUrl);
+                    if (previousPath && nextPath) {
+                        const escapedPath = previousPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                        messages[key] = messages[key].replace(new RegExp(`${escapedPath}(?![a-z0-9-])`, "g"), nextPath);
+                    }
+                });
+            });
+        },
+
+        async regeneratePublicUrl() {
+            if (this.regeneratingUrl || !this.current || this.draft?.executionStatus) return;
+            if (!(await this.context.confirmMessage(
+                "설문 URL을 재발급하면 기존 URL은 즉시 사용할 수 없게 됩니다. 이미 발송한 링크와 QR 코드도 새 URL로 다시 안내해야 합니다.",
+                { title: "설문 URL 재발급", confirmLabel: "기존 URL 폐기 후 재발급", tone: "warning", destructive: true }
+            ))) return;
+            const previousUrl = this.publicUrl();
+            const wasDirty = this.dirty;
+            this.regeneratingUrl = true;
+            this.setActionDisabled(true);
+            this.updateSaveState("URL 재발급 중…");
+            try {
+                const payload = await this.context.api.post(`/api/surveys/${encodeURIComponent(this.current.id)}/public-url/regenerate`, {});
+                const result = payload?.publicUrl ? payload : payload?.data || payload;
+                this.current.slug = result.slug;
+                this.current.publicSlug = result.slug;
+                this.current.publicUrl = result.publicUrl;
+                const listItem = this.items.find((item) => String(item.id) === String(this.current.id));
+                if (listItem) {
+                    listItem.slug = result.slug;
+                    listItem.publicUrl = result.publicUrl;
+                }
+                const nextUrl = this.publicUrl();
+                this.replaceDraftPublicUrl(previousUrl, nextUrl);
+                if (Number.isInteger(result.deploymentRevision)) this.draft.revision = result.deploymentRevision;
+                this.renderMessages();
+                if (this.step === 4) this.renderReview();
+                this.dirty = wasDirty;
+                this.updateSaveState(wasDirty ? null : `URL 재발급됨${this.draft.revision ? ` · 초안 r${this.draft.revision} 동기화` : ""}`);
+                this.context.toast("새 설문 URL을 발급했습니다. 기존 URL은 더 이상 열리지 않습니다.", "success");
+            } catch (error) {
+                this.updateSaveState("URL 재발급 실패");
+                this.context.toast(error.message, "error");
+            } finally {
+                this.regeneratingUrl = false;
+                this.setActionDisabled(false);
+            }
         },
 
         languageUrl(locale) {
@@ -791,13 +1031,13 @@
                 const ready = this.providerReady(channel.code);
                 return `<div class="distribution-review-channel ${ready ? "is-ready" : "is-disabled"}"><span class="distribution-channel-icon channel-${channel.code.toLowerCase()}">${channel.icon}</span><span><strong>${channel.label}</strong><small>${Common.formatNumber(count)}명 대상</small></span><b>${ready ? "실행 가능" : "DISABLED 예정"}</b></div>`;
             }).join("");
-            this.root.querySelector("[data-distribution-review]").innerHTML = `<div class="distribution-review-summary"><article><span>대상자</span><strong>${Common.formatNumber(this.draft.recipients.length)}명</strong><small>수신 동의·보유기간 서버 검증 필요</small></article><article><span>언어</span><strong>${languageCounts.length}개</strong><small>${languageCounts.map((item) => `${this.localeLabel(item.locale).split(" · ")[0]} ${item.count}명`).join(" · ")}</small></article><article><span>전송 방식</span><strong>${this.draft.schedule.strategy === "ALL_AVAILABLE" ? "모든 선택 채널" : "우선순위·대체"}</strong><small>${selected.map((item) => item.label).join(" · ")}</small></article><article><span>발송 시점</span><strong>${schedule}</strong><small>확정 버전 v${this.current.publishedVersion || this.current.version || 1}</small></article></div><section class="distribution-review-section"><h4>채널별 실행 준비</h4><div class="distribution-review-channels">${channelCards}</div></section><section class="distribution-review-section"><h4>언어별 설문 URL</h4><div class="distribution-review-languages">${languageCounts.map((item) => `<div><span><strong>${Common.escapeHtml(this.localeLabel(item.locale))}</strong><small>${item.count}명</small></span><code>${Common.escapeHtml(this.languageUrl(item.locale))}</code><button class="button button-small" type="button" data-copy-language-url="${item.locale}">복사</button></div>`).join("")}</div></section>`;
+            this.root.querySelector("[data-distribution-review]").innerHTML = `<div class="distribution-review-summary"><article><span>대상자</span><strong>${Common.formatNumber(this.draft.recipients.length)}명</strong><small>수신 동의·보유기간 서버 검증 필요</small></article><article><span>언어</span><strong>${languageCounts.length}개</strong><small>${languageCounts.map((item) => `${this.localeLabel(item.locale).split(" · ")[0]} ${item.count}명`).join(" · ")}</small></article><article><span>전송 방식</span><strong>${this.draft.schedule.strategy === "ALL_AVAILABLE" ? "모든 선택 채널" : "우선순위·대체"}</strong><small>${selected.map((item) => item.label).join(" · ")}</small></article><article><span>발송 시점</span><strong>${schedule}</strong><small>확정 버전 v${this.current.publishedVersion || this.current.version || 1}</small></article></div><section class="distribution-review-section"><h4>채널별 실행 준비</h4><div class="distribution-review-channels">${channelCards}</div></section><section class="distribution-review-section"><h4>언어별 설문 URL</h4><div class="distribution-review-languages">${languageCounts.map((item) => { const url = this.languageUrl(item.locale); return `<div><span><strong>${Common.escapeHtml(this.localeLabel(item.locale))}</strong><small>${item.count}명</small></span><code>${Common.escapeHtml(url)}</code><div class="distribution-url-actions"><button class="button button-small" type="button" data-regenerate-public-url>URL 재발급</button><button class="button button-small" type="button" data-copy-language-url="${item.locale}">복사</button><a class="button button-small distribution-open-url" href="${Common.escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="새 탭에서 설문 열기" aria-label="${Common.escapeHtml(this.localeLabel(item.locale))} 설문을 새 탭에서 열기"><span aria-hidden="true">↗</span></a></div></div>`; }).join("")}</div></section>`;
             const disabled = selected.filter((item) => !this.providerReady(item.code));
             const note = this.root.querySelector("[data-execute-note]");
             note.className = `distribution-execute-note${disabled.length ? " is-warning" : " is-ready"}`;
             note.innerHTML = disabled.length
-                ? `<strong>실행 시 일부 채널이 보류됩니다.</strong><span>${disabled.map((item) => `${item.label}: ${this.providers[item.code].reason}`).join(" / ")} 초안과 실행 요청 이력은 저장되며 서버 응답의 <code>executionStatus: DISABLED</code>와 채널별 사유를 표시합니다.</span>`
-                : `<strong>발송 실행 준비가 완료되었습니다.</strong><span>실행 전 대상자 수신 동의와 언어별 문안을 마지막으로 확인하세요.</span>`;
+                ? `<strong>대기열 등록 시 일부 채널이 보류됩니다.</strong><span>${disabled.map((item) => `${item.label}: ${this.providers[item.code].reason}`).join(" / ")} 배포 계획과 등록 이력은 저장되며 서버 응답의 <code>executionStatus: DISABLED</code>와 채널별 사유를 표시합니다.</span>`
+                : `<strong>발송 대기열 등록 준비가 완료되었습니다.</strong><span>등록 전 대상자 수신 동의와 언어별 문안을 마지막으로 확인하세요.</span>`;
         },
 
         buildPayload() {
@@ -842,12 +1082,15 @@
             try {
                 const payload = await this.context.api.put(`/api/deployments/by-survey/${encodeURIComponent(this.current.id)}`, this.buildPayload());
                 const saved = payload?.deployment || payload || {};
-                if (saved.revision !== undefined) this.draft.revision = saved.revision;
-                this.draft.status = upper(saved.status || "DRAFT");
-                this.draft.executionStatus = upper(saved.executionStatus || this.draft.executionStatus) || null;
+                this.draft = this.normalizeDraft(saved);
                 this.dirty = false;
-                this.updateSaveState("초안 저장됨");
-                if (!options.silent) this.context.toast("배포 초안을 저장했습니다.", "success");
+                this.renderRecipients();
+                this.renderChannels();
+                this.renderMessages();
+                if (this.step === 4) this.renderReview();
+                this.updateWorkflow();
+                this.updateSaveState(`초안 r${this.draft.revision} 저장됨 · 연락처 마스킹 표시`);
+                if (!options.silent) this.context.toast("배포 초안을 저장했습니다. 연락처는 안전하게 마스킹해 표시합니다.", "success");
                 return saved;
             } catch (error) {
                 this.updateSaveState("저장 실패");
@@ -871,11 +1114,11 @@
                 return;
             }
             if (!(await this.context.confirmMessage(
-                "현재 대상자·언어·채널로 발송 실행을 요청할까요? 실행 이력은 확정 후 수정할 수 없습니다.",
-                { title: "발송 실행 확인", confirmLabel: "실행 요청", tone: "warning" }
+                "현재 대상자·언어·채널을 발송 대기열에 등록할까요? 등록된 실행 이력은 수정할 수 없습니다.",
+                { title: "발송 대기열 등록 확인", confirmLabel: "대기열 등록", tone: "warning" }
             ))) return;
             this.setActionDisabled(true);
-            this.updateSaveState("실행 요청 중…");
+            this.updateSaveState("대기열 등록 중…");
             try {
                 const payload = await this.context.api.post(`/api/deployments/by-survey/${encodeURIComponent(this.current.id)}/execute`, this.buildPayload());
                 const result = payload?.execution || payload || {};
@@ -886,10 +1129,10 @@
                 this.executionResult = result;
                 this.renderExecutionResult(result);
                 this.renderReview();
-                this.updateSaveState(this.draft.executionStatus === "DISABLED" ? "저장됨 · 실행 보류" : "저장됨 · 실행 요청 완료");
-                this.context.toast(this.draft.executionStatus === "DISABLED" ? "배포 계획은 저장했지만 비활성 provider 채널은 실행이 보류되었습니다." : "발송 실행을 요청했습니다.", this.draft.executionStatus === "DISABLED" ? "warning" : "success");
+                this.updateSaveState(this.draft.executionStatus === "DISABLED" ? "저장됨 · 대기열 등록 보류" : "저장됨 · 대기열 등록 완료");
+                this.context.toast(this.draft.executionStatus === "DISABLED" ? "배포 계획은 저장했지만 비활성 provider 채널은 대기열 등록이 보류되었습니다." : "발송 작업을 대기열에 등록했습니다.", this.draft.executionStatus === "DISABLED" ? "warning" : "success");
             } catch (error) {
-                this.updateSaveState("실행 요청 실패");
+                this.updateSaveState("대기열 등록 실패");
                 this.context.toast(error.message, "error");
             } finally {
                 this.setActionDisabled(false);
@@ -910,7 +1153,7 @@
             }).join("");
             host.hidden = false;
             host.className = `distribution-execution-result${status === "DISABLED" ? " is-disabled" : " is-complete"}`;
-            host.innerHTML = `<strong>${status === "DISABLED" ? "발송 실행이 일부 또는 전체 보류되었습니다." : "발송 실행 요청을 저장했습니다."}</strong><span>실행 상태 <code>${Common.escapeHtml(status || "UNKNOWN")}</code></span>${details ? `<ul>${details}</ul>` : ""}`;
+            host.innerHTML = `<strong>${status === "DISABLED" ? "발송 대기열 등록이 일부 또는 전체 보류되었습니다." : "발송 작업을 대기열에 등록했습니다."}</strong><span>실행 상태 <code>${Common.escapeHtml(status || "UNKNOWN")}</code></span>${details ? `<ul>${details}</ul>` : ""}`;
             host.focus({ preventScroll: true });
             host.insertAdjacentHTML("beforeend", '<button class="button button-small" type="button" data-new-distribution-batch>같은 설문으로 새 배포 준비</button>');
             this.syncExecutionLock();
@@ -972,6 +1215,7 @@
             const host = this.root.querySelector("[data-distribution-save-state]");
             host.textContent = text || (this.dirty ? "저장하지 않은 변경사항" : this.draft?.revision ? `초안 r${this.draft.revision} 저장됨` : "저장 전");
             host.classList.toggle("is-dirty", this.dirty);
+            this.renderProjectContext();
         },
 
         async backToProjects() {
@@ -981,6 +1225,7 @@
             ))) return;
             this.dirty = false;
             this.current = null;
+            this.publishedSurvey = null;
             this.draft = null;
             this.executionResult = null;
             this.step = 1;

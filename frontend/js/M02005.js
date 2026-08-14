@@ -23,6 +23,7 @@
                 if (device) this.setDevice(device.dataset.previewDevice);
                 if (event.target.closest("[data-save-skin]")) void this.save();
                 if (event.target.closest("[data-skin-next]")) void this.save({ continueToExperience: true });
+                if (event.target.closest("[data-open-skin-code]")) void this.openCustomCode();
                 if (event.target.closest("[data-skin-project-list]")) this.context.navigate("M02001", { selectFor: "skin" });
                 const flow = event.target.closest("[data-skin-flow-route]");
                 if (flow && this.current) this.context.navigate(flow.dataset.skinFlowRoute, { ...(flow.dataset.skinFlowRoute === "M02001" ? { editId: this.current.id } : { surveyId: this.current.id }), flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
@@ -53,16 +54,20 @@
         async loadSurvey(id) {
             if (!id) {
                 this.current = null;
+                this.customCode = window.SurveyCodeEditor.normalize();
                 this.resetHeaderPreview();
                 this.root.querySelector("[data-skin-project-id]").textContent = "프로젝트를 선택해 주세요.";
                 this.root.querySelector("[data-save-skin]").disabled = true;
                 this.root.querySelector("[data-skin-next]").disabled = true;
+                this.root.querySelector("[data-open-skin-code]").disabled = true;
                 this.root.querySelector("[data-skin-save-state]").textContent = "설문을 선택하면 저장할 수 있습니다. 확정된 버전은 바뀌지 않으며 다음 확정부터 반영됩니다.";
+                this.renderCodeSummary();
                 return;
             }
             try { const payload = await this.context.api.get(`/api/surveys/${encodeURIComponent(id)}`); this.current = payload.survey || payload; }
             catch (error) { return this.context.toast(error.message,"error"); }
             const skin = { preset:"ocean", ...(this.current.skin || {}) };
+            this.customCode = window.SurveyCodeEditor.normalize(skin.customCode);
             this.resetHeaderPreview();
             if (skin.preset) this.applyPreset(skin.preset, false);
             if (skin.primary) this.setColor("primary", skin.primary);
@@ -77,7 +82,9 @@
             this.root.querySelector("[data-skin-project-id]").textContent = `프로젝트 ID ${this.current.id}`;
             this.root.querySelector("[data-save-skin]").disabled = false;
             this.root.querySelector("[data-skin-next]").disabled = false;
+            this.root.querySelector("[data-open-skin-code]").disabled = false;
             this.root.querySelector("[data-skin-save-state]").textContent = "변경 후 저장하면 이 프로젝트의 편집 초안에만 적용됩니다.";
+            this.renderCodeSummary();
             this.updatePreview();
         },
         setColor(kind,value) { this.root.querySelector(`[data-skin-${kind}]`).value=value; this.root.querySelector(`[data-skin-${kind}-text]`).value=value; },
@@ -86,7 +93,27 @@
         setDevice(device) { this.root.querySelectorAll("[data-preview-device]").forEach((button)=>button.setAttribute("aria-selected",String(button.dataset.previewDevice===device))); this.root.querySelector("[data-device-stage]").classList.toggle("is-desktop",device==="desktop"); },
         previewImage(file) { if (!file) return; if (file.size>2*1024*1024) { this.context.toast("헤더 이미지는 2MB 이하만 미리 볼 수 있습니다.","error"); return; } if (this.headerImage) URL.revokeObjectURL(this.headerImage); this.headerImage=URL.createObjectURL(file); const header=this.root.querySelector("[data-skin-preview-header]"); header.style.backgroundImage=`linear-gradient(90deg,rgba(7,22,45,.45),rgba(7,22,45,.1)),url(${this.headerImage})`; },
         resetHeaderPreview() { if (this.headerImage) URL.revokeObjectURL(this.headerImage); this.headerImage=null; const header=this.root?.querySelector("[data-skin-preview-header]"); if (header) header.style.backgroundImage=""; const input=this.root?.querySelector("[data-skin-header-image]"); if (input) input.value=""; },
-        collectSkin() { return { preset:this.activePreset||"custom", primary:this.root.querySelector("[data-skin-primary]").value, accent:this.root.querySelector("[data-skin-accent]").value, font:this.root.querySelector("[data-skin-font]").value, radius:this.root.querySelector("[data-skin-radius]").value, showLogo:this.root.querySelector("[data-skin-show-logo]").checked, highContrast:this.root.querySelector("[data-skin-contrast]").checked }; },
+        renderCodeSummary() {
+            const source = window.SurveyCodeEditor.normalize(this.customCode);
+            const length = source.html.length + source.css.length + source.javascript.length;
+            this.root.querySelector("[data-skin-code-state]").textContent = source.enabled ? "공개 화면 적용" : "사용 안 함";
+            this.root.querySelector("[data-skin-code-summary]").textContent = length ? `HTML ${source.html.length.toLocaleString("ko-KR")}자 · CSS ${source.css.length.toLocaleString("ko-KR")}자 · JS ${source.javascript.length.toLocaleString("ko-KR")}자` : "저장된 사용자 코드가 없습니다.";
+        },
+        async openCustomCode() {
+            if (!this.current) return;
+            await window.SurveyCodeEditor.open({
+                context: this.context,
+                title: "STEP 02 · 공개 설문 사용자 코드",
+                description: "프리셋 위에 추가할 HTML·CSS·JavaScript를 작성합니다. 확정된 버전은 바뀌지 않고 다음 저장·확정본부터 적용됩니다.",
+                sources: this.customCode,
+                onApply: (source) => {
+                    this.customCode = source;
+                    this.renderCodeSummary();
+                    this.root.querySelector("[data-skin-save-state]").textContent = "저장하지 않은 사용자 코드 변경사항이 있습니다.";
+                }
+            });
+        },
+        collectSkin() { return { preset:this.activePreset||"custom", primary:this.root.querySelector("[data-skin-primary]").value, accent:this.root.querySelector("[data-skin-accent]").value, font:this.root.querySelector("[data-skin-font]").value, radius:this.root.querySelector("[data-skin-radius]").value, showLogo:this.root.querySelector("[data-skin-show-logo]").checked, highContrast:this.root.querySelector("[data-skin-contrast]").checked, customCode:window.SurveyCodeEditor.normalize(this.customCode) }; },
         async save({ continueToExperience = false } = {}) {
             if (!this.current) return;
             const button = this.root.querySelector("[data-save-skin]");

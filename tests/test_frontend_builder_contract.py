@@ -11,6 +11,7 @@ def test_builder_explicit_save_precedes_distribution_navigation() -> None:
     assert "data-builder-save" in page
     assert "data-builder-distribute" in page
     assert "data-builder-publish" in page
+    assert "저장·확정 및 URL 발급" in page
     assert "async saveExplicit" in script
     assert "async prepareDistribution" in script
     assert "async publishSurvey" in script
@@ -111,9 +112,37 @@ def test_new_and_existing_project_step_one_use_different_actions() -> None:
 
     assert "data-project-next hidden" in page
     assert 'textContent = "저장 후 STEP 02로"' in script
-    assert 'textContent = "변경사항 저장"' in script
+    assert 'this.editingPublished ? "변경사항만 저장" : "변경사항 저장"' in script
     assert 'this.root.querySelector("[data-project-next]").hidden = false;' in script
     assert 'this.context.navigate("M02005", { surveyId: survey.id, flow: "project"' in script
+    assert "data-project-published-period-note" in page
+    assert "data-project-publish-changes" in page
+    assert "공개 URL은 확정 버전의 기간을 사용합니다." in page
+    assert 'event.submitter?.matches("[data-project-publish-changes]")' in script
+    assert "새 버전 확정 및 기간 반영" in script
+    assert "공개 URL의 기간은 이전 확정본을 유지합니다." in script
+    assert '/publish`, {})' in script
+
+
+def test_project_response_period_keeps_minute_precision() -> None:
+    page = (PROJECT_ROOT / "frontend" / "pages" / "M02001.html").read_text(
+        encoding="utf-8"
+    )
+    script = (PROJECT_ROOT / "frontend" / "js" / "M02001.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert page.count('type="datetime-local"') >= 2
+    assert 'name="startsAt" step="60"' in page
+    assert 'name="closesAt" step="60"' in page
+    assert "localDateTimeValue" in script
+    assert "date.setHours(23, 59, 59, 999)" not in script
+    assert "return date.toISOString();" in script
+    assert 'const KOREA_UTC_OFFSET = "+09:00";' in script
+    assert "const KOREA_UTC_OFFSET_MINUTES = 9 * 60;" in script
+    assert "korea.getUTCFullYear()" in script
+    assert "한국표준시 KST" in page
+    assert "Asia/Seoul(UTC+9)" in page
 
 
 def test_skin_step_does_not_put_growing_project_data_in_a_select() -> None:

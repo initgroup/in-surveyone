@@ -2,8 +2,9 @@
   "name": "in-surveyone-build-assets",
   "private": true,
   "version": "1.0.0",
-  "description": "Build-only font assets for IN-SURVEYONE PDF reports.",
+  "description": "Pinned self-hosted frontend and report assets for IN-SURVEYONE.",
   "dependencies": {
-    "@fontsource-variable/noto-sans-kr": "5.3.0"
+    "@fontsource-variable/noto-sans-kr": "5.3.0",
+    "ace-builds": "1.44.0"
   }
 }

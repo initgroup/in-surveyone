@@ -16,6 +16,7 @@ from backend.models import (
     ApiResponse,
     PublishRequest,
     PublishResult,
+    PublicUrlRegenerationResult,
     SurveyCreateRequest,
     SurveyDetail,
     SurveyPage,
@@ -180,6 +181,18 @@ def publish_survey(
     store: SurveyStore = Depends(current_store),
 ) -> ApiResponse[PublishResult]:
     return ApiResponse(data=store.publish(user, survey_id, payload or PublishRequest()))
+
+
+@router.post(
+    "/{survey_id}/public-url/regenerate",
+    response_model=ApiResponse[PublicUrlRegenerationResult],
+)
+def regenerate_public_url(
+    survey_id: str,
+    user: UserRecord = Depends(current_user),
+    store: SurveyStore = Depends(current_store),
+) -> ApiResponse[PublicUrlRegenerationResult]:
+    return ApiResponse(data=store.regenerate_public_url(user, survey_id))
 
 
 @router.get(

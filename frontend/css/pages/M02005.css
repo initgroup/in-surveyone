@@ -19,6 +19,11 @@
 .slug-field { display: grid; grid-template-columns: auto 1fr; align-items: center; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 9px; }
 .slug-field > span { align-self: stretch; display: grid; place-items: center; padding: 0 11px; color: var(--muted); background: #f1f4f8; }
 .slug-field input { border: 0; border-radius: 0; }
+.skin-code-card .card-header p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.skin-code-body { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; align-items: center; }
+.skin-code-body p { max-width: 720px; margin: 5px 0 8px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.skin-code-body small { color: var(--blue-strong); font-size: 10px; font-weight: 750; }
+.skin-code-body .button { min-width: 190px; }
 .skin-save-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 14px 16px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
 .skin-save-row > div { display: flex; gap: 8px; flex: 0 0 auto; }
 .skin-save-row span { color: var(--muted); font-size: 10px; }
@@ -55,6 +60,8 @@
 @media (max-width: 50rem) {
     .skin-heading { grid-template-columns: 1fr; padding: 21px; }
     .skin-preset-grid { grid-template-columns: repeat(2,1fr); }
+    .skin-code-body { grid-template-columns: 1fr; }
+    .skin-code-body .button { width: 100%; }
     .skin-save-row { align-items: stretch; flex-direction: column; }
     .device-stage { min-height: 590px; padding: 15px 5px; }
     .device-frame { width: min(330px,95vw); height: 570px; }

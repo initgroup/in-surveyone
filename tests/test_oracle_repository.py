@@ -156,6 +156,23 @@ def assert_exact_sql_binds(
         assert set(parameters) == expected, sql_id
 
 
+def test_oracle_json_loader_reads_clob_values_larger_than_varchar_limit() -> None:
+    class FakeLob:
+        def __init__(self, value: str) -> None:
+            self.value = value
+            self.read_count = 0
+
+        def read(self) -> str:
+            self.read_count += 1
+            return self.value
+
+    source = {"customCode": {"html": "가" * 5000}}
+    lob = FakeLob(json.dumps(source, ensure_ascii=False))
+
+    assert _json_load(lob, {}) == source
+    assert lob.read_count == 1
+
+
 def test_oracle_admin_member_guest_filter_and_withdrawal_are_transactional() -> None:
     member_row = {
         "user_id": "user_guest_001",
@@ -607,6 +624,8 @@ def test_oracle_delivery_draft_encrypts_contacts_and_keeps_them_out_of_plan_json
         tenant_expires_at=None,
     )
     raw_email = "recipient@example.test"
+    email_html = f"<main>{'Invitation body. ' * 800}</main>"
+    assert len(email_html.encode("utf-8")) > 4000
     request = DeploymentDraftRequest.model_validate(
         {
             "recipients": [
@@ -623,7 +642,7 @@ def test_oracle_delivery_draft_encrypts_contacts_and_keeps_them_out_of_plan_json
             "messagesByLanguage": {
                 "ko": {
                     "emailSubject": "Survey invitation",
-                    "emailBody": "Please participate.",
+                    "emailBody": email_html,
                 }
             },
             "schedule": {"mode": "NOW", "strategy": "ALL_AVAILABLE"},
@@ -645,6 +664,7 @@ def test_oracle_delivery_draft_encrypts_contacts_and_keeps_them_out_of_plan_json
         if sql_id == "DELIVERY_RECIPIENT_INSERT"
     )
     assert raw_email not in plan
+    assert json.loads(plan)["messagesByLanguage"]["ko"]["emailBody"] == email_html
     assert raw_email not in str(endpoints)
     assert endpoints[0]["contactValueHash"] != raw_email
     assert decrypt_contact(
@@ -1123,6 +1143,68 @@ def test_oracle_close_stops_public_deployment_before_delete() -> None:
     with pytest.raises(ConflictError, match="진행 중"):
         store.close_survey(user, "survey-2")
     assert pool.rollbacks == 1
+
+
+def test_oracle_public_url_regeneration_updates_route_and_draft_atomically() -> None:
+    previous_slug = "svy-20260813-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    class RegenerationCrud(RecordingCrud):
+        def fetch_one(self, connection, sql_id, params=None):
+            if sql_id == "SURVEY_SLUG_OWNER":
+                return None
+            if sql_id == "DELIVERY_CONTEXT_BY_OWNER":
+                return {
+                    "survey_version_no": 3,
+                    "deployment_id": "deploy-1",
+                }
+            if sql_id == "DELIVERY_BATCH_LATEST_FOR_UPDATE":
+                return {
+                    "batch_id": "batch-1",
+                    "revision_no": 7,
+                    "status_code": "DRAFT",
+                    "plan_json": json.dumps(
+                        {
+                            "messagesByLanguage": {
+                                "ko": {
+                                    "emailBody": f"https://example.test/s/{previous_slug}?lang=ko"
+                                }
+                            }
+                        }
+                    ),
+                }
+            return super().fetch_one(connection, sql_id, params)
+
+    class RegenerationStore(OracleStore):
+        def _survey_row(self, connection, user, survey_id, *, lock=False):
+            assert lock is True
+            return {
+                "status_code": "PUBLISHED",
+                "public_slug": previous_slug,
+                "active_version_no": 3,
+            }
+
+    pool = FakePool()
+    crud = RegenerationCrud()
+    store = RegenerationStore(settings=get_settings(), pool=pool, crud=crud)
+    user = SimpleNamespace(tenant_id="tenant-1", id="user-1")
+
+    result = store.regenerate_public_url(user, "survey-1")
+
+    assert pool.commits == 1
+    assert result.previous_slug == previous_slug
+    assert result.slug != previous_slug
+    assert re.fullmatch(r"svy-\d{8}-[0-9a-f]{32}", result.slug)
+    assert result.deployment_revision == 8
+    assert [sql_id for sql_id, _ in crud.executes] == [
+        "DELIVERY_BATCH_UPDATE_DRAFT",
+        "SURVEY_PUBLIC_SLUG_REGENERATE_BY_OWNER",
+        "SURVEY_DEPLOYMENT_SLUG_REGENERATE",
+    ]
+    updated_plan = json.loads(crud.executes[0][1]["planJson"])
+    email_body = updated_plan["messagesByLanguage"]["ko"]["emailBody"]
+    assert f"/s/{result.slug}?lang=ko" in email_body
+    assert f"/s/{previous_slug}?lang=ko" not in email_body
+    assert_exact_sql_binds(crud.executes)
 
 
 def test_empty_oracle_template_catalog_is_idempotently_seeded() -> None:

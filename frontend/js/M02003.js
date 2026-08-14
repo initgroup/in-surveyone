@@ -144,6 +144,7 @@
                 if (event.target.closest("[data-builder-save]")) return this.saveExplicit();
                 if (event.target.closest("[data-builder-preview]")) return this.preview();
                 if (event.target.closest("[data-builder-template-library]")) return this.openTemplateLibrary();
+                if (event.target.closest("[data-builder-code]")) return this.openCustomCode();
                 if (event.target.closest("[data-builder-distribute]")) return this.prepareDistribution();
                 if (event.target.closest("[data-template-admin-publish]")) return this.openAdminTemplatePublish();
                 if (event.target.closest("[data-builder-publish]")) return this.publishSurvey();
@@ -1135,6 +1136,20 @@
         },
         setSkin(code) { this.survey.skin = { ...(this.survey.skin || {}), preset: code }; this.applySkin(); this.scheduleSave(); },
         applySkin() { const skin = window.SURVEYONE_CONFIG.skinPresets.find((item) => item.code === this.survey.skin?.preset) || window.SURVEYONE_CONFIG.skinPresets[0]; this.root.querySelector("[data-builder-shell]").style.setProperty("--survey-primary", skin.primary); this.root.querySelectorAll("[data-skin-code]").forEach((button) => button.classList.toggle("is-active", button.dataset.skinCode === skin.code)); },
+        async openCustomCode() {
+            if (!this.survey) return;
+            await window.SurveyCodeEditor.open({
+                context: this.context,
+                title: "STEP 04 · 설문 HTML·CSS·JavaScript",
+                description: "설문 구조는 그대로 유지하면서 공개 화면의 사용자 안내 영역과 스타일, 격리 스크립트를 추가합니다.",
+                sources: this.survey.skin?.customCode,
+                onApply: (source) => {
+                    this.survey.skin = { ...(this.survey.skin || {}), customCode: source };
+                    this.scheduleSave();
+                    this.context.toast("사용자 코드를 편집 초안에 반영했습니다. 자동 저장 후 다음 확정 버전부터 적용됩니다.", "success");
+                }
+            });
+        },
         setSaveLabel(message) {
             if (!this.destroyed && this.root?.isConnected) {
                 const label = this.root.querySelector("[data-builder-save-label]");

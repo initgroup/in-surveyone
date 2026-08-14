@@ -3,7 +3,7 @@
         <li class="is-complete"><button type="button" data-builder-basic><span>STEP 01</span><strong>기본정보</strong><small>조사 조건과 목표 설정</small></button></li>
         <li class="is-complete"><button type="button" data-builder-skin-step><span>STEP 02</span><strong>스킨 설정</strong><small>색상·글꼴·응답 화면</small></button></li>
         <li class="is-complete"><button type="button" data-builder-experience><span>STEP 03</span><strong>응답 UI</strong><small>스크롤 또는 한 문항씩</small></button></li>
-        <li class="is-current" aria-current="step"><span class="survey-flow-step"><span>STEP 04</span><strong>설문 편집</strong><small>문항 작성·저장·확정</small></span></li>
+        <li class="is-current" aria-current="step"><span class="survey-flow-step"><span>STEP 04</span><strong>설문 편집</strong><small>문항 작성·확정·URL 발급</small></span></li>
     </ol>
 </nav>
 
@@ -22,6 +22,7 @@
         </div>
         <div class="builder-actions">
             <button class="button button-small" type="button" data-builder-template-library>템플릿 선택</button>
+            <button class="button button-small builder-code-button" type="button" data-builder-code>&lt;/&gt; HTML·CSS·JS</button>
             <label class="builder-edit-language">
                 <span>편집 언어</span>
                 <select data-edit-locale aria-describedby="builderLanguageStatus"></select>
@@ -32,7 +33,7 @@
             <button class="button button-small" type="button" data-builder-preview>미리보기</button>
             <button class="button button-small" type="button" data-builder-distribute>배포 준비</button>
             <button class="button button-small button-primary builder-template-register" type="button" data-template-admin-publish hidden>공용 템플릿 등록</button>
-            <button class="button button-small button-primary" type="button" data-builder-publish>저장 및 확정</button>
+            <button class="button button-small button-primary" type="button" data-builder-publish>저장·확정 및 URL 발급</button>
             <button class="button workspace-list-button" type="button" data-builder-back aria-label="프로젝트 목록으로 돌아가기" title="프로젝트 목록"><span class="workspace-list-button-icon" aria-hidden="true">←</span><span class="workspace-list-button-label" data-builder-back-label>프로젝트 목록</span></button>
         </div>
     </header>
@@ -151,6 +152,7 @@
     <div class="builder-mobile-actions">
         <button class="button" type="button" data-mobile-tools>＋ 문항</button>
         <button class="button" type="button" data-builder-template-library>템플릿</button>
+        <button class="button" type="button" data-builder-code>&lt;/&gt; 코드</button>
         <button class="button" type="button" data-builder-save>저장</button>
         <button class="button" type="button" data-builder-preview>미리보기</button>
         <button class="button button-primary" type="button" data-builder-distribute>배포 준비</button>

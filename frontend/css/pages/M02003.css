@@ -290,3 +290,4 @@ textarea.builder-preview-input { min-height: 92px; resize: vertical; }
     .logic-rule { grid-template-columns: 1fr; }
     .builder-language-list > div { grid-template-columns: 1fr 1fr; }
 }
+.builder-code-button { color: var(--blue-strong); background: var(--blue-soft); border-color: #c8d6ff; }

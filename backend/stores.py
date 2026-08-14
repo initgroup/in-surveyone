@@ -38,6 +38,7 @@ from backend.models import (
     PublicSurvey,
     PublishRequest,
     PublishResult,
+    PublicUrlRegenerationResult,
     ResponseReceipt,
     SignupRequest,
     SubmitResponseRequest,
@@ -178,6 +179,9 @@ class SurveyStore(Protocol):
     def publish(
         self, user: UserRecord, survey_id: str, request: PublishRequest
     ) -> PublishResult: ...
+    def regenerate_public_url(
+        self, user: UserRecord, survey_id: str
+    ) -> PublicUrlRegenerationResult: ...
     def public_survey(self, slug: str, language: str | None = None) -> PublicSurvey: ...
     def submit_response(
         self,

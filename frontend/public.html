@@ -7,7 +7,7 @@
     <meta name="robots" content="noindex,nofollow">
     <title>설문 참여 | IN-SURVEYONE</title>
     <link rel="icon" href="/frontend/assets/images/surveyone-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/frontend/css/public.css?v=20260814.28">
+    <link rel="stylesheet" href="/frontend/css/public.css?v=20260814.50">
 </head>
 <body>
     <a class="public-skip" href="#surveyMain" data-public-i18n="skipToSurvey">설문 본문 바로가기</a>
@@ -36,6 +36,7 @@
                 </div>
             </section>
             <section class="public-notice" data-public-notice hidden></section>
+            <iframe class="public-custom-code" data-public-custom-code title="Custom survey content" sandbox="allow-scripts" hidden></iframe>
             <div class="public-question-list" data-public-question-list></div>
             <section class="public-validation-summary" data-validation-summary hidden role="alert"><strong data-public-i18n="validationTitle">확인이 필요한 문항이 있습니다.</strong><ul></ul></section>
             <nav class="public-question-pager" data-public-pager hidden aria-label="문항 이동" data-public-i18n-aria-label="pagerAria"><button type="button" data-public-previous data-public-i18n="previous">이전</button><span data-public-page-status aria-live="polite">1 / 1</span><button type="button" data-public-next data-public-i18n="next">다음</button></nav>
@@ -45,8 +46,9 @@
     </main>
     <footer class="public-footer"><span>Powered by <strong>IN-SURVEYONE</strong></span><span>© inIT</span></footer>
     <div class="public-toast-stack" data-public-toast-stack aria-live="assertive" aria-atomic="false"></div>
-    <script src="/frontend/config/app.config.js?v=20260814.28"></script>
-    <script src="/frontend/js/common.js?v=20260814.28"></script>
-    <script src="/frontend/js/public.js?v=20260814.28"></script>
+    <script src="/frontend/config/app.config.js?v=20260814.50"></script>
+    <script src="/frontend/js/common.js?v=20260814.50"></script>
+    <script src="/frontend/js/code-editor.js?v=20260814.50"></script>
+    <script src="/frontend/js/public.js?v=20260814.50"></script>
 </body>
 </html>

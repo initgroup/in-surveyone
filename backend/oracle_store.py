@@ -35,8 +35,11 @@ from backend.memory_store import (
     _seed_templates,
     _settings_for_project_profile,
     _skin_from_theme,
+    apply_public_availability,
     apply_public_translation,
     new_id,
+    new_public_slug,
+    replace_public_slug_paths,
     report_cutoff_exclusive,
     submission_payload_hash,
     utcnow,
@@ -70,6 +73,7 @@ from backend.models import (
     PublicSurvey,
     PublishRequest,
     PublishResult,
+    PublicUrlRegenerationResult,
     ResponseReceipt,
     SignupRequest,
     SubmitResponseRequest,
@@ -115,7 +119,11 @@ def _json_dump(value: Any) -> str:
 
 
 def _json_load(value: Any, default: Any) -> Any:
-    if value is None or value == "":
+    if value is None:
+        return default
+    if hasattr(value, "read"):
+        value = value.read()
+    if value == "":
         return default
     if isinstance(value, (dict, list, bool, int, float)):
         return value
@@ -1149,6 +1157,9 @@ class OracleStore(MemoryStore):
     @staticmethod
     def _summary_from_row(row: dict[str, Any]) -> SurveySummary:
         draft = _json_load(row.get("draft_json"), {})
+        project_profile = SurveyProjectProfile.model_validate(
+            draft.get("projectProfile") or {}
+        )
         question_count = sum(
             len(section.get("questions") or []) for section in draft.get("sections") or []
         )
@@ -1172,6 +1183,8 @@ class OracleStore(MemoryStore):
                 if row.get("deployment_status")
                 else None
             ),
+            starts_at=project_profile.starts_at,
+            closes_at=project_profile.closes_at,
             created_at=_as_aware(row.get("created_at")) or utcnow(),
             updated_at=_as_aware(row.get("updated_at")) or utcnow(),
             published_at=_as_aware(row.get("published_at")),
@@ -1773,7 +1786,7 @@ class OracleStore(MemoryStore):
             if existing_slug and request.slug and request.slug != existing_slug:
                 raise ConflictError("확정된 설문의 URL 식별자는 변경할 수 없습니다.")
             slug = existing_slug or self._unique_slug(
-                connection, request.slug or detail.title, survey_id
+                connection, request.slug or new_public_slug(), survey_id
             )
             version_row = self.crud.fetch_one(
                 connection,
@@ -1868,6 +1881,105 @@ class OracleStore(MemoryStore):
             published_at=published_at,
         )
 
+    def regenerate_public_url(
+        self, user: UserRecord, survey_id: str
+    ) -> PublicUrlRegenerationResult:
+        regenerated_at = utcnow()
+        with self.pool.transaction() as connection:
+            row = self._survey_row(connection, user, survey_id, lock=True)
+            previous_slug = str(row.get("public_slug") or "")
+            if (
+                str(row.get("status_code") or "").upper() != "PUBLISHED"
+                or not previous_slug
+                or row.get("active_version_no") is None
+            ):
+                raise ConflictError("확정되어 공개 중인 설문만 URL을 재발급할 수 있습니다.")
+            slug = previous_slug
+            while slug == previous_slug:
+                slug = self._unique_slug(connection, new_public_slug(), survey_id)
+
+            context = self.crud.fetch_one(
+                connection,
+                "DELIVERY_CONTEXT_BY_OWNER",
+                {
+                    "tenantId": user.tenant_id,
+                    "surveyId": survey_id,
+                    "ownerUserId": user.id,
+                },
+            )
+            if context is None:
+                raise ConflictError("활성 배포 정보를 확인할 수 없어 URL을 재발급하지 못했습니다.")
+
+            batch_params = {
+                "tenantId": user.tenant_id,
+                "surveyId": survey_id,
+                "surveyVersionNo": int(context["survey_version_no"]),
+                "deploymentId": str(context["deployment_id"]),
+            }
+            batch = self.crud.fetch_one(
+                connection, "DELIVERY_BATCH_LATEST_FOR_UPDATE", batch_params
+            )
+            deployment_revision = None
+            if batch is not None and str(batch.get("status_code") or "").upper() == "DRAFT":
+                plan = _json_load(batch.get("plan_json"), {})
+                if not isinstance(plan, dict):
+                    raise ServiceUnavailableError(
+                        "저장된 배포 초안의 URL을 갱신할 수 없습니다."
+                    )
+                plan["messagesByLanguage"] = replace_public_slug_paths(
+                    plan.get("messagesByLanguage") or {}, previous_slug, slug
+                )
+                affected = self.crud.execute(
+                    connection,
+                    "DELIVERY_BATCH_UPDATE_DRAFT",
+                    {
+                        **batch_params,
+                        "batchId": str(batch["batch_id"]),
+                        "expectedRevision": int(batch["revision_no"]),
+                        "planJson": _json_dump(plan),
+                        "updatedAt": regenerated_at,
+                    },
+                )
+                if affected != 1:
+                    raise ConflictError(
+                        "URL 재발급 중 배포 초안이 변경되었습니다. 다시 시도해 주세요."
+                    )
+                deployment_revision = int(batch["revision_no"]) + 1
+
+            slug_params = {
+                "surveyId": survey_id,
+                "tenantId": user.tenant_id,
+                "ownerUserId": user.id,
+                "previousSlug": previous_slug,
+                "publicSlug": slug,
+                "regeneratedAt": regenerated_at,
+            }
+            affected = self.crud.execute(
+                connection, "SURVEY_PUBLIC_SLUG_REGENERATE_BY_OWNER", slug_params
+            )
+            if affected != 1:
+                raise ConflictError("URL 재발급 중 설문 상태가 변경되었습니다.")
+            affected = self.crud.execute(
+                connection,
+                "SURVEY_DEPLOYMENT_SLUG_REGENERATE",
+                {
+                    key: value
+                    for key, value in slug_params.items()
+                    if key != "ownerUserId"
+                },
+            )
+            if affected != 1:
+                raise ConflictError("활성 배포 URL을 갱신하지 못했습니다.")
+
+        return PublicUrlRegenerationResult(
+            survey_id=survey_id,
+            previous_slug=previous_slug,
+            slug=slug,
+            public_url=f"/s/{slug}",
+            deployment_revision=deployment_revision,
+            regenerated_at=regenerated_at,
+        )
+
     def _public_row(self, slug: str) -> dict[str, Any]:
         with self.pool.connection() as connection:
             row = self.crud.fetch_one(
@@ -1880,6 +1992,7 @@ class OracleStore(MemoryStore):
     @staticmethod
     def _public_from_row(row: dict[str, Any]) -> PublicSurvey:
         public = _public_snapshot(row["snapshot_json"])
+        public.slug = str(row.get("public_slug") or public.slug)
         is_guest = str(row.get("tenant_type_code") or "MEMBER").upper() == "DB_GUEST"
         public.guest_demo = is_guest
         public.experience_expires_at = (
@@ -1889,7 +2002,7 @@ class OracleStore(MemoryStore):
 
     def public_survey(self, slug: str, language: str | None = None) -> PublicSurvey:
         public = self._public_from_row(self._public_row(slug))
-        return apply_public_translation(public, language)
+        return apply_public_availability(apply_public_translation(public, language))
 
     def submit_response(
         self,
@@ -1979,7 +2092,7 @@ class OracleStore(MemoryStore):
 
             if public.settings.starts_at and now < public.settings.starts_at:
                 raise ConflictError("아직 응답 기간이 시작되지 않았습니다.")
-            if public.settings.closes_at and now > public.settings.closes_at:
+            if public.settings.closes_at and now >= public.settings.closes_at:
                 raise ConflictError("설문 응답 기간이 종료되었습니다.")
 
             if public.settings.one_response_per_respondent and respondent_hash:
@@ -2201,12 +2314,12 @@ class OracleStore(MemoryStore):
                 "확정 버전과 활성 배포 정보가 일치하지 않습니다. 설문을 다시 확정해 주세요."
             )
         public = _public_snapshot(context["snapshot_json"])
+        public.slug = str(context["public_slug"])
         context_version = int(context["survey_version_no"])
         if (
             public.survey_id != survey_id
             or public.version != context_version
             or context_version != detail.published_version
-            or public.slug != str(context["public_slug"])
         ):
             raise ServiceUnavailableError(
                 "배포할 확정 설문 버전의 무결성을 확인할 수 없습니다."

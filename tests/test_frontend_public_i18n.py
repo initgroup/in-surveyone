@@ -33,6 +33,10 @@ def test_public_shell_has_six_complete_locales() -> None:
         "submitted",
         "submitFailed",
         "home",
+        "scheduledTitle",
+        "scheduledMessage",
+        "closedTitle",
+        "closedMessage",
     }
     for locale in ("ko", "en", "ja", "zh", "vi", "fil"):
         body = _catalog_body(locale)
@@ -53,6 +57,12 @@ def test_public_shell_markup_and_locale_resolution_are_accessible() -> None:
     assert 'return PUBLIC_UI[defaultLocale] ? defaultLocale : "ko";' in PUBLIC_SCRIPT
     assert 'new URLSearchParams(location.search).get("r")' in PUBLIC_SCRIPT
     assert "respondentKey: recipientToken" in PUBLIC_SCRIPT
+    assert 'timeZone: "Asia/Seoul"' in PUBLIC_SCRIPT
+    assert 'timeZoneName: "short"' in PUBLIC_SCRIPT
+    assert "function renderAvailabilityState()" in PUBLIC_SCRIPT
+    assert 'state.survey.availabilityStatus || state.survey.availability_status || "OPEN"' in PUBLIC_SCRIPT
+    assert "if (renderAvailabilityState()) return;" in PUBLIC_SCRIPT
+    assert 'document.querySelector(".public-progress").hidden = true;' in PUBLIC_SCRIPT
 
 
 def test_public_generated_controls_use_localized_accessible_text() -> None:

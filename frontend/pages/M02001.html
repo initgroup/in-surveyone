@@ -50,7 +50,7 @@
             <li class="is-current" aria-current="step"><span class="survey-flow-step"><span>STEP 01</span><strong>기본정보</strong><small>조사 조건과 목표 설정</small></span></li>
             <li><button type="button" data-project-flow="M02005" disabled><span>STEP 02</span><strong>스킨 설정</strong><small>색상·글꼴·응답 화면</small></button></li>
             <li><button type="button" data-project-flow="M02004" disabled><span>STEP 03</span><strong>응답 UI</strong><small>스크롤 또는 한 문항씩</small></button></li>
-            <li><button type="button" data-project-flow="M02003" disabled><span>STEP 04</span><strong>설문 편집</strong><small>문항 작성·저장·확정</small></button></li>
+            <li><button type="button" data-project-flow="M02003" disabled><span>STEP 04</span><strong>설문 편집</strong><small>문항 작성·확정·URL 발급</small></button></li>
         </ol>
     </nav>
 
@@ -75,7 +75,7 @@
         <div class="project-form-section">
             <div class="project-form-section-title"><span>02</span><div><h3>조사 운영</h3><p>응답 가능 기간과 응답 화면 방식을 설정합니다.</p></div></div>
             <div class="form-grid form-grid-two">
-                <fieldset class="form-field project-form-wide"><legend>설문조사 기간</legend><div class="project-period"><label><span class="sr-only">시작일</span><input type="date" name="startsAt"></label><span aria-hidden="true">~</span><label><span class="sr-only">종료일</span><input type="date" name="closesAt"></label></div><small>비워 두면 별도 기간 제한 없이 배포할 수 있습니다.</small></fieldset>
+                <fieldset class="form-field project-form-wide"><legend>설문조사 기간·시간</legend><div class="project-period"><label><span>응답 시작 (한국표준시 KST)</span><input type="datetime-local" name="startsAt" step="60"></label><span aria-hidden="true">~</span><label><span>응답 종료 (한국표준시 KST)</span><input type="datetime-local" name="closesAt" step="60"></label></div><small>입력값은 접속 브라우저·Oracle Cloud DB 지역과 관계없이 Asia/Seoul(UTC+9)로 해석해 UTC로 저장합니다. 시작 전·종료 후 안내는 서버가 저장된 시각을 기준으로 판정합니다.</small></fieldset>
                 <fieldset class="form-field"><legend>응답자 식별 방식</legend><div class="project-radio-row"><label><input type="radio" name="identity" value="anonymous" checked> 익명</label><label><input type="radio" name="identity" value="identified"> 실명</label></div></fieldset>
                 <fieldset class="form-field"><legend>응답 진행률 표시</legend><div class="project-radio-row"><label><input type="radio" name="progress" value="show" checked> 표시</label><label><input type="radio" name="progress" value="hide"> 미표시</label></div></fieldset>
             </div>
@@ -91,8 +91,9 @@
             <aside class="project-sample-guide" role="note"><strong>표본크기 계산 기준</strong><p>모집단 크기를 알고 있을 때 95% 신뢰수준, ±5% 오차범위, 응답분포 50%를 기준으로 권장 최소 표본을 계산합니다. 실제 조사에서는 예상 응답률과 층화·가중 설계를 함께 검토하세요.</p></aside>
         </div>
 
+        <aside class="project-published-period-note" data-project-published-period-note role="note" hidden><strong>공개 URL은 확정 버전의 기간을 사용합니다.</strong><span>`변경사항만 저장`은 편집본만 바꾸며 URL에 즉시 반영되지 않습니다. 기간을 공개 URL에 반영하려면 새 버전으로 확정하세요.</span></aside>
         <p class="project-form-error" data-project-form-error role="alert" tabindex="-1" hidden></p>
-        <footer class="project-form-actions"><button class="button" type="button" data-project-form-cancel>취소</button><button class="button" type="button" data-project-next hidden>STEP 02 스킨 설정</button><button class="button button-primary" type="submit" data-project-form-submit>저장 후 STEP 02로</button></footer>
+        <footer class="project-form-actions"><button class="button" type="button" data-project-form-cancel>취소</button><button class="button" type="button" data-project-next hidden>STEP 02 스킨 설정</button><button class="button button-primary" type="submit" data-project-form-submit>저장 후 STEP 02로</button><button class="button button-primary" type="submit" data-project-publish-changes hidden>저장·새 버전 확정 및 URL 반영</button></footer>
     </form>
 </section>
 </div>

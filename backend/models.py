@@ -26,6 +26,8 @@ PUBLIC_JSON_MAX_DEPTH = 12
 PUBLIC_JSON_MAX_NODES = 10_000
 PUBLIC_JSON_MAX_STRING_BYTES = 32_768
 PUBLIC_JSON_MAX_CONTAINER_ITEMS = 1_000
+CUSTOM_SOURCE_MAX_BYTES = 512 * 1024
+CUSTOM_SOURCE_TOTAL_MAX_BYTES = 1024 * 1024
 SAFE_ASSET_PREFIXES = ("/frontend/assets/", "/uploads/")
 HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 RADIUS_PATTERN = re.compile(r"^(?:0|[1-9][0-9]?)px$")
@@ -66,6 +68,49 @@ def _validate_skin_assets(value: dict[str, Any] | None) -> dict[str, Any] | None
     for key in ("headerImageUrl", "logoUrl", "organizationLogoUrl"):
         if key in skin:
             skin[key] = _validate_asset_url(None if skin[key] is None else str(skin[key]))
+    custom_code = skin.get("customCode", skin.get("custom_code"))
+    if custom_code is not None:
+        if not isinstance(custom_code, dict):
+            raise ValueError("skin.customCode must be an object.")
+        enabled = custom_code.get("enabled", False)
+        if not isinstance(enabled, bool):
+            raise ValueError("skin.customCode.enabled must be a boolean.")
+        normalized_code: dict[str, Any] = {
+            "enabled": enabled,
+            "placement": str(custom_code.get("placement") or "beforeQuestions"),
+        }
+        if normalized_code["placement"] not in {"beforeQuestions", "afterQuestions"}:
+            raise ValueError("skin.customCode.placement is not supported.")
+        total_bytes = 0
+        for key in ("html", "css", "javascript"):
+            source = custom_code.get(key, "")
+            if not isinstance(source, str):
+                raise ValueError(f"skin.customCode.{key} must be text.")
+            source_bytes = len(source.encode("utf-8"))
+            if source_bytes > CUSTOM_SOURCE_MAX_BYTES:
+                raise ValueError(f"skin.customCode.{key} must not exceed 512KB.")
+            total_bytes += source_bytes
+            normalized_code[key] = source
+        if total_bytes > CUSTOM_SOURCE_TOTAL_MAX_BYTES:
+            raise ValueError("skin.customCode source must not exceed 1MB in total.")
+        if re.search(
+            r"<\s*/?\s*(?:script|style|link|base|iframe|object|embed|html|head|body)\b",
+            normalized_code["html"],
+            re.IGNORECASE,
+        ):
+            raise ValueError(
+                "skin.customCode.html must use the CSS and JavaScript source fields."
+            )
+        if re.search(r"\son[a-z]+\s*=", normalized_code["html"], re.IGNORECASE):
+            raise ValueError("skin.customCode.html cannot contain inline event handlers.")
+        if re.search(
+            r"@import|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:|position\s*:\s*fixed|url\s*\(",
+            normalized_code["css"],
+            re.IGNORECASE,
+        ):
+            raise ValueError("skin.customCode.css contains a prohibited expression.")
+        skin.pop("custom_code", None)
+        skin["customCode"] = normalized_code
     return skin
 
 
@@ -1115,11 +1160,18 @@ class DeliveryRecipientInput(ApiModel):
 
 class DeliveryMessages(ApiModel):
     email_subject: str = Field(default="", max_length=500)
-    email_body: str = Field(default="", max_length=10000)
+    email_body: str = Field(default="", max_length=CUSTOM_SOURCE_MAX_BYTES)
     sms_body: str = Field(default="", max_length=1000)
     kakao_body: str = Field(default="", max_length=1000)
     fax_title: str = Field(default="", max_length=500)
-    fax_body: str = Field(default="", max_length=10000)
+    fax_body: str = Field(default="", max_length=CUSTOM_SOURCE_MAX_BYTES)
+
+    @field_validator("email_body", "fax_body")
+    @classmethod
+    def validate_lob_message_size(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > CUSTOM_SOURCE_MAX_BYTES:
+            raise ValueError("HTML 안내문은 UTF-8 기준 512KB 이하로 작성해 주세요.")
+        return value
 
 
 class DeliveryRecipientImportView(ApiModel):
@@ -1453,6 +1505,8 @@ class SurveySummary(ApiModel):
     slug: str | None = None
     public_url: str | None = None
     deployment_status: Literal["READY", "ACTIVE"] | None = None
+    starts_at: datetime | None = None
+    closes_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     published_at: datetime | None = None
@@ -1529,6 +1583,15 @@ class PublishResult(ApiModel):
     published_at: datetime
 
 
+class PublicUrlRegenerationResult(ApiModel):
+    survey_id: str
+    previous_slug: str
+    slug: str
+    public_url: str
+    deployment_revision: int | None = None
+    regenerated_at: datetime
+
+
 class PublicSurvey(SurveyLocaleMixin):
     survey_id: str
     slug: str
@@ -1546,6 +1609,8 @@ class PublicSurvey(SurveyLocaleMixin):
     requested_locale: str | None = None
     guest_demo: bool = False
     experience_expires_at: datetime | None = None
+    server_time: datetime | None = None
+    availability_status: Literal["SCHEDULED", "OPEN", "CLOSED"] | None = None
 
     @field_validator("skin")
     @classmethod

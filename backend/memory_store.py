@@ -53,6 +53,7 @@ from backend.models import (
     PublicSurvey,
     PublishRequest,
     PublishResult,
+    PublicUrlRegenerationResult,
     Question,
     QuestionOption,
     QuestionReport,
@@ -123,6 +124,30 @@ def utcnow() -> datetime:
 def new_id(prefix: str) -> str:
     maximum_hex_length = max(8, 39 - len(prefix))
     return f"{prefix}_{uuid4().hex[:maximum_hex_length]}"
+
+
+def new_public_slug() -> str:
+    """Issue a non-semantic 128-bit public URL key."""
+    issued_on = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return f"svy-{issued_on}-{secrets.token_hex(16)}"
+
+
+def replace_public_slug_paths(value: Any, previous_slug: str, slug: str) -> Any:
+    """Replace only public survey path segments inside stored message content."""
+    previous_path = f"/s/{previous_slug}"
+    next_path = f"/s/{slug}"
+    if isinstance(value, str):
+        return re.sub(
+            rf"{re.escape(previous_path)}(?![a-z0-9-])", next_path, value
+        )
+    if isinstance(value, list):
+        return [replace_public_slug_paths(item, previous_slug, slug) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: replace_public_slug_paths(item, previous_slug, slug)
+            for key, item in value.items()
+        }
+    return value
 
 
 def submission_payload_hash(
@@ -1343,12 +1368,26 @@ class MemoryStore:
             old = previous.get(recipient["id"])
             if old is None:
                 continue
-            for field_name in ("email", "mobile", "fax", "kakaoId"):
-                if is_masked_contact(recipient.get(field_name)):
-                    recipient[field_name] = getattr(
-                        old,
-                        {"kakaoId": "kakao_id"}.get(field_name, field_name),
+            contact_types = {
+                "email": "EMAIL",
+                "mobile": "SMS",
+                "fax": "FAX",
+                "kakaoId": "KAKAO",
+            }
+            for field_name, contact_type in contact_types.items():
+                submitted = recipient.get(field_name)
+                if not is_masked_contact(submitted):
+                    continue
+                old_value = getattr(
+                    old,
+                    {"kakaoId": "kakao_id"}.get(field_name, field_name),
+                )
+                if submitted != mask_contact(contact_type, old_value):
+                    raise DomainValidationError(
+                        f"{recipient['name']} 대상자의 마스킹된 {contact_type} 연락처는 "
+                        "일부만 수정할 수 없습니다. 전체 값을 다시 입력해 주세요."
                     )
+                recipient[field_name] = old_value
         return DeploymentDraftRequest.model_validate(payload)
 
     @staticmethod
@@ -1367,9 +1406,9 @@ class MemoryStore:
         survey = self._owned_survey_locked(user, survey_id)
         if survey.status != SurveyStatus.PUBLISHED or not survey.versions or not survey.slug:
             raise ConflictError("확정된 설문 프로젝트만 배포 작업을 할 수 있습니다.")
-        return survey, PublicSurvey.model_validate_json(
-            survey.versions[-1].snapshot_json
-        )
+        public = PublicSurvey.model_validate_json(survey.versions[-1].snapshot_json)
+        public.slug = survey.slug
+        return survey, public
 
     def deployment(
         self, user: UserRecord, survey_id: str
@@ -1938,7 +1977,7 @@ class MemoryStore:
                 raise ConflictError("확정된 설문의 URL 식별자는 변경할 수 없습니다.")
             slug = survey.slug
         else:
-            slug_base = requested_slug or survey.title
+            slug_base = requested_slug or new_public_slug()
             slug = self._unique_slug_locked(slug_base, survey.id)
 
         now = utcnow()
@@ -1998,7 +2037,50 @@ class MemoryStore:
         with self._lock:
             survey, version = self._public_version_locked(slug)
             public = PublicSurvey.model_validate_json(version.snapshot_json)
-            return apply_public_translation(public, language)
+            public.slug = survey.slug or public.slug
+            return apply_public_availability(
+                apply_public_translation(public, language)
+            )
+
+    def regenerate_public_url(
+        self, user: UserRecord, survey_id: str
+    ) -> PublicUrlRegenerationResult:
+        with self._lock:
+            survey = self._owned_survey_locked(user, survey_id)
+            if survey.status != SurveyStatus.PUBLISHED or not survey.slug or not survey.versions:
+                raise ConflictError("확정되어 공개 중인 설문만 URL을 재발급할 수 있습니다.")
+            previous_slug = survey.slug
+            slug = previous_slug
+            while slug == previous_slug:
+                slug = self._unique_slug_locked(new_public_slug(), survey.id)
+            now = utcnow()
+            self._slug_routes.pop(previous_slug, None)
+            self._slug_routes[slug] = (survey.id, len(survey.versions))
+            survey.slug = slug
+            survey.updated_at = now
+            deployment_revision = None
+            current = self._deployment_drafts.get(survey_id)
+            if current is not None:
+                payload = current.model_dump(by_alias=True, mode="json")
+                payload["publicSlug"] = slug
+                payload["updatedAt"] = now
+                if current.execution_status is None:
+                    payload["messagesByLanguage"] = replace_public_slug_paths(
+                        payload.get("messagesByLanguage") or {}, previous_slug, slug
+                    )
+                    payload["revision"] = current.revision + 1
+                    deployment_revision = payload["revision"]
+                self._deployment_drafts[survey_id] = DeploymentDraftView.model_validate(
+                    payload
+                )
+            return PublicUrlRegenerationResult(
+                survey_id=survey_id,
+                previous_slug=previous_slug,
+                slug=slug,
+                public_url=f"/s/{slug}",
+                deployment_revision=deployment_revision,
+                regenerated_at=now,
+            )
 
     def submit_response(
         self,
@@ -2061,7 +2143,7 @@ class MemoryStore:
             now = utcnow()
             if public_survey.settings.starts_at and now < public_survey.settings.starts_at:
                 raise ConflictError("아직 응답 기간이 시작되지 않았습니다.")
-            if public_survey.settings.closes_at and now > public_survey.settings.closes_at:
+            if public_survey.settings.closes_at and now >= public_survey.settings.closes_at:
                 raise ConflictError("설문 응답 기간이 종료되었습니다.")
             if len(self._responses.get(survey.id, [])) >= self.settings.db_guest_max_responses and any(
                 user.tenant_id == survey.tenant_id and user.is_guest
@@ -2277,6 +2359,8 @@ class MemoryStore:
             slug=survey.slug,
             public_url=f"/s/{survey.slug}" if survey.slug else None,
             deployment_status=deployment_status,
+            starts_at=survey.project_profile.starts_at,
+            closes_at=survey.project_profile.closes_at,
             created_at=survey.created_at,
             updated_at=survey.updated_at,
             published_at=survey.published_at,
@@ -2926,6 +3010,22 @@ def apply_public_translation(
                     question.settings.unit = nested_question.unit
                     question.unit = nested_question.unit
     return localized
+
+
+def apply_public_availability(
+    survey: PublicSurvey, now: datetime | None = None
+) -> PublicSurvey:
+    """Attach server-authoritative response-period state to a public view."""
+    current = now or utcnow()
+    available = survey.model_copy(deep=True)
+    available.server_time = current
+    if available.settings.starts_at and current < available.settings.starts_at:
+        available.availability_status = "SCHEDULED"
+    elif available.settings.closes_at and current >= available.settings.closes_at:
+        available.availability_status = "CLOSED"
+    else:
+        available.availability_status = "OPEN"
+    return available
 
 
 def _seed_templates() -> list[SurveyTemplate]:

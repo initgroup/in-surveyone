@@ -1,21 +1,25 @@
 (function () {
     "use strict";
     const PAGE_NAME = "M02001";
+    const KOREA_UTC_OFFSET = "+09:00";
+    const KOREA_UTC_OFFSET_MINUTES = 9 * 60;
     const statusLabels = { draft: "작성 중", confirmed: "확정", published: "확정", active: "진행 중", closed: "종료", paused: "일시정지" };
 
-    function localBoundary(value, endOfDay = false) {
+    function localBoundary(value) {
         if (!value) return null;
-        const [year, month, day] = value.split("-").map(Number);
-        const date = new Date(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0);
+        const normalized = String(value).trim();
+        const date = new Date(`${normalized.length === 16 ? `${normalized}:00` : normalized}${KOREA_UTC_OFFSET}`);
+        if (Number.isNaN(date.getTime())) return null;
         return date.toISOString();
     }
 
-    function localDateValue(value) {
+    function localDateTimeValue(value) {
         if (!value) return "";
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return "";
+        const korea = new Date(date.getTime() + KOREA_UTC_OFFSET_MINUTES * 60 * 1000);
         const part = (number) => String(number).padStart(2, "0");
-        return `${date.getFullYear()}-${part(date.getMonth() + 1)}-${part(date.getDate())}`;
+        return `${korea.getUTCFullYear()}-${part(korea.getUTCMonth() + 1)}-${part(korea.getUTCDate())}T${part(korea.getUTCHours())}:${part(korea.getUTCMinutes())}`;
     }
 
     const sortLabels = {
@@ -39,6 +43,7 @@
             this.totalAll = 0;
             this.loadToken = 0;
             this.editingId = null;
+            this.editingPublished = false;
             this.templateId = null;
             const params = window.SurveyOneApp.queryParams();
             this.anonymousDraft = !context.user && params.get("create") === "1";
@@ -154,6 +159,7 @@
         },
         openCreateForm() {
             this.editingId = null;
+            this.editingPublished = false;
             const form = this.root.querySelector("[data-project-form]");
             form.reset();
             form.elements.category.value = "일반조사";
@@ -164,6 +170,9 @@
             this.root.querySelector("[data-project-form-kicker]").textContent = "NEW SURVEY PROJECT";
             this.root.querySelector("[data-project-form-title]").textContent = "프로젝트 기본정보를 입력하세요.";
             this.root.querySelector("[data-project-form-submit]").textContent = "저장 후 STEP 02로";
+            this.root.querySelector("[data-project-form-submit]").classList.add("button-primary");
+            this.root.querySelector("[data-project-publish-changes]").hidden = true;
+            this.root.querySelector("[data-project-published-period-note]").hidden = true;
             this.root.querySelector("[data-project-next]").hidden = true;
             this.showForm();
         },
@@ -172,12 +181,16 @@
                 const payload = await this.context.api.get(`/api/surveys/${encodeURIComponent(id)}`);
                 const survey = payload.survey || payload;
                 this.editingId = survey.id;
+                this.editingPublished = Number(survey.publishedVersion || 0) > 0;
                 this.populateForm(survey);
                 this.root.querySelector("[data-project-create-flow]").hidden = false;
                 this.root.querySelectorAll("[data-project-flow]").forEach((button) => { button.disabled = false; });
                 this.root.querySelector("[data-project-form-kicker]").textContent = "SURVEY PROJECT · STEP 01";
                 this.root.querySelector("[data-project-form-title]").textContent = "프로젝트 기본정보를 확인하세요.";
-                this.root.querySelector("[data-project-form-submit]").textContent = "변경사항 저장";
+                this.root.querySelector("[data-project-form-submit]").textContent = this.editingPublished ? "변경사항만 저장" : "변경사항 저장";
+                this.root.querySelector("[data-project-form-submit]").classList.toggle("button-primary", !this.editingPublished);
+                this.root.querySelector("[data-project-publish-changes]").hidden = !this.editingPublished;
+                this.root.querySelector("[data-project-published-period-note]").hidden = !this.editingPublished;
                 this.root.querySelector("[data-project-next]").hidden = false;
                 this.showForm();
             } catch (error) {
@@ -203,8 +216,8 @@
             form.elements.category.value = survey.category || "일반조사";
             form.elements.description.value = survey.description || "";
             form.elements.targetAudience.value = profile.targetAudience || "";
-            form.elements.startsAt.value = localDateValue(profile.startsAt || survey.settings?.startsAt);
-            form.elements.closesAt.value = localDateValue(profile.closesAt || survey.settings?.closesAt);
+            form.elements.startsAt.value = localDateTimeValue(profile.startsAt || survey.settings?.startsAt);
+            form.elements.closesAt.value = localDateTimeValue(profile.closesAt || survey.settings?.closesAt);
             const identified = profile.identified ?? !(survey.settings?.anonymous ?? true);
             form.elements.identity.value = identified ? "identified" : "anonymous";
             form.elements.progress.value = (profile.showProgress ?? survey.settings?.showProgressBar ?? true) ? "show" : "hide";
@@ -252,7 +265,7 @@
                 description: form.elements.description.value.trim() || null,
                 projectProfile: {
                     startsAt: localBoundary(startsAt),
-                    closesAt: localBoundary(closesAt, true),
+                    closesAt: localBoundary(closesAt),
                     identified: form.elements.identity.value === "identified",
                     showProgress: form.elements.progress.value === "show",
                     targetAudience: form.elements.targetAudience.value.trim() || null,
@@ -265,13 +278,18 @@
         async saveProject(event) {
             event.preventDefault();
             const form = event.currentTarget;
+            const publishAfterSave = Boolean(event.submitter?.matches("[data-project-publish-changes]"));
             const errorBox = this.root.querySelector("[data-project-form-error]");
             if (!form.reportValidity()) return;
             let body;
             try { body = this.collectForm(); }
             catch (error) { errorBox.textContent = error.message; errorBox.hidden = false; errorBox.focus(); return; }
-            const button = this.root.querySelector("[data-project-form-submit]");
-            button.disabled = true;
+            if (publishAfterSave && !(await this.context.confirmMessage(
+                "현재 편집본을 저장하고 새 확정 버전을 생성할까요? 기존 URL은 유지되며 응답 기간을 포함한 현재 설정이 URL에 반영됩니다.",
+                { title: "새 버전 확정 및 기간 반영", confirmLabel: "저장하고 새 버전 확정", tone: "warning" }
+            ))) return;
+            const submitButtons = [...this.root.querySelectorAll("[data-project-form-submit], [data-project-publish-changes]")];
+            submitButtons.forEach((button) => { button.disabled = true; });
             errorBox.hidden = true;
             try {
                 if (!this.editingId && !this.context.appState.user) {
@@ -282,11 +300,18 @@
                     : await this.context.api.post("/api/surveys", body);
                 const survey = payload.survey || payload;
                 if (this.editingId) {
-                    this.context.toast("프로젝트 기본정보를 저장했습니다.", "success");
+                    if (publishAfterSave) {
+                        const publishPayload = await this.context.api.post(`/api/surveys/${encodeURIComponent(survey.id)}/publish`, {});
+                        const published = publishPayload.survey || publishPayload;
+                        this.editingPublished = true;
+                        this.context.toast(`새 확정 버전 v${published.version}에 설문 기간을 반영했습니다. 기존 URL은 유지됩니다.`, "success");
+                    } else if (this.editingPublished) {
+                        this.context.toast("편집본에 저장했습니다. 공개 URL의 기간은 이전 확정본을 유지합니다.", "warning");
+                    } else this.context.toast("프로젝트 기본정보를 저장했습니다.", "success");
                     if (this.continueAfterSave) this.context.navigate("M02005", { surveyId: survey.id, flow: "project", ...(this.templateId ? { templateId: this.templateId } : {}) });
                     else {
                         this.editingId = survey.id;
-                        button.disabled = false;
+                        submitButtons.forEach((button) => { button.disabled = false; });
                     }
                 } else {
                     this.context.toast("STEP 01 기본정보를 저장했습니다.", "success");
@@ -300,7 +325,7 @@
                 errorBox.textContent = error.message;
                 errorBox.hidden = false;
                 errorBox.focus();
-                button.disabled = false;
+                submitButtons.forEach((button) => { button.disabled = false; });
             } finally {
                 this.continueAfterSave = false;
             }
@@ -343,7 +368,7 @@
             const publicUrl = this.absolutePublicUrl(item.publicUrl);
             const urlMarkup = published && publicUrl ? `<div class="project-public-url"><span>프로젝트 배포 URL</span><code title="${Common.escapeHtml(publicUrl)}">${Common.escapeHtml(publicUrl)}</code><button class="button button-small" type="button" data-copy-public-url="${Common.escapeHtml(item.id)}">복사</button></div>` : "";
             const distributionLabel = stage === "active" ? "배포 관리" : "배포 준비";
-            return `<article class="project-card"><header class="project-card-head"><span class="status-badge status-${Common.escapeHtml(stage)}">${statusLabels[stage] || stage}</span><button class="icon-button project-more" type="button" data-more-id="${Common.escapeHtml(item.id)}" aria-label="${Common.escapeHtml(item.title)} 프로젝트 메뉴">•••</button></header><button class="project-card-main" type="button" data-open-id="${Common.escapeHtml(item.id)}"><span class="project-category">${Common.escapeHtml(item.category || item.templateName || "직접 작성")}</span><h3>${Common.escapeHtml(item.title)}</h3><span class="project-id">프로젝트 ID <code>${Common.escapeHtml(item.id)}</code></span><p>${Common.escapeHtml(item.description || "설문 설명을 입력해 주세요.")}</p></button>${urlMarkup}<dl class="project-stats"><div><dt>문항</dt><dd>${Common.formatNumber(item.questionCount || item.questions?.length || 0)}</dd></div><div><dt>응답</dt><dd>${Common.formatNumber(count)}</dd></div><div><dt>완료율</dt><dd>${completion}%</dd></div></dl><footer class="project-card-footer"><span>${Common.formatDate(item.updatedAt || item.createdAt)} 수정</span><div class="project-card-actions">${published ? `<button class="button button-small" type="button" data-share-id="${Common.escapeHtml(item.id)}">${distributionLabel}</button><button class="button button-small" type="button" data-close-id="${Common.escapeHtml(item.id)}">배포 종료</button>` : `<button class="button button-small button-primary" type="button" data-publish-id="${Common.escapeHtml(item.id)}">확정</button>`}<button class="button button-small" type="button" data-open-id="${Common.escapeHtml(item.id)}">편집</button><button class="button button-small" type="button" data-basic-id="${Common.escapeHtml(item.id)}">기본정보</button>${!published ? `<button class="button button-small button-danger" type="button" data-delete-id="${Common.escapeHtml(item.id)}">삭제</button>` : ""}</div></footer></article>`;
+            return `<article class="project-card"><header class="project-card-head"><span class="status-badge status-${Common.escapeHtml(stage)}">${statusLabels[stage] || stage}</span><button class="icon-button project-more" type="button" data-more-id="${Common.escapeHtml(item.id)}" aria-label="${Common.escapeHtml(item.title)} 프로젝트 메뉴">•••</button></header><button class="project-card-main" type="button" data-open-id="${Common.escapeHtml(item.id)}"><span class="project-category">${Common.escapeHtml(item.category || item.templateName || "직접 작성")}</span><h3>${Common.escapeHtml(item.title)}</h3><span class="project-id">프로젝트 ID <code>${Common.escapeHtml(item.id)}</code></span><p>${Common.escapeHtml(item.description || "설문 설명을 입력해 주세요.")}</p></button>${urlMarkup}<dl class="project-stats"><div><dt>문항</dt><dd>${Common.formatNumber(item.questionCount || item.questions?.length || 0)}</dd></div><div><dt>응답</dt><dd>${Common.formatNumber(count)}</dd></div><div><dt>완료율</dt><dd>${completion}%</dd></div></dl><footer class="project-card-footer"><span>${Common.formatDate(item.updatedAt || item.createdAt)} 수정</span><div class="project-card-actions">${published ? `<button class="button button-small" type="button" data-share-id="${Common.escapeHtml(item.id)}">${distributionLabel}</button><button class="button button-small" type="button" data-close-id="${Common.escapeHtml(item.id)}">배포 종료</button>` : `<button class="button button-small button-primary" type="button" data-publish-id="${Common.escapeHtml(item.id)}">확정 및 URL 발급</button>`}<button class="button button-small" type="button" data-open-id="${Common.escapeHtml(item.id)}">편집</button><button class="button button-small" type="button" data-basic-id="${Common.escapeHtml(item.id)}">기본정보</button>${!published ? `<button class="button button-small button-danger" type="button" data-delete-id="${Common.escapeHtml(item.id)}">삭제</button>` : ""}</div></footer></article>`;
         },
         absolutePublicUrl(value) {
             if (!value) return "";

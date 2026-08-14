@@ -35,6 +35,8 @@ button { cursor:pointer; }
 .public-notice h2 { margin:0 0 7px; font-size:16px; }
 .public-visually-hidden { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important; }
 .public-question-list { display:grid; gap:18px; }
+.public-custom-code { display:block; width:100%; min-height:100px; margin:0 0 18px; overflow:hidden; background:transparent; border:0; border-radius:var(--survey-radius); }
+.public-custom-code[data-placement="afterQuestions"] { margin:18px 0 0; }
 .public-section { min-width:0; margin:0; padding:0; border:0; }
 .public-section > legend { display:grid; width:100%; margin:0 0 9px; padding:0 4px; }
 .public-section > legend span { color:var(--survey-primary); font-size:10px; font-weight:850; letter-spacing:.1em; }

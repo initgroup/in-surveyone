@@ -21,6 +21,9 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     css = (PROJECT_ROOT / "frontend" / "css" / "pages" / "M03001.css").read_text(
         encoding="utf-8"
     )
+    app_css = (PROJECT_ROOT / "frontend" / "css" / "app.css").read_text(
+        encoding="utf-8"
+    )
 
     assert "data-distribution-project-view" in html
     assert "data-distribution-project-grid" in html
@@ -28,12 +31,23 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     assert 'data-distribution-layout="list"' in html
     assert "<select data-distribution-survey" not in html
     assert "data-distribution-workflow hidden" in html
+    assert "data-distribution-project-context" in html
+    assert "data-distribution-context-title" in html
+    assert "data-distribution-context-survey-state" in html
+    assert "data-distribution-context-response-state" in html
+    assert "data-distribution-context-period-sync" in html
+    assert "data-distribution-context-deployment-state" in html
+    assert "data-distribution-context-start" in html
+    assert "data-distribution-context-end" in html
+    assert html.count('data-distribution-save>저장</button>') == 2
+    assert "data-distribution-save>초안 저장</button>" not in html
     assert html.count("data-distribution-step-target=") == 4
     assert "국가·언어·연락수단" in html
     assert "복수 채널·예약 설정" in html
     assert "언어별 설문 URL·메시지" not in html  # compact step labels stay scannable
     assert "언어별 URL과 안내문" in html
-    assert "저장하고 발송 실행 요청" in html
+    assert "저장하고 발송 대기열 등록" in html
+    assert "실제 외부 전송은 운영 provider worker 연동 후 처리됩니다." in html
     assert "Excel 양식" in html
     assert '.csv,.txt,.xlsx' in html
     assert "data-recipient-import-progress" in html
@@ -57,6 +71,30 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     assert "초안 입력값을 확인해 주세요." in script
     assert 'this.root.querySelectorAll("[data-distribution-step] input' in script
     assert "this.syncExecutionLock();" in script
+    assert "data-replace-recipient-contact" in script
+    assert "replaceMaskedContact(button)" in script
+    assert "연락처 마스킹 표시" in script
+    assert "distribution-project-public-url" in script
+    assert "data-regenerate-public-url" in script
+    assert "/public-url/regenerate" in script
+    assert "replaceDraftPublicUrl(previousUrl, nextUrl)" in script
+    assert "loadPublishedSurveyState(this.current)" in script
+    assert "renderProjectContext()" in script
+    assert "availabilityStatus || this.publishedSurvey?.availability_status" in script
+    assert 'responseLabel = "응답 시작 전"' in script
+    assert 'responseLabel = "응답 기간 종료"' in script
+    assert 'querySelector("[data-distribution-context-start]")' in script
+    assert 'querySelector("[data-distribution-context-end]")' in script
+    assert 'querySelector("[data-distribution-context-period-sync]")' in script
+    assert "periodFromSurvey(survey)" in script
+    assert "publishedSurveyPeriod()" in script
+    assert "M02001 기간 변경 미확정 · 재확정 필요" in script
+    assert "distribution-project-period" in script
+    assert 'timeZone: "Asia/Seoul"' in script
+    assert '"\uc989\uc2dc \uc2dc\uc791 \u00b7 \uc81c\ud55c \uc5c6\uc74c"' in script
+    assert '"\uc885\ub8cc \uc81c\ud55c \uc5c6\uc74c"' in script
+    assert script.count('target="_blank"') >= 3
+    assert script.count('rel="noopener noreferrer"') >= 3
     assert "uploadRecipientFile(file)" in script
     assert "XMLHttpRequest" in script
     assert "this.draft.recipients.slice(offset, offset + this.recipientPageSize)" in script
@@ -76,6 +114,13 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
         assert action in script
 
     assert ".distribution-project-grid.is-list" in css
+    assert ".distribution-project-card > footer > .button { flex: 0 0 auto; min-width: 76px;" in css
+    assert ".distribution-project-public-url { display: grid; flex: 1 1 0; min-width: 0; overflow: hidden; }" in css
+    assert ".distribution-project-public-url code { flex: 1 1 auto; min-width: 0; overflow: hidden;" in css
+    assert ".distribution-project-context { position: sticky" in css
+    assert "scroll-margin-top: calc(var(--header-height) + 12px)" in css
+    assert ".distribution-project-period" in css
+    assert ".distribution-queue-explanation" in css
     assert ".distribution-recipient" in css
     assert ".distribution-channel-grid" in css
     assert ".distribution-message-card" in css
@@ -84,6 +129,7 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     assert ".recipient-pagination" in css
     assert "font-family: inherit" in css
     assert "@media (max-width: 52rem)" in css
+    assert ".sr-only { position: absolute !important;" in app_css
 
 
 def test_distribution_payload_keeps_multi_channel_recipients_and_language_messages() -> None:
@@ -174,6 +220,12 @@ assert.deepEqual(Array.from(emptyDraftPayload.channels), []);
 
 const url = page.languageUrl("fil");
 assert.equal(url, "https://survey.example.test/s/multicultural-family?lang=fil");
+page.draft.messagesByLanguage.ko = {{ emailBody: "https://survey.example.test/s/multicultural-family?lang=ko" }};
+page.replaceDraftPublicUrl(
+    "https://survey.example.test/s/multicultural-family",
+    "https://survey.example.test/s/svy-20260814-0123456789abcdef0123456789abcdef"
+);
+assert.equal(page.draft.messagesByLanguage.ko.emailBody, "https://survey.example.test/s/svy-20260814-0123456789abcdef0123456789abcdef?lang=ko");
 const card = page.projectCardMarkup({{
     id: "survey-101",
     title: "다문화 가정 생활 조사",
@@ -181,10 +233,17 @@ const card = page.projectCardMarkup({{
     status: "published",
     publishedVersion: 3,
     questionCount: 12,
-    responseCount: 4
+    responseCount: 4,
+    publicUrl: "/s/svy-0123456789abcdef0123456789abcdef"
+    ,startsAt: "2026-08-15T00:00:00Z"
+    ,closesAt: "2026-08-31T15:00:00Z"
 }});
 assert.match(card, /data-open-distribution-project="survey-101"/);
 assert.match(card, /확정 v3/);
+assert.match(card, /설문 URL/);
+assert.ok(card.includes("https://survey.example.test/s/svy-0123456789abcdef0123456789abcdef"));
+assert.match(card, /target="_blank"/);
+assert.match(card, /설문 기간 · M02001 설정/);
 
 const csv = page.parseCsv('name,countryCode,preferredLanguage,email,mobile,fax,kakaoId,channels\\r\\n"응답자, A001",VN,vi,a@example.com,010,,,EMAIL|SMS\\r\\n');
 assert.equal(csv.length, 2);
