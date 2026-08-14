@@ -1293,6 +1293,7 @@
             dialog.querySelector("[data-editor-template-confirm-title]").textContent = template ? `“${template.name || template.title}” 구조로 교체할까요?` : "빈 설문 구조로 교체할까요?";
             const confirmation = dialog.querySelector("[data-editor-template-confirm]");
             confirmation.hidden = false;
+            confirmation.scrollIntoView({ block: "nearest" });
             confirmation.querySelector("[data-editor-template-confirm-apply]").focus({ preventScroll: true });
         },
         async applyTemplateChoice(dialog) {

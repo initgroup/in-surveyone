@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -189,9 +190,46 @@ def test_template_layer_locks_background_and_keeps_a_stable_scroll_area() -> Non
     assert ".modal-template-library { height: min(560px, calc(100vh - 30px)); overflow: hidden; }" in app_css
     assert "grid-template-rows: auto auto minmax(0, 1fr) auto" in builder_css
     assert "overscroll-behavior: contain" in builder_css
+    assert "grid-auto-rows: max-content" in builder_css
+    assert "grid-template-rows: 86px auto auto" in builder_css
     assert "padding-right: 48px" in builder_css
     assert ".editor-template-grid > .empty-state { grid-column: 1 / -1; min-height: 100%; }" in builder_css
+    assert 'confirmation.scrollIntoView({ block: "nearest" });' in builder_script
     assert builder_script.count("templateLibrary: true") == 2
+
+
+def test_mobile_builder_actions_and_template_dialog_do_not_clip_controls() -> None:
+    app_css = (PROJECT_ROOT / "frontend" / "css" / "app.css").read_text(encoding="utf-8")
+    builder_css = (PROJECT_ROOT / "frontend" / "css" / "pages" / "M02003.css").read_text(encoding="utf-8")
+
+    assert "height: calc(100dvh - 12px)" in app_css
+    assert ".header-help, .header-page-refresh { width: 38px;" in app_css
+    assert ".button, input, select, textarea { min-height: 44px; }" in app_css
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in builder_css
+    assert ".builder-canvas { padding: 12px 10px 190px; }" in builder_css
+    assert ".editor-template-card { grid-template-rows: 78px auto auto; }" in builder_css
+
+
+def test_every_business_page_and_public_renderer_define_mobile_breakpoints() -> None:
+    styles = sorted((PROJECT_ROOT / "frontend" / "css" / "pages").glob("M*.css"))
+    styles.append(PROJECT_ROOT / "frontend" / "css" / "public.css")
+    missing = []
+    for style in styles:
+        source = style.read_text(encoding="utf-8")
+        breakpoints = re.findall(r"@media\s*\(max-width:\s*([0-9.]+)(rem|px)\)", source)
+        has_mobile = any(
+            (unit == "rem" and float(value) <= 52)
+            or (unit == "px" and float(value) <= 832)
+            for value, unit in breakpoints
+        )
+        if not has_mobile:
+            missing.append(style.name)
+
+    assert not missing, f"mobile breakpoint missing: {', '.join(missing)}"
+    index = (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    public = (PROJECT_ROOT / "frontend" / "public.html").read_text(encoding="utf-8")
+    assert 'width=device-width, initial-scale=1, viewport-fit=cover' in index
+    assert 'width=device-width, initial-scale=1, viewport-fit=cover' in public
 
 
 def test_editor_preview_is_interactive_and_simulates_fixed_viewports() -> None:
