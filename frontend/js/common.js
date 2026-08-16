@@ -20,6 +20,10 @@
         info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
         time: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
     };
+    const credentialEndpoints = new Set(["/api/auth/login", "/api/auth/signup", "/api/auth/guest"]);
+    const sessionMutationEndpoints = new Set([...credentialEndpoints, "/api/auth/logout"]);
+    const sessionProbeEndpoints = new Set(["/api/auth/me"]);
+    let sessionGeneration = 0;
 
     function icon(name, size = 20) {
         const path = iconPaths[name] || iconPaths.grid;
@@ -27,6 +31,8 @@
     }
 
     async function request(path, options = {}) {
+        const endpoint = String(path).split("?", 1)[0];
+        const requestSessionGeneration = sessionGeneration;
         const headers = new Headers(options.headers || {});
         let body = options.body;
         if (body && !(body instanceof FormData) && typeof body !== "string") {
@@ -40,6 +46,13 @@
             body,
             credentials: "same-origin"
         });
+        if (response.ok && sessionMutationEndpoints.has(endpoint)) sessionGeneration += 1;
+        const sessionExpiresAt = response.headers.get("X-SurveyOne-Session-Expires-At");
+        if (sessionExpiresAt && Number.isFinite(Date.parse(sessionExpiresAt))) {
+            window.dispatchEvent(new CustomEvent("surveyone:session-refreshed", {
+                detail: { expiresAt: sessionExpiresAt }
+            }));
+        }
         const contentType = response.headers.get("content-type") || "";
         const rawBody = await response.text();
         const expectsJson = contentType.toLowerCase().includes("json");
@@ -71,9 +84,13 @@
             const error = new Error(message);
             error.status = response.status;
             error.payload = payload;
-            const endpoint = String(path).split("?", 1)[0];
-            const credentialEndpoints = new Set(["/api/auth/login", "/api/auth/signup", "/api/auth/guest"]);
-            if (response.status === 401 && !credentialEndpoints.has(endpoint)) {
+            if (
+                response.status === 401
+                && !credentialEndpoints.has(endpoint)
+                && !sessionProbeEndpoints.has(endpoint)
+                && requestSessionGeneration === sessionGeneration
+            ) {
+                sessionGeneration += 1;
                 error.sessionInvalid = true;
                 window.dispatchEvent(new CustomEvent("surveyone:session-invalid", {
                     detail: { endpoint, message }

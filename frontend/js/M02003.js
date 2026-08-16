@@ -568,6 +568,13 @@
             });
             this.root.querySelector("[data-question-count]").textContent = `${this.survey.questions.length}개`;
             this.root.querySelector("[data-estimated-time]").textContent = `${Math.max(1, Math.ceil(this.survey.questions.filter((item) => item.type !== "notice").length * .35))}분`;
+            const recommendTemplate = !this.templateAdmin && this.survey.questions.length === 0;
+            const templateStart = this.root.querySelector("[data-builder-template-start]");
+            if (templateStart) templateStart.hidden = !recommendTemplate;
+            this.root.querySelectorAll(".builder-template-button").forEach((button) => {
+                button.classList.toggle("is-recommended", recommendTemplate);
+                button.setAttribute("aria-label", recommendTemplate ? "추천: 템플릿으로 설문 시작" : "설문 템플릿 선택");
+            });
         },
         answerMarkup(question) {
             if (optionTypes.has(question.type)) {

@@ -1068,13 +1068,21 @@ class MemoryStore:
             session = self._sessions.get(token_hash)
             if session is None:
                 raise AuthenticationError("로그인 세션이 유효하지 않습니다.")
-            if session.expires_at <= utcnow():
+            now = utcnow()
+            if session.expires_at <= now:
                 self._sessions.pop(token_hash, None)
                 raise AuthenticationError("로그인 세션이 만료되었습니다.")
             user = self._users.get(session.user_id)
             if user is None or not user.active:
                 self._sessions.pop(token_hash, None)
                 raise AuthenticationError("로그인 사용자를 찾을 수 없습니다.")
+            expires_at = now + timedelta(seconds=self.settings.session_ttl_seconds)
+            if user.tenant_expires_at is not None:
+                if user.tenant_expires_at <= now:
+                    self._sessions.pop(token_hash, None)
+                    raise AuthenticationError("게스트 작업공간이 만료되었습니다.")
+                expires_at = min(expires_at, user.tenant_expires_at)
+            self._sessions[token_hash] = replace(session, expires_at=expires_at)
             return user
 
     def auth_session(self, raw_token: str | None) -> AuthSessionView:
@@ -1083,6 +1091,9 @@ class MemoryStore:
         with self._lock:
             session = self._sessions[token_hash]
             return AuthSessionView(user=self._user_view(user), expires_at=session.expires_at)
+
+    def extend_session(self, raw_token: str | None) -> AuthSessionView:
+        return self.auth_session(raw_token)
 
     def logout(self, raw_token: str | None) -> None:
         if not raw_token:

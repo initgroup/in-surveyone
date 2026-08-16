@@ -5,12 +5,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Response
 
 from backend.config import get_settings
-from backend.errors import AuthenticationError, ServiceUnavailableError
+from backend.errors import ServiceUnavailableError
 from backend.models import GuestCapabilitiesView, GuestMode
 from backend.stores import (
     guest_capabilities,
     primary_store,
-    resolve_authenticated_store,
 )
 from backend.models import (
     ApiResponse,
@@ -23,10 +22,29 @@ from backend.models import (
 
 
 router = APIRouter()
+SESSION_EXPIRES_HEADER = "X-SurveyOne-Session-Expires-At"
+SESSION_COOKIE_PATH = "/api"
 
 
 def _prevent_auth_caching(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
+
+
+def _set_session_expiry_header(response: Response, session: AuthSessionView) -> None:
+    response.headers[SESSION_EXPIRES_HEADER] = session.expires_at.isoformat()
+    _prevent_auth_caching(response)
+
+
+def _delete_session_cookies(response: Response) -> None:
+    settings = get_settings()
+    for path in (SESSION_COOKIE_PATH, "/"):
+        response.delete_cookie(
+            key=settings.session_cookie_name,
+            path=path,
+            secure=settings.cookie_secure,
+            httponly=True,
+            samesite=settings.cookie_samesite,
+        )
 
 
 def _set_session_cookie(
@@ -49,16 +67,26 @@ def _set_session_cookie(
     cookie_options: dict[str, object] = {}
     if persistent:
         cookie_options["max_age"] = min(remaining_seconds, maximum_seconds)
+    # Remove a same-name cookie created by an earlier root-path version. If it
+    # remains, browsers send both values and the stale root cookie can win.
+    response.delete_cookie(
+        key=settings.session_cookie_name,
+        path="/",
+        secure=settings.cookie_secure,
+        httponly=True,
+        samesite=settings.cookie_samesite,
+    )
     response.set_cookie(
         key=settings.session_cookie_name,
         value=token,
         httponly=True,
         secure=settings.cookie_secure,
         samesite=settings.cookie_samesite,
-        path="/",
+        path=SESSION_COOKIE_PATH,
         **cookie_options,
     )
     _prevent_auth_caching(response)
+    _set_session_expiry_header(response, session)
 
 
 @router.post("/guest", response_model=ApiResponse[GuestProvisionView], status_code=201)
@@ -117,19 +145,8 @@ def login(
 def logout(request: Request, response: Response) -> ApiResponse[dict[str, bool]]:
     settings = get_settings()
     token = request.cookies.get(settings.session_cookie_name)
-    try:
-        store, _ = resolve_authenticated_store(token)
-    except AuthenticationError:
-        store = None
-    if store is not None:
-        store.logout(token)
-    response.delete_cookie(
-        key=settings.session_cookie_name,
-        path="/",
-        secure=settings.cookie_secure,
-        httponly=True,
-        samesite=settings.cookie_samesite,
-    )
+    primary_store().logout(token)
+    _delete_session_cookies(response)
     _prevent_auth_caching(response)
     return ApiResponse(data={"loggedOut": True})
 
@@ -137,9 +154,20 @@ def logout(request: Request, response: Response) -> ApiResponse[dict[str, bool]]
 @router.get("/me", response_model=ApiResponse[AuthSessionView])
 def me(request: Request, response: Response) -> ApiResponse[AuthSessionView]:
     token = request.cookies.get(get_settings().session_cookie_name)
-    store, _ = resolve_authenticated_store(token)
-    _prevent_auth_caching(response)
-    return ApiResponse(data=store.auth_session(token))
+    session = primary_store().auth_session(token)
+    _set_session_expiry_header(response, session)
+    return ApiResponse(data=session)
+
+
+@router.post("/extend", response_model=ApiResponse[AuthSessionView])
+def extend_session(
+    request: Request,
+    response: Response,
+) -> ApiResponse[AuthSessionView]:
+    token = request.cookies.get(get_settings().session_cookie_name)
+    session = primary_store().extend_session(token)
+    _set_session_expiry_header(response, session)
+    return ApiResponse(data=session)
 
 
 @router.get(

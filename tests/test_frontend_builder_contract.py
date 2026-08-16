@@ -64,7 +64,7 @@ def test_project_creation_is_a_single_menu_four_step_flow() -> None:
     assert 'this.context.navigate("M02003", { surveyId: survey.id, flow: "project", template: "1"' in project_script
     assert 'post("/api/surveys", { title: "제목 없는 설문" })' not in dashboard_script
     assert "async openTemplateLibrary()" in builder_script
-    assert builder_page.count("data-builder-template-library") == 2
+    assert builder_page.count("data-builder-template-library") == 3
     assert ".survey-flow { margin-bottom: 18px;" in app_css
     assert "overflow-x: auto; color: var(--muted);" in app_css
     assert "--content-gutter: 16px;" in app_css
@@ -173,6 +173,9 @@ def test_system_settings_is_separate_from_project_skin_step() -> None:
 
 def test_template_layer_locks_background_and_keeps_a_stable_scroll_area() -> None:
     index = (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    builder_page = (PROJECT_ROOT / "frontend" / "pages" / "M02003.html").read_text(
+        encoding="utf-8"
+    )
     app_script = (PROJECT_ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
     builder_script = (PROJECT_ROOT / "frontend" / "js" / "M02003.js").read_text(encoding="utf-8")
     app_css = (PROJECT_ROOT / "frontend" / "css" / "app.css").read_text(encoding="utf-8")
@@ -193,6 +196,11 @@ def test_template_layer_locks_background_and_keeps_a_stable_scroll_area() -> Non
     assert "grid-auto-rows: max-content" in builder_css
     assert "grid-template-rows: 86px auto auto" in builder_css
     assert "padding-right: 48px" in builder_css
+    assert "data-builder-template-start" in builder_page
+    assert "builder-template-button" in builder_page
+    assert 'button.classList.toggle("is-recommended", recommendTemplate)' in builder_script
+    assert ".builder-template-start { display: grid;" in builder_css
+    assert "white-space: nowrap" in builder_css.split(".builder-save-label", 1)[1].split("}", 1)[0]
     assert ".editor-template-grid > .empty-state { grid-column: 1 / -1; min-height: 100%; }" in builder_css
     assert 'confirmation.scrollIntoView({ block: "nearest" });' in builder_script
     assert builder_script.count("templateLibrary: true") == 2

@@ -393,11 +393,14 @@ def test_session_lookup_validates_database_row_with_application_clock() -> None:
 
 def test_session_sql_does_not_hide_state_before_domain_validation() -> None:
     statement = sql_loader.get("AUTH_SESSION_SELECT").upper()
+    extend_statement = sql_loader.get("AUTH_SESSION_EXTEND").upper()
 
     assert "S.REVOKED_AT" in statement
     assert "U.USE_YN AS USER_USE_YN" in statement
     assert "T.STATUS_CODE AS TENANT_STATUS_CODE" in statement
     where_clause = statement.split(" WHERE ", 1)[1]
+    assert "EXPIRES_AT > SYSTIMESTAMP" not in extend_statement
+    assert "REVOKED_AT IS NULL" in extend_statement
     assert "S.SESSION_TOKEN_HASH = :SESSIONTOKENHASH" in where_clause
     assert "SYSTIMESTAMP" not in where_clause
     assert "S.EXPIRES_AT >" not in where_clause

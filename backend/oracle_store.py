@@ -450,32 +450,43 @@ class OracleStore(MemoryStore):
     def _session_row(self, raw_token: str | None) -> dict[str, Any]:
         if not raw_token:
             raise AuthenticationError("로그인 세션이 필요합니다.")
-        with self.pool.connection() as connection:
+        token_hash = session_token_hash(raw_token, self.settings.session_secret)
+        with self.pool.transaction() as connection:
             row = self.crud.fetch_one(
                 connection,
                 "AUTH_SESSION_SELECT",
+                {"sessionTokenHash": token_hash},
+            )
+            if row is None:
+                raise AuthenticationError("로그인 세션이 유효하지 않거나 만료되었습니다.")
+            now = utcnow()
+            if row.get("revoked_at") is not None:
+                raise AuthenticationError("로그인 세션이 종료되었습니다.")
+            session_expires_at = _as_aware(row.get("expires_at"))
+            if session_expires_at is None or session_expires_at <= now:
+                raise AuthenticationError("로그인 세션이 만료되었습니다.")
+            if str(row.get("user_use_yn") or "N") != "Y":
+                raise AuthenticationError("사용할 수 없는 로그인 계정입니다.")
+            if str(row.get("tenant_status_code") or "") != "ACTIVE":
+                raise AuthenticationError("사용할 수 없는 작업공간입니다.")
+            tenant_expires_at = _as_aware(row.get("tenant_expires_at"))
+            if tenant_expires_at is not None and tenant_expires_at <= now:
+                raise AuthenticationError("게스트 작업공간이 만료되었습니다.")
+            next_expires_at = now + timedelta(seconds=self.settings.session_ttl_seconds)
+            if tenant_expires_at is not None:
+                next_expires_at = min(next_expires_at, tenant_expires_at)
+            affected = self.crud.execute(
+                connection,
+                "AUTH_SESSION_EXTEND",
                 {
-                    "sessionTokenHash": session_token_hash(
-                        raw_token, self.settings.session_secret
-                    )
+                    "sessionTokenHash": token_hash,
+                    "expiresAt": next_expires_at,
                 },
             )
-        if row is None:
-            raise AuthenticationError("로그인 세션이 유효하지 않거나 만료되었습니다.")
-        now = utcnow()
-        if row.get("revoked_at") is not None:
-            raise AuthenticationError("로그인 세션이 종료되었습니다.")
-        session_expires_at = _as_aware(row.get("expires_at"))
-        if session_expires_at is None or session_expires_at <= now:
-            raise AuthenticationError("로그인 세션이 만료되었습니다.")
-        if str(row.get("user_use_yn") or "N") != "Y":
-            raise AuthenticationError("사용할 수 없는 로그인 계정입니다.")
-        if str(row.get("tenant_status_code") or "") != "ACTIVE":
-            raise AuthenticationError("사용할 수 없는 작업공간입니다.")
-        tenant_expires_at = _as_aware(row.get("tenant_expires_at"))
-        if tenant_expires_at is not None and tenant_expires_at <= now:
-            raise AuthenticationError("게스트 작업공간이 만료되었습니다.")
-        return row
+            if affected != 1:
+                raise AuthenticationError("로그인 세션을 연장할 수 없습니다.")
+            row["expires_at"] = next_expires_at
+            return row
 
     def authenticate(self, raw_token: str | None) -> UserRecord:
         return self._user_from_row(self._session_row(raw_token))
@@ -486,6 +497,9 @@ class OracleStore(MemoryStore):
             user=self._user_view(self._user_from_row(row)),
             expires_at=_as_aware(row["expires_at"]) or utcnow(),
         )
+
+    def extend_session(self, raw_token: str | None) -> AuthSessionView:
+        return self.auth_session(raw_token)
 
     def logout(self, raw_token: str | None) -> None:
         if not raw_token:

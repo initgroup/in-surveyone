@@ -9,8 +9,9 @@
             this.context = context;
             this.root = context.root;
             this.isVisitor = !context.user;
+            this.root.classList.toggle("is-visitor-dashboard", this.isVisitor);
             this.root.querySelector("[data-greeting]").textContent = this.isVisitor
-                ? "IN-SURVEYONE에 오신 것을 환영합니다."
+                ? "설문 운영을 더 간결하게."
                 : `${context.user.name || "담당자"}님, 안녕하세요.`;
             this.root.querySelector("[data-visitor-start]").hidden = !this.isVisitor;
             this.bind();

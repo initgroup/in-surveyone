@@ -112,7 +112,11 @@ def test_guest_capabilities_expose_only_database_mode_and_credentials() -> None:
         assert relogged.status_code == 200, relogged.text
         assert "guestCredential" not in relogged.json()["data"]
         assert "initialPassword" not in relogged.text
-        cookie = relogged.headers["set-cookie"].lower()
+        cookie = next(
+            value.lower()
+            for value in relogged.headers.get_list("set-cookie")
+            if "path=/api" in value.lower()
+        )
         assert "httponly" in cookie
         assert "max-age=" not in cookie
         session_expiry = datetime.fromisoformat(relogged.json()["data"]["expiresAt"])
@@ -132,7 +136,11 @@ def test_guest_capabilities_expose_only_database_mode_and_credentials() -> None:
                 "keepSignedIn": True,
             },
         )
-        persistent_cookie = persistent_login.headers["set-cookie"].lower()
+        persistent_cookie = next(
+            value.lower()
+            for value in persistent_login.headers.get_list("set-cookie")
+            if "path=/api" in value.lower()
+        )
         assert persistent_login.headers["cache-control"] == "no-store"
         max_age = int(persistent_cookie.split("max-age=", 1)[1].split(";", 1)[0])
         assert 1 <= max_age <= settings.session_ttl_seconds

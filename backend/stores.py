@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from threading import Lock
 import time
@@ -100,6 +100,7 @@ class SurveyStore(Protocol):
     def login(self, request: LoginRequest) -> tuple[str, AuthSessionView]: ...
     def authenticate(self, raw_token: str | None) -> UserRecord: ...
     def auth_session(self, raw_token: str | None) -> AuthSessionView: ...
+    def extend_session(self, raw_token: str | None) -> AuthSessionView: ...
     def logout(self, raw_token: str | None) -> None: ...
     def templates(self) -> list[SurveyTemplate]: ...
     def template(self, code: str) -> SurveyTemplate: ...
@@ -238,6 +239,21 @@ def resolve_authenticated_store(raw_token: str | None) -> tuple[SurveyStore, Use
     return store, store.authenticate(raw_token)
 
 
+def bind_authenticated_request(
+    request: Request,
+    store: SurveyStore,
+    user: UserRecord,
+) -> None:
+    request.state.surveyone_store = store
+    request.state.surveyone_user = user
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        seconds=max(1, get_settings().session_ttl_seconds - 1)
+    )
+    if user.tenant_expires_at is not None:
+        expires_at = min(expires_at, user.tenant_expires_at)
+    request.state.surveyone_session_expires_at = expires_at
+
+
 def request_store(request: Request, *, authenticate: bool = True) -> SurveyStore:
     cached = getattr(request.state, "surveyone_store", None)
     if cached is not None:
@@ -250,8 +266,7 @@ def request_store(request: Request, *, authenticate: bool = True) -> SurveyStore
             if authenticate:
                 raise
         else:
-            request.state.surveyone_store = store
-            request.state.surveyone_user = user
+            bind_authenticated_request(request, store, user)
             return store
     if authenticate:
         raise AuthenticationError("로그인 세션이 필요합니다.")

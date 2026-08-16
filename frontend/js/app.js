@@ -6,6 +6,7 @@
     const runtimeAssetVersion = localDevelopmentHost
         ? `${configuredAssetVersion}-${Date.now()}`
         : configuredAssetVersion;
+    const DESKTOP_SIDEBAR_QUERY = "(min-width: 72.01rem)";
 
     function versionedAsset(src) {
         const url = new URL(src, document.baseURI);
@@ -31,6 +32,10 @@
         guestStartTarget: null,
         issuedGuest: null,
         sessionInvalidHandling: false,
+        sessionExpiresAt: null,
+        sessionTimer: null,
+        sessionExtending: false,
+        sidebarCollapsed: false,
         modalReturnFocus: null,
         modalDrag: null,
         modalOffsetX: 0,
@@ -49,6 +54,7 @@
 
     async function init() {
         cacheDom();
+        syncSidebarForViewport();
         renderNavigation();
         bindShellEvents();
         await restoreSession();
@@ -67,6 +73,9 @@
         dom.pageGroup = document.querySelector("[data-page-group]");
         dom.pageGroupLink = document.querySelector("[data-page-group-link]");
         dom.pageRefresh = document.querySelector("[data-page-refresh]");
+        dom.sessionStatus = document.querySelector("[data-session-status]");
+        dom.sessionRemaining = document.querySelector("[data-session-remaining]");
+        dom.sessionExtend = document.querySelector("[data-session-extend]");
         dom.userButton = document.querySelector("[data-user-button]");
         dom.userMenu = document.querySelector("[data-user-menu]");
         dom.authDialog = document.querySelector("[data-auth-dialog]");
@@ -124,7 +133,8 @@
 
     function bindShellEvents() {
         window.addEventListener("surveyone:session-invalid", handleInvalidSession);
-        dom.menuToggle.addEventListener("click", () => setSidebar(!dom.sidebar.classList.contains("is-open")));
+        window.addEventListener("surveyone:session-refreshed", handleSessionRefreshed);
+        dom.menuToggle.addEventListener("click", toggleSidebar);
         dom.scrim.addEventListener("click", () => setSidebar(false));
         dom.navigation.addEventListener("click", (event) => {
             const button = event.target.closest(".nav-group-label");
@@ -134,7 +144,7 @@
                 button.setAttribute("aria-expanded", String(!expanded));
                 group.classList.toggle("is-collapsed", expanded);
             }
-            if (event.target.closest("[data-route-link]")) setSidebar(false);
+            if (event.target.closest("[data-route-link]") && !isDesktopSidebar()) setSidebar(false);
         });
 
         dom.userButton.addEventListener("click", () => {
@@ -157,6 +167,7 @@
         });
         document.querySelector("[data-help-button]").addEventListener("click", () => void showHelp());
         dom.pageRefresh.addEventListener("click", () => void refreshCurrentPage());
+        dom.sessionExtend.addEventListener("click", () => void extendSession());
         document.querySelector("[data-guest-start]").addEventListener("click", startGuest);
         document.querySelector("[data-guest-capability-retry]").addEventListener("click", () => void loadGuestCapabilities({ force: true }));
         document.querySelector("[data-guest-login]").addEventListener("click", showIssuedGuestLogin);
@@ -194,6 +205,7 @@
         dom.messageCopy.addEventListener("click", () => void copyActiveMessage());
         dom.toastRegion.addEventListener("click", (event) => void handleToastAction(event));
         window.addEventListener("resize", () => {
+            syncSidebarForViewport();
             if (dom.modal.open) resetModalPosition();
             if (dom.messageDialog.open) resetMessagePosition();
         });
@@ -204,34 +216,30 @@
     }
 
     function handleInvalidSession() {
+        if (!state.user) {
+            clearSessionExpiry();
+            return;
+        }
         if (state.sessionInvalidHandling) return;
         state.sessionInvalidHandling = true;
         const hadUser = Boolean(state.user);
         state.user = null;
+        clearSessionExpiry();
         state.routeController?.abort();
         updateUserUi();
         dom.userMenu.hidden = true;
         dom.userButton.setAttribute("aria-expanded", "false");
 
-        if (hadUser) {
-            toast("로그인 세션이 만료되어 안전하게 로그아웃했습니다. 다시 로그인해 주세요.", "error");
-        }
-
         void (async () => {
-            try {
-                await fetch(`${window.SURVEYONE_CONFIG.apiBaseUrl}/api/auth/logout`, {
-                    method: "POST",
-                    headers: { Accept: "application/json" },
-                    credentials: "same-origin"
-                });
-            } catch (error) {
-                console.warn("만료된 세션 쿠키를 서버에서 정리하지 못했습니다.", error);
-            }
             try {
                 if (hadUser) {
                     history.replaceState(null, "", "#/M01001");
                     await route();
                     openAuth("login");
+                    setAuthMessage(
+                        "로그인 세션이 만료되어 안전하게 로그아웃했습니다. 아이디와 비밀번호를 입력해 다시 로그인해 주세요.",
+                        { error: true, focus: true }
+                    );
                 }
             } finally {
                 state.sessionInvalidHandling = false;
@@ -239,11 +247,115 @@
         })();
     }
 
+    function isDesktopSidebar() {
+        return window.matchMedia(DESKTOP_SIDEBAR_QUERY).matches;
+    }
+
+    function toggleSidebar() {
+        const open = isDesktopSidebar()
+            ? document.body.classList.contains("sidebar-collapsed")
+            : !dom.sidebar.classList.contains("is-open");
+        setSidebar(open);
+    }
+
     function setSidebar(open) {
-        dom.sidebar.classList.toggle("is-open", open);
-        dom.scrim.hidden = !open;
+        if (isDesktopSidebar()) {
+            state.sidebarCollapsed = !open;
+            document.body.classList.toggle("sidebar-collapsed", !open);
+            dom.sidebar.classList.remove("is-open");
+            dom.scrim.hidden = true;
+            document.body.classList.remove("has-sidebar-open");
+        } else {
+            document.body.classList.remove("sidebar-collapsed");
+            dom.sidebar.classList.toggle("is-open", open);
+            dom.scrim.hidden = !open;
+            document.body.classList.toggle("has-sidebar-open", open);
+        }
         dom.menuToggle.setAttribute("aria-expanded", String(open));
-        document.body.classList.toggle("has-sidebar-open", open);
+        dom.menuToggle.setAttribute("aria-label", open ? "메뉴 접기" : "메뉴 펼치기");
+        dom.menuToggle.title = open ? "메뉴 접기" : "메뉴 펼치기";
+    }
+
+    function syncSidebarForViewport() {
+        if (!dom.sidebar || !dom.menuToggle) return;
+        if (!isDesktopSidebar()) {
+            setSidebar(false);
+            return;
+        }
+        setSidebar(!state.sidebarCollapsed);
+    }
+
+    function handleSessionRefreshed(event) {
+        setSessionExpiry(event?.detail?.expiresAt);
+    }
+
+    function setSessionExpiry(value) {
+        const expiresAt = Date.parse(String(value || ""));
+        if (!Number.isFinite(expiresAt)) return;
+        state.sessionExpiresAt = expiresAt;
+        if (!state.sessionTimer) {
+            state.sessionTimer = window.setInterval(renderSessionStatus, 1000);
+        }
+        renderSessionStatus();
+    }
+
+    function clearSessionExpiry() {
+        state.sessionExpiresAt = null;
+        if (state.sessionTimer) window.clearInterval(state.sessionTimer);
+        state.sessionTimer = null;
+        state.sessionExtending = false;
+        if (dom.sessionStatus) {
+            dom.sessionStatus.hidden = true;
+            dom.sessionStatus.classList.remove("is-warning", "is-critical");
+        }
+        if (dom.sessionRemaining) dom.sessionRemaining.textContent = "--:--";
+        if (dom.sessionExtend) dom.sessionExtend.disabled = false;
+    }
+
+    function formatSessionRemaining(milliseconds) {
+        const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        return hours
+            ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+            : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+
+    function renderSessionStatus() {
+        if (!dom.sessionStatus || !dom.sessionRemaining) return;
+        const authenticated = Boolean(state.user && state.sessionExpiresAt);
+        dom.sessionStatus.hidden = !authenticated;
+        if (!authenticated) return;
+        const remaining = state.sessionExpiresAt - Date.now();
+        dom.sessionRemaining.textContent = remaining > 0 ? formatSessionRemaining(remaining) : "만료";
+        dom.sessionStatus.classList.toggle("is-warning", remaining > 60_000 && remaining <= 600_000);
+        dom.sessionStatus.classList.toggle("is-critical", remaining <= 60_000);
+        dom.sessionStatus.setAttribute("aria-label", remaining > 0
+            ? `로그인 세션 남은 시간 ${formatSessionRemaining(remaining)}`
+            : "로그인 세션 만료");
+        if (remaining <= 0 && !state.sessionInvalidHandling) {
+            state.sessionExpiresAt = null;
+            handleInvalidSession();
+        }
+    }
+
+    async function extendSession() {
+        if (!state.user || state.sessionExtending) return;
+        state.sessionExtending = true;
+        dom.sessionExtend.disabled = true;
+        dom.sessionExtend.textContent = "연장 중";
+        try {
+            const session = await Common.api.post("/api/auth/extend", {});
+            setSessionExpiry(session?.expiresAt || session?.expires_at);
+            toast("로그인 세션을 연장했습니다.", "success");
+        } catch (error) {
+            if (!error.sessionInvalid) toast(`세션을 연장하지 못했습니다. ${error.message}`, "error");
+        } finally {
+            state.sessionExtending = false;
+            dom.sessionExtend.disabled = false;
+            dom.sessionExtend.textContent = "연장";
+        }
     }
 
     function routeCode() {
@@ -571,10 +683,12 @@
         try {
             const payload = await Common.api.get("/api/auth/me");
             state.user = payload.user || payload;
+            setSessionExpiry(payload.expiresAt || payload.expires_at);
             updateUserUi();
             return true;
         } catch (error) {
             if (error.status !== 401) console.warn("세션을 확인하지 못했습니다.", error);
+            clearSessionExpiry();
             updateUserUi();
             return false;
         }
@@ -605,11 +719,12 @@
                 throw new Error("게스트 작업공간은 준비되었지만 세션 또는 일회용 자격정보를 확인하지 못했습니다.");
             }
             state.user = session.user;
+            setSessionExpiry(session.expiresAt || session.expires_at);
             state.issuedGuest = issued;
             updateUserUi();
             renderIssuedGuest();
             document.querySelector("[data-guest-login]").textContent = "작업 계속하기";
-            dom.authMessage.textContent = "첫 프로젝트 저장 시점에 게스트 계정이 발급되었습니다. 공용 PC에서는 자격정보를 안전하게 보관하고 작업 후 로그아웃하세요.";
+            setAuthMessage("첫 프로젝트 저장 시점에 게스트 계정이 발급되었습니다. 공용 PC에서는 자격정보를 안전하게 보관하고 작업 후 로그아웃하세요.");
             if (!dom.authDialog.open) dom.authDialog.showModal();
             return { user: state.user, issuedGuest: issued };
         })().finally(() => { state.guestActivationPromise = null; });
@@ -636,10 +751,9 @@
         dom.guestCredentials.querySelector("[data-guest-login-id]").textContent = issued.loginId;
         dom.guestCredentials.querySelector("[data-guest-initial-password]").textContent = issued.initialPassword;
         dom.guestCredentials.querySelector("[data-guest-expires-at]").textContent = formatGuestExpiry(issued.expiresAt);
-        dom.authMessage.textContent = state.user
+        setAuthMessage(state.user
             ? "현재 게스트 세션으로 프로젝트 저장을 계속합니다. 공용 PC에서는 자격정보를 보관한 뒤 작업 종료 시 로그아웃하세요."
-            : "자격정보를 먼저 복사한 뒤 로그인 화면에서 게스트 계정으로 로그인해 주세요.";
-        dom.authMessage.classList.remove("is-error");
+            : "자격정보를 먼저 복사한 뒤 로그인 화면에서 게스트 계정으로 로그인해 주세요.");
         requestAnimationFrame(() => dom.guestCredentials.querySelector("[data-guest-credential-title]")?.focus({ preventScroll: true }));
     }
 
@@ -684,9 +798,8 @@
         form.elements.loginId.value = issued.loginId;
         form.elements.password.value = issued.initialPassword;
         clearIssuedGuest({ preserveLoginForm: true });
-        selectAuthTab("login");
-        dom.authMessage.textContent = "발급된 게스트 계정 자격정보를 입력했습니다. 로그인 버튼을 눌러 계속하세요.";
-        dom.authMessage.classList.remove("is-error");
+        selectAuthTab("login", { focus: false });
+        setAuthMessage("발급된 게스트 계정 자격정보를 입력했습니다. 로그인 버튼을 눌러 계속하세요.");
         form.elements.password.focus({ preventScroll: true });
     }
 
@@ -703,18 +816,23 @@
 
     async function submitLogin(event) {
         event.preventDefault();
-        const data = Object.fromEntries(new FormData(event.currentTarget));
+        const form = event.currentTarget;
+        if (!validateLoginForm(form)) return;
+        const data = Object.fromEntries(new FormData(form));
+        data.loginId = String(data.loginId || "").trim();
         data.keepSignedIn = data.keepSignedIn === "true";
         setAuthBusy(true, "로그인 중입니다.");
         try {
             const payload = await Common.api.post("/api/auth/login", data);
+            state.routeController?.abort();
             state.user = payload.user || payload;
+            setSessionExpiry(payload.expiresAt || payload.expires_at);
             updateUserUi();
             setAuthBusy(false, "");
             dom.authDialog.close();
             toast("로그인했습니다.", "success");
             await route();
-        } catch (error) { setAuthBusy(false, error.message, true); }
+        } catch (error) { setAuthBusy(false, loginFailureMessage(error), true); }
     }
 
     async function submitSignup(event) {
@@ -727,6 +845,7 @@
         try {
             const payload = await Common.api.post("/api/auth/signup", data);
             state.user = payload.user || payload;
+            setSessionExpiry(payload.expiresAt || payload.expires_at);
             updateUserUi();
             setAuthBusy(false, "");
             dom.authDialog.close();
@@ -757,9 +876,38 @@
         if (!toggle.checked) input.value = "";
     }
 
+    function validateLoginForm(form) {
+        const loginId = form.elements.loginId;
+        const password = form.elements.password;
+        let field = null;
+        let message = "";
+        if (!loginId.value.trim()) {
+            field = loginId;
+            message = "아이디를 입력해 주세요.";
+        } else if (!password.value) {
+            field = password;
+            message = "비밀번호를 입력해 주세요.";
+        } else if (password.value.length < 8) {
+            field = password;
+            message = "비밀번호는 8자 이상 입력해 주세요.";
+        }
+        if (!message) return true;
+        setAuthMessage(message, { error: true });
+        field.focus({ preventScroll: true });
+        return false;
+    }
+
+    function loginFailureMessage(error) {
+        if (error?.status === 401) return "아이디 또는 비밀번호가 올바르지 않습니다.";
+        if (error?.status === 429) return "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.";
+        if (error?.status === 503) return "로그인 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
+        return error?.message || "로그인 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    }
+
     async function logout() {
         try { await Common.api.post("/api/auth/logout", {}); } catch (error) { console.warn(error); }
         state.user = null;
+        clearSessionExpiry();
         updateUserUi();
         dom.userMenu.hidden = true;
         toast("로그아웃했습니다. 메인 대시보드를 계속 둘러볼 수 있습니다.", "success");
@@ -788,6 +936,7 @@
         if (sessionSecurity) sessionSecurity.hidden = !user;
         document.querySelectorAll('[data-auth-action="logout"]').forEach((button) => { button.hidden = !user; });
         document.querySelectorAll('[data-auth-action="login"], [data-auth-action="signup"]').forEach((button) => { button.hidden = Boolean(user && !guest); });
+        renderSessionStatus();
     }
 
     function openAuth(mode = "guest", guestStartTarget = null) {
@@ -799,21 +948,29 @@
         if (mode === "guest") void loadGuestCapabilities();
     }
 
-    function selectAuthTab(mode) {
+    function selectAuthTab(mode, { focus = true } = {}) {
         document.querySelectorAll("[data-auth-tab]").forEach((tab) => {
             const selected = tab.dataset.authTab === mode;
             tab.setAttribute("aria-selected", String(selected));
             tab.tabIndex = selected ? 0 : -1;
         });
         document.querySelectorAll("[data-auth-panel]").forEach((panel) => { panel.hidden = panel.dataset.authPanel !== mode; });
-        const titles = { guest: "게스트 체험 프로젝트 시작", login: "작업공간으로 돌아오기", signup: "기관 설문 작업공간 만들기" };
+        const titles = { guest: "게스트 체험", login: "로그인", signup: "회원가입" };
         const intros = {
-            guest: "계정 없이 프로젝트를 작성하고 첫 저장 시에만 분리된 만료형 작업공간을 발급받습니다.",
-            login: "회원 아이디 또는 발급받은 게스트 계정으로 로그인하세요.",
-            signup: "기관 전용 설문 작업공간을 만들고 지속적으로 운영하세요."
+            guest: "바로 작성하고 첫 저장 시에만 만료형 작업공간을 발급받습니다.",
+            login: "회원 또는 게스트 계정으로 작업을 이어가세요.",
+            signup: "기관 전용 설문 작업공간을 만듭니다."
         };
         document.querySelector("[data-auth-title]").textContent = titles[mode];
         document.querySelector("[data-auth-intro]").textContent = intros[mode];
+        if (mode === "login" && focus) {
+            requestAnimationFrame(() => {
+                if (!dom.authDialog.open) return;
+                const loginId = document.querySelector('[data-login-form] input[name="loginId"]');
+                if (!loginId || loginId.closest("[data-auth-panel]")?.hidden) return;
+                loginId.focus({ preventScroll: true });
+            });
+        }
         if (mode === "guest") void loadGuestCapabilities();
     }
 
@@ -924,12 +1081,31 @@
     function setAuthBusy(busy, message, error = false) {
         dom.authDialog.querySelectorAll("button, input").forEach((element) => { if (!element.closest(".dialog-close-row")) element.disabled = busy; });
         if (!busy) renderGuestCapabilities();
-        dom.authMessage.textContent = message || "";
+        setAuthMessage(message, { error, focus: error && !busy });
+    }
+
+    function setAuthMessage(message, { error = false, focus = false } = {}) {
+        const text = String(message || "").trim();
+        dom.authMessage.textContent = text;
+        dom.authMessage.hidden = !text;
         dom.authMessage.classList.toggle("is-error", error);
+        dom.authMessage.setAttribute?.("role", error ? "alert" : "status");
+        dom.authMessage.setAttribute?.("aria-live", error ? "assertive" : "polite");
+        if (!text || !focus) return;
+        const reveal = () => {
+            dom.authMessage.scrollIntoView?.({ block: "nearest" });
+            dom.authMessage.focus?.({ preventScroll: true });
+        };
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(reveal);
+        else reveal();
     }
 
     function toast(message, tone = "info") {
         const normalizedTone = ["success", "warning", "error"].includes(tone) ? tone : "info";
+        if (normalizedTone === "error" && dom.authDialog?.open) {
+            setAuthMessage(message, { error: true, focus: true });
+            return dom.authMessage;
+        }
         const labels = { success: "완료", warning: "주의", error: "오류", info: "안내" };
         const element = document.createElement("section");
         element.className = `toast toast-${normalizedTone}`;

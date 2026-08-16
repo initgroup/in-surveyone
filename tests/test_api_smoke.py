@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from backend import stores
+from backend.security import session_token_hash
 from main import app, settings
 
 
@@ -24,7 +27,10 @@ def _signup(client: TestClient, prefix: str) -> dict:
         },
     )
     assert response.status_code == 201, response.text
-    assert "httponly" in response.headers["set-cookie"].lower()
+    session_cookie = response.headers["set-cookie"].lower()
+    assert "in_surveyone_session_v1=" in session_cookie
+    assert "httponly" in session_cookie
+    assert "path=/api" in session_cookie
     return response.json()["data"]
 
 
@@ -41,6 +47,94 @@ def _provision_and_login(client: TestClient) -> dict:
     )
     assert logged_in.status_code == 200, logged_in.text
     return provisioned.json()["data"]
+
+
+def _shorten_current_memory_session(client: TestClient, seconds: int = 20) -> datetime:
+    token = client.cookies.get(settings.session_cookie_name)
+    assert token
+    token_hash = session_token_hash(token, settings.session_secret)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+    with stores.memory_store._lock:
+        current = stores.memory_store._sessions[token_hash]
+        stores.memory_store._sessions[token_hash] = replace(
+            current, expires_at=expires_at
+        )
+    return expires_at
+
+
+def test_protected_requests_and_manual_action_extend_server_session() -> None:
+    with TestClient(app) as client:
+        _signup(client, "session-sliding")
+        shortened = _shorten_current_memory_session(client)
+
+        dashboard = client.get("/api/dashboard")
+        assert dashboard.status_code == 200, dashboard.text
+        automatic_expiry = datetime.fromisoformat(
+            dashboard.headers["x-surveyone-session-expires-at"]
+        )
+        assert automatic_expiry > shortened + timedelta(minutes=5)
+
+        shortened = _shorten_current_memory_session(client)
+        templates = client.get("/api/templates")
+        assert templates.status_code == 200, templates.text
+        public_api_expiry = datetime.fromisoformat(
+            templates.headers["x-surveyone-session-expires-at"]
+        )
+        assert public_api_expiry > shortened + timedelta(minutes=5)
+
+        _shorten_current_memory_session(client)
+        extended = client.post("/api/auth/extend", json={})
+        assert extended.status_code == 200, extended.text
+        payload_expiry = datetime.fromisoformat(
+            extended.json()["data"]["expiresAt"]
+        )
+        header_expiry = datetime.fromisoformat(
+            extended.headers["x-surveyone-session-expires-at"]
+        )
+        assert abs((payload_expiry - header_expiry).total_seconds()) < 1
+        assert payload_expiry > datetime.now(timezone.utc) + timedelta(minutes=5)
+
+
+def test_login_failure_returns_a_clear_authentication_error() -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "loginId": "missing-account",
+                "password": "Invalid!234",
+                "keepSignedIn": False,
+            },
+        )
+
+        assert response.status_code == 401
+        assert response.json() == {
+            "detail": "아이디 또는 비밀번호가 올바르지 않습니다."
+        }
+        assert "set-cookie" not in response.headers
+
+
+def test_login_replaces_a_stale_same_name_root_path_cookie() -> None:
+    with TestClient(app) as client:
+        client.cookies.set(
+            settings.session_cookie_name,
+            "stale-root-session",
+            domain="testserver.local",
+            path="/",
+        )
+        _signup(client, "cookie-migration")
+
+        me = client.get("/api/auth/me")
+        dashboard = client.get("/api/dashboard")
+
+        assert me.status_code == 200, me.text
+        assert dashboard.status_code == 200, dashboard.text
+        matching = [
+            cookie
+            for cookie in client.cookies.jar
+            if cookie.name == settings.session_cookie_name
+        ]
+        assert len(matching) == 1
+        assert matching[0].path == "/api"
 
 
 def test_health_templates_and_seeded_public_demo() -> None:

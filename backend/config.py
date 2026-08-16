@@ -309,8 +309,8 @@ def get_settings() -> Settings:
         db_mode=db_mode,
         allowed_origins=allowed_origins,
         session_cookie_name=(
-            str(os.getenv("SURVEYONE_SESSION_COOKIE_NAME", "surveyone_session")).strip()
-            or "surveyone_session"
+            str(os.getenv("SURVEYONE_SESSION_COOKIE_NAME", "in_surveyone_session_v1")).strip()
+            or "in_surveyone_session_v1"
         ),
         session_secret=session_secret,
         session_ttl_seconds=_env_int_compat(

@@ -21,7 +21,7 @@
             <button type="button" role="tab" aria-selected="false" data-builder-mode="settings">설정</button>
         </div>
         <div class="builder-actions">
-            <button class="button button-small" type="button" data-builder-template-library>템플릿 선택</button>
+            <button class="button button-small builder-template-button" type="button" data-builder-template-library><span aria-hidden="true">✦</span> 템플릿으로 시작</button>
             <button class="button button-small builder-code-button" type="button" data-builder-code>&lt;/&gt; HTML·CSS·JS</button>
             <label class="builder-edit-language">
                 <span>편집 언어</span>
@@ -46,6 +46,11 @@
         </aside>
 
         <section class="builder-canvas" aria-label="설문 편집 캔버스">
+            <aside class="builder-template-start" data-builder-template-start aria-labelledby="builderTemplateStartTitle" hidden>
+                <span class="builder-template-start-icon" aria-hidden="true">✦</span>
+                <div><strong id="builderTemplateStartTitle">템플릿으로 빠르게 시작하세요</strong><p>목적에 맞는 설문 구조를 선택한 뒤 문항과 문구를 자유롭게 수정할 수 있습니다.</p></div>
+                <button class="button button-primary" type="button" data-builder-template-library>템플릿 둘러보기</button>
+            </aside>
             <section class="survey-cover-card">
                 <div class="survey-cover-accent" data-cover-accent></div>
                 <div class="survey-cover-content">

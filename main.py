@@ -106,6 +106,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Accept", "Content-Type", "Idempotency-Key"],
+    expose_headers=["X-SurveyOne-Session-Expires-At"],
 )
 
 
@@ -142,6 +143,13 @@ async def protect_browser_writes(request: Request, call_next):
             )
     try:
         response = await call_next(request)
+        session_expires_at = getattr(
+            request.state, "surveyone_session_expires_at", None
+        )
+        if session_expires_at is not None:
+            response.headers["X-SurveyOne-Session-Expires-At"] = (
+                session_expires_at.isoformat()
+            )
         _set_frontend_cache_policy(request, response)
         return response
     except Exception as exc:

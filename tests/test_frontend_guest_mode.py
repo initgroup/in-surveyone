@@ -169,6 +169,8 @@ def test_dashboard_offers_database_guest_and_member_choices_to_visitors() -> Non
     assert "configureDatabaseGuestEntry" in page_script
     assert "게스트(손님) 체험" in page_source
     assert "DB 게스트" not in page_source
+    assert 'class="auth-policy-details"' in (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    assert 'this.root.classList.toggle("is-visitor-dashboard", this.isVisitor)' in page_script
 
 
 def test_page_context_is_integrated_into_top_header_and_auth_tabs_share_height() -> None:
@@ -189,9 +191,13 @@ def test_page_context_is_integrated_into_top_header_and_auth_tabs_share_height()
         PROJECT_ROOT / "frontend" / "js" / "app.js"
     ).read_text(encoding="utf-8")
     assert ".auth-panel" in css_source
-    assert "height: 390px" in css_source
+    auth_panel_rule = css_source.split(".auth-panel {", 1)[1].split("}", 1)[0]
+    assert "max-height: min(520px, 58vh)" in auth_panel_rule
+    assert "height: 390px" not in auth_panel_rule
     assert "scrollbar-width: thin" in css_source
     assert "*::-webkit-scrollbar-thumb" in css_source
+    assert "background: rgba(241, 246, 248, .98)" in css_source
+    assert ".signup-terms-disclosure" in css_source
 
 
 def test_dashboard_actions_have_retry_and_refresh_feedback() -> None:
@@ -220,6 +226,37 @@ def test_auth_dialog_busy_state_is_reset_before_reopening_and_after_success() ->
     )[0]
     assert 'setAuthBusy(false, "");' in open_auth_block
     assert app_source.count('setAuthBusy(false, "");') >= 3
+    select_auth_block = app_source.split(
+        'function selectAuthTab(mode, { focus = true } = {})', 1
+    )[1].split("function fallbackGuestCapabilities", 1)[0]
+    assert 'input[name="loginId"]' in select_auth_block
+    assert 'loginId.focus({ preventScroll: true });' in select_auth_block
+    assert 'selectAuthTab("login", { focus: false });' in app_source
+
+
+def test_authentication_errors_are_rendered_inside_the_open_layer() -> None:
+    app_source = (PROJECT_ROOT / "frontend" / "js" / "app.js").read_text(
+        encoding="utf-8"
+    )
+    index_source = (PROJECT_ROOT / "frontend" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    css_source = (PROJECT_ROOT / "frontend" / "css" / "app.css").read_text(
+        encoding="utf-8"
+    )
+
+    message_position = index_source.index("data-auth-message")
+    login_position = index_source.index("data-login-form")
+    assert message_position < login_position
+    assert 'data-login-form novalidate' in index_source
+    assert 'tabindex="-1" hidden' in index_source
+    assert "function validateLoginForm(form)" in app_source
+    assert "function loginFailureMessage(error)" in app_source
+    assert "function setAuthMessage(message" in app_source
+    assert 'if (normalizedTone === "error" && dom.authDialog?.open)' in app_source
+    assert "setAuthMessage(\n                        \"로그인 세션이 만료" in app_source
+    assert '.form-message.is-error' in css_source
+    assert '.form-message[hidden] { display: none; }' in css_source
 
 
 def test_issued_guest_secret_is_only_handed_to_normal_login_form() -> None:
