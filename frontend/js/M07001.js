@@ -78,7 +78,7 @@
                 this.render();
             } catch (error) {
                 if (this.destroyed || loadToken !== this.loadToken) return;
-                host.innerHTML = `<div class="template-admin-error" role="alert"><strong>공용 템플릿을 불러오지 못했습니다.</strong><p>${Common.escapeHtml(error.message)}</p><button class="button button-small" type="button" data-template-refresh>다시 시도</button></div>`;
+                host.innerHTML = `<div class="template-admin-error" role="alert"><strong>공용 템플릿을 불러오지 못했습니다.</strong><p>${Common.escapeHtml(error.message)}</p><button class="button button-small button-function" type="button" data-template-refresh>다시 시도</button></div>`;
             } finally {
                 if (!this.destroyed && loadToken === this.loadToken) host.setAttribute("aria-busy", "false");
             }
@@ -100,7 +100,7 @@
                 return (this.status === "all" || status === this.status) && (!this.query || text.includes(this.query));
             });
             if (!filtered.length) {
-                host.innerHTML = `<div class="template-admin-empty"><span class="empty-icon">▦</span><h2>${this.items.length ? "검색 조건에 맞는 템플릿이 없습니다." : "아직 공용 템플릿이 없습니다."}</h2><p>${this.items.length ? "검색어 또는 공개 상태를 바꿔 보세요." : "일반 설문 제작기에서 첫 공용 템플릿을 설계해 보세요."}</p>${this.items.length ? "" : '<button class="button button-primary" type="button" data-template-new>새 템플릿 설계</button>'}</div>`;
+                host.innerHTML = `<div class="template-admin-empty"><span class="empty-icon">▦</span><h2>${this.items.length ? "검색 조건에 맞는 템플릿이 없습니다." : "아직 공용 템플릿이 없습니다."}</h2><p>${this.items.length ? "검색어 또는 공개 상태를 바꿔 보세요." : "일반 설문 제작기에서 첫 공용 템플릿을 설계해 보세요."}</p>${this.items.length ? "" : '<button class="button button-navigation button-important" type="button" data-template-new>새 템플릿 설계</button>'}</div>`;
                 return;
             }
             host.innerHTML = `<div class="template-admin-grid">${filtered.map((item) => this.cardMarkup(item)).join("")}</div>`;
@@ -118,7 +118,7 @@
                 <dl class="template-admin-card-meta"><div><dt>버전</dt><dd>${draftOnly ? "미등록" : `v${Common.escapeHtml(item.version || item.versionNo || 1)}`}</dd></div><div><dt>문항</dt><dd>${Common.formatNumber(item.questionCount || 0)}</dd></div><div><dt>적용</dt><dd>${Common.formatNumber(item.useCount || item.copyCount || 0)}</dd></div></dl>
                 <footer class="template-admin-card-footer">
                     ${draftOnly ? '<p class="template-admin-draft-note">공개 전 작업 초안 · 저장한 내용으로 계속 편집할 수 있습니다.</p>' : `<label class="template-admin-card-state"><span>공개 상태</span><select data-template-card-status="${Common.escapeHtml(code)}" data-current-status="${status}" aria-label="${Common.escapeHtml(title)} 공개 상태"><option value="active" ${status === "active" ? "selected" : ""}>회원 공개</option><option value="draft" ${status === "draft" ? "selected" : ""}>비공개·검토 중</option><option value="archived" ${status === "archived" ? "selected" : ""}>보관</option></select></label>`}
-                    <div class="template-admin-card-actions"><button class="button button-small" type="button" data-template-edit="${Common.escapeHtml(code)}" aria-label="${Common.escapeHtml(title)} 편집">편집</button>${draftOnly ? "" : `<button class="button button-small" type="button" data-template-metadata="${Common.escapeHtml(code)}">정보 수정</button>`}<button class="button button-small button-danger" type="button" data-template-delete="${Common.escapeHtml(code)}">삭제</button></div>
+                    <div class="template-admin-card-actions"><button class="button button-small button-navigation" type="button" data-template-edit="${Common.escapeHtml(code)}" aria-label="${Common.escapeHtml(title)} 편집">편집</button>${draftOnly ? "" : `<button class="button button-small button-layer" type="button" data-template-metadata="${Common.escapeHtml(code)}">정보 수정</button>`}<button class="button button-small button-delete" type="button" data-template-delete="${Common.escapeHtml(code)}">삭제</button></div>
                 </footer>
             </article>`;
         },
@@ -160,7 +160,7 @@
                 <label class="form-field">분야<select data-meta-category required>${categories.map((category) => `<option value="${Common.escapeHtml(category)}" ${category === item.category ? "selected" : ""}>${Common.escapeHtml(category)}</option>`).join("")}</select></label>
                 <label class="form-field">설명<textarea rows="4" maxlength="500" data-meta-description>${Common.escapeHtml(item.description || "")}</textarea></label>
                 <p class="form-error" data-meta-error role="alert" tabindex="-1" hidden></p>
-                <div class="template-meta-actions"><button class="button" type="button" data-meta-cancel>취소</button><button class="button button-primary" type="submit">저장</button></div>
+                <div class="template-meta-actions"><button class="button button-function" type="button" data-meta-cancel>취소</button><button class="button button-save button-important" type="submit">저장</button></div>
             </form>`, { label: "공용 템플릿 정보 수정" });
             const form = dialog.querySelector("[data-template-meta-form]");
             dialog.querySelector("[data-meta-cancel]")?.addEventListener("click", () => dialog.close());

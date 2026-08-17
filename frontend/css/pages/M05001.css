@@ -263,6 +263,7 @@
 .survey-report-page .report-button.is-exporting::before {
     width: 14px;
     height: 14px;
+    background: none;
     border: 2px solid currentColor;
     border-right-color: transparent;
     border-radius: 50%;
@@ -285,6 +286,10 @@
 .survey-report-page .report-button-secondary:hover:not(:disabled) {
     border-color: #9eb0cd;
     box-shadow: 0 7px 18px rgba(33, 55, 98, 0.08);
+}
+
+.survey-report-page .report-button:is(.button-function, .button-batch) {
+    border-color: color-mix(in srgb, var(--action-color) 36%, white);
 }
 
 .survey-report-page .report-button small {
@@ -593,4 +598,268 @@
 @media (prefers-reduced-motion: reduce) {
     .survey-report-page .report-button { transition: none; }
     .survey-report-page .report-spinner { animation-duration: 1.8s; }
+}
+
+/* Report workspace: keep survey lookup familiar and make the selected survey the visual focus. */
+.survey-report-page {
+    --report-ink: #17243a;
+    --report-muted: #65728a;
+    --report-line: #d9e1ec;
+    --report-soft: #f5f7fa;
+    --report-brand: #244f9e;
+    --report-accent: #159b8c;
+}
+
+.survey-report-page .report-hero {
+    align-items: center;
+    min-height: 0;
+    padding: 24px 26px;
+    overflow: visible;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: none;
+}
+
+.survey-report-page .report-hero::before { display: none; }
+
+.survey-report-page .report-hero :is(h1, h2) {
+    margin-bottom: 6px;
+    font-size: clamp(1.65rem, 2.7vw, 2.15rem);
+    line-height: 1.2;
+}
+
+.survey-report-page .report-lead { font-size: 0.94rem; line-height: 1.55; }
+
+.survey-report-page .report-hero-note {
+    max-width: 290px;
+    margin: 0;
+    padding: 9px 0 9px 18px;
+    border-left: 2px solid #c8d5e8;
+    color: var(--report-muted);
+    font-size: 0.8rem;
+    line-height: 1.55;
+}
+
+.survey-report-page .report-badge {
+    border-color: #d5deeb;
+    border-radius: 7px;
+    background: var(--report-soft);
+    color: #4b5d78;
+    letter-spacing: 0;
+}
+
+.survey-report-page .report-filter-card {
+    display: grid;
+    gap: 18px;
+    margin: 14px 0 22px;
+    padding: 20px 22px;
+    border-radius: 18px;
+    box-shadow: none;
+}
+
+.survey-report-page .report-filter-intro {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.survey-report-page .report-filter-intro strong { display: block; font-size: 0.94rem; }
+.survey-report-page .report-filter-intro p { margin: 3px 0 0; color: var(--report-muted); font-size: 0.77rem; }
+
+.survey-report-page .report-step-number {
+    display: grid;
+    place-items: center;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    border: 1px solid #cfd9e7;
+    border-radius: 9px;
+    background: var(--report-soft);
+    color: var(--report-brand);
+    font-size: 0.75rem;
+    font-weight: 800;
+}
+
+.survey-report-page .report-filter-grid {
+    grid-template-columns: minmax(280px, 1.8fr) minmax(150px, 0.65fr) minmax(160px, 0.7fr) auto;
+    align-items: end;
+    gap: 12px;
+}
+
+.survey-report-page .report-filter-grid > .report-button { min-height: 46px; white-space: nowrap; }
+
+.survey-report-page .report-basis {
+    margin: -2px 0 0;
+    padding-top: 13px;
+    border-top: 1px solid #edf0f5;
+    color: var(--report-muted);
+    font-size: 0.78rem;
+}
+
+.survey-report-page .report-content { gap: 18px; }
+
+.survey-report-page .report-workspace-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 22px 24px;
+    border: 1px solid #cad6e6;
+    border-radius: 18px;
+    background: #fff;
+}
+
+.survey-report-page .report-workspace-title { min-width: 0; }
+.survey-report-page .report-workspace-title h2 { margin: 0; overflow-wrap: anywhere; font-size: clamp(1.35rem, 2.3vw, 1.8rem); letter-spacing: -0.025em; }
+.survey-report-page .report-workspace-title > p:last-child { margin: 7px 0 0; color: var(--report-muted); font-size: 0.8rem; }
+
+.survey-report-page .report-workspace-actions {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 12px;
+}
+
+.survey-report-page .report-overview-grid {
+    display: grid;
+    grid-template-columns: minmax(390px, 1.35fr) minmax(320px, 1fr) minmax(240px, 0.75fr);
+    gap: 14px;
+}
+
+.survey-report-page .report-panel {
+    padding: 22px;
+    border-radius: 16px;
+    box-shadow: none;
+}
+
+.survey-report-page .report-card-heading {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.survey-report-page .report-card-heading h2 { margin: 0; font-size: 1.04rem; }
+.survey-report-page .report-card-heading > :is(span, strong) { color: var(--report-muted); font-size: 0.73rem; }
+
+.survey-report-page .report-summary-panel .report-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.survey-report-page .report-summary-panel .report-kpi-card {
+    min-height: 105px;
+    padding: 15px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--report-soft);
+    box-shadow: none;
+}
+
+.survey-report-page .report-kpi-card::after { display: none; }
+.survey-report-page .report-summary-panel .report-kpi-label { margin-bottom: 8px; font-size: 0.75rem; }
+.survey-report-page .report-summary-panel .report-kpi-value { font-size: clamp(1.3rem, 2vw, 1.65rem); }
+.survey-report-page .report-summary-panel .report-kpi-note { margin-top: 6px; font-size: 0.68rem; }
+
+.survey-report-page .report-trend-chart { min-height: 157px; }
+.survey-report-page .report-trend-chart svg { display: block; width: 100%; height: 132px; overflow: visible; }
+.survey-report-page .report-trend-gridline { stroke: #e8edf4; stroke-width: 1; }
+.survey-report-page .report-trend-area { fill: rgba(36, 79, 158, 0.08); }
+.survey-report-page .report-trend-line { fill: none; stroke: var(--report-brand); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.survey-report-page .report-trend-point { fill: #fff; stroke: var(--report-brand); stroke-width: 2.5; }
+
+.survey-report-page .report-trend-labels {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 2px;
+    margin-top: -8px;
+    color: var(--report-muted);
+    font-size: 0.64rem;
+    text-align: center;
+}
+
+.survey-report-page .report-chart-note { margin: 14px 0 0; color: var(--report-muted); font-size: 0.7rem; line-height: 1.5; }
+
+.survey-report-page .report-completion-body { display: grid; justify-items: center; gap: 22px; }
+
+.survey-report-page .report-completion-ring {
+    --completion-rate: 0%;
+    display: grid;
+    place-items: center;
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background: conic-gradient(var(--report-accent) var(--completion-rate), #e8edf3 0);
+}
+
+.survey-report-page .report-completion-ring > span {
+    display: grid;
+    place-items: center;
+    width: 112px;
+    height: 112px;
+    border-radius: 50%;
+    background: #fff;
+}
+
+.survey-report-page .report-completion-ring strong { font-size: 1.65rem; letter-spacing: -0.04em; }
+.survey-report-page .report-completion-ring small { color: var(--report-muted); font-size: 0.7rem; }
+
+.survey-report-page .report-completion-legend { display: grid; width: 100%; gap: 9px; margin: 0; }
+.survey-report-page .report-completion-legend div { display: flex; justify-content: space-between; gap: 16px; font-size: 0.76rem; }
+.survey-report-page .report-completion-legend dt { display: flex; align-items: center; gap: 7px; color: var(--report-muted); }
+.survey-report-page .report-completion-legend dd { margin: 0; font-weight: 750; }
+.survey-report-page .report-completion-legend i { width: 9px; height: 9px; border-radius: 3px; background: #dfe5ed; }
+.survey-report-page .report-completion-legend i.is-complete { background: var(--report-accent); }
+
+.survey-report-page .report-question-panel,
+.survey-report-page .report-table-panel { padding: 24px; }
+
+.survey-report-page .report-chart-card { border-radius: 11px; background: #fff; }
+.survey-report-page .report-bar-track { height: 8px; border-radius: 3px; }
+.survey-report-page .report-bar-fill,
+.survey-report-page .report-bar-item:nth-child(2n) .report-bar-fill { border-radius: 3px; background: var(--report-brand); }
+
+.survey-report-page .report-table-wrap { border-radius: 10px; }
+.survey-report-page .report-table th { background: var(--report-soft); color: #536178; }
+
+.survey-report-page .report-export-card {
+    padding: 22px 24px;
+    border-color: var(--report-line);
+    border-radius: 16px;
+    background: #fff;
+}
+
+.survey-report-page .report-export-card .report-section-kicker { margin-bottom: 5px; }
+
+@media (max-width: 1180px) {
+    .survey-report-page .report-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .survey-report-page .report-summary-panel { grid-column: 1 / -1; }
+}
+
+@media (max-width: 980px) {
+    .survey-report-page .report-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .survey-report-page .report-field-wide { grid-column: 1 / -1; }
+    .survey-report-page .report-filter-grid > .report-button { width: fit-content; }
+    .survey-report-page .report-workspace-head { align-items: flex-start; flex-direction: column; }
+    .survey-report-page .report-workspace-actions { justify-content: space-between; width: 100%; }
+}
+
+@media (max-width: 720px) {
+    .survey-report-page .report-hero { align-items: flex-start; padding: 22px; }
+    .survey-report-page .report-hero-note { display: none; }
+    .survey-report-page .report-filter-card { padding: 18px; }
+    .survey-report-page .report-filter-grid,
+    .survey-report-page .report-overview-grid { grid-template-columns: minmax(0, 1fr); }
+    .survey-report-page .report-field-wide,
+    .survey-report-page .report-summary-panel { grid-column: auto; }
+    .survey-report-page .report-filter-grid > .report-button { width: 100%; }
+    .survey-report-page .report-workspace-actions { align-items: stretch; flex-direction: column; }
+    .survey-report-page .report-workspace-actions .report-button { width: 100%; }
+    .survey-report-page .report-summary-panel .report-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 480px) {
+    .survey-report-page .report-summary-panel .report-kpi-grid { grid-template-columns: minmax(0, 1fr); }
+    .survey-report-page .report-trend-labels span:nth-child(even) { visibility: hidden; }
 }

@@ -41,7 +41,7 @@
                 this.items = Array.isArray(payload.items) ? payload.items : [];
                 this.render();
             } catch (error) {
-                host.innerHTML = `<div class="member-admin-error" role="alert"><strong>회원 목록을 불러오지 못했습니다.</strong><p>${Common.escapeHtml(error.message)}</p><button class="button" type="button" data-member-refresh>다시 시도</button></div>`;
+                host.innerHTML = `<div class="member-admin-error" role="alert"><strong>회원 목록을 불러오지 못했습니다.</strong><p>${Common.escapeHtml(error.message)}</p><button class="button button-function" type="button" data-member-refresh>다시 시도</button></div>`;
             } finally {
                 if (!this.destroyed) host.setAttribute("aria-busy", "false");
             }
@@ -70,7 +70,7 @@
             const typeLabel = item.isGuest ? (Number(item.projectCount || 0) ? "게스트" : "미사용 게스트") : "일반 회원";
             const actions = withdrawn
                 ? '<span class="member-admin-withdrawn-note">복구할 수 없는 탈퇴 처리 완료</span>'
-                : `<div class="member-admin-actions"><button class="button button-small" type="button" data-member-password-reset="${Common.escapeHtml(item.id)}" ${self || !active ? "disabled" : ""}>비밀번호 초기화</button><button class="button button-small ${active ? "button-danger" : ""}" type="button" data-member-status="${Common.escapeHtml(item.id)}" data-next-active="${!active}" ${self || expired ? "disabled" : ""}>${active ? "이용 중지" : "이용 재개"}</button><button class="button button-small button-danger" type="button" data-member-withdraw="${Common.escapeHtml(item.id)}" ${self ? "disabled" : ""}>회원 탈퇴</button></div>`;
+                : `<div class="member-admin-actions"><button class="button button-small button-batch" type="button" data-member-password-reset="${Common.escapeHtml(item.id)}" ${self || !active ? "disabled" : ""}>비밀번호 초기화</button><button class="button button-small button-batch" type="button" data-member-status="${Common.escapeHtml(item.id)}" data-next-active="${!active}" ${self || expired ? "disabled" : ""}>${active ? "이용 중지" : "이용 재개"}</button><button class="button button-small button-delete" type="button" data-member-withdraw="${Common.escapeHtml(item.id)}" ${self ? "disabled" : ""}>회원 탈퇴</button></div>`;
             return `<tr><td data-label="회원"><span class="member-admin-identity"><strong>${Common.escapeHtml(item.name)}</strong><small>${Common.escapeHtml(withdrawn ? "계정 정보 익명화됨" : item.loginId)}</small></span></td><td data-label="분류"><span class="member-admin-badge ${item.isGuest ? "is-guest" : "is-member"}">${typeLabel}</span></td><td data-label="기관">${Common.escapeHtml(item.organizationName)}</td><td data-label="이메일">${Common.escapeHtml(item.email || "미등록")}</td><td data-label="권한"><span class="member-admin-badge ${item.systemAdmin ? "is-admin" : ""}">${item.systemAdmin ? "플랫폼 관리자" : Common.escapeHtml(item.role || "OWNER")}</span></td><td data-label="상태"><span class="member-admin-badge ${statusClass}">${statusLabel}</span></td><td data-label="가입·로그인"><span class="member-admin-identity"><small>가입 ${Common.formatDate(item.createdAt)}</small><small>${item.isGuest && item.expiresAt ? `만료 ${Common.formatDate(item.expiresAt)}` : `최근 ${item.lastLoginAt ? Common.formatDate(item.lastLoginAt) : "기록 없음"}`}</small>${withdrawn ? `<small>탈퇴 ${Common.formatDate(item.withdrawnAt)}</small>` : ""}</span></td><td data-label="관리">${actions}</td></tr>`;
         },
         renderPagination() {
@@ -79,7 +79,7 @@
             if (!this.total) return void (host.innerHTML = "");
             const start = (this.page - 1) * this.pageSize + 1;
             const end = Math.min(this.page * this.pageSize, this.total);
-            host.innerHTML = `<span>${Common.formatNumber(this.total)}명 중 ${start}–${end}</span><div><button class="button button-small" type="button" data-member-page="${this.page - 1}" ${this.page <= 1 ? "disabled" : ""}>이전</button><span class="button button-small" aria-current="page">${this.page} / ${pageCount}</span><button class="button button-small" type="button" data-member-page="${this.page + 1}" ${this.page >= pageCount ? "disabled" : ""}>다음</button></div>`;
+            host.innerHTML = `<span>${Common.formatNumber(this.total)}명 중 ${start}–${end}</span><div><button class="button button-small button-navigation button-navigation-back" type="button" data-member-page="${this.page - 1}" ${this.page <= 1 ? "disabled" : ""}>이전</button><span class="button button-small" aria-current="page">${this.page} / ${pageCount}</span><button class="button button-small button-navigation" type="button" data-member-page="${this.page + 1}" ${this.page >= pageCount ? "disabled" : ""}>다음</button></div>`;
         },
         handleClick(event) {
             if (event.target.closest("[data-member-refresh]")) return void this.load(this.page);
@@ -107,7 +107,7 @@
             try {
                 const payload = await this.context.api.post(`/api/admin/members/${encodeURIComponent(memberId)}/password-reset`, {});
                 const password = payload.temporaryPassword;
-                const dialog = this.context.openModal(`<section class="member-password-result"><span class="eyebrow">ONE-TIME TEMPORARY PASSWORD</span><h2>임시 비밀번호가 발급되었습니다.</h2><p><strong>${Common.escapeHtml(payload.loginId)}</strong> 회원에게 안전한 별도 채널로 전달하세요.<br>이 창을 닫으면 다시 확인할 수 없습니다.</p><div class="member-password-value"><code data-member-temp-password>${Common.escapeHtml(password)}</code><button class="button button-primary" type="button" data-member-password-copy>복사</button></div><button class="button" type="button" data-member-password-close>확인 후 닫기</button></section>`, { label: "회원 임시 비밀번호", initialFocus: "[data-member-password-copy]" });
+                const dialog = this.context.openModal(`<section class="member-password-result"><span class="eyebrow">ONE-TIME TEMPORARY PASSWORD</span><h2>임시 비밀번호가 발급되었습니다.</h2><p><strong>${Common.escapeHtml(payload.loginId)}</strong> 회원에게 안전한 별도 채널로 전달하세요.<br>이 창을 닫으면 다시 확인할 수 없습니다.</p><div class="member-password-value"><code data-member-temp-password>${Common.escapeHtml(password)}</code><button class="button button-function button-important" type="button" data-member-password-copy>복사</button></div><button class="button button-function" type="button" data-member-password-close>확인 후 닫기</button></section>`, { label: "회원 임시 비밀번호", initialFocus: "[data-member-password-copy]" });
                 dialog.querySelector("[data-member-password-copy]").addEventListener("click", async (copyButton) => {
                     try { await Common.copyText(password); copyButton.currentTarget.textContent = "복사됨"; }
                     catch { this.context.toast("브라우저에서 클립보드 복사를 허용하지 않았습니다.", "error"); }

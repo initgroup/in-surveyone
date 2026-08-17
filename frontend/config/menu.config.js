@@ -30,7 +30,7 @@
             code: "M04",
             label: "응답 데이터",
             icon: "database",
-            items: [{ code: "M04001", label: "로우데이터", description: "응답 조회·필터·다운로드" }]
+            items: [{ code: "M04001", label: "응답 탐색", description: "응답 조회·검토·내보내기" }]
         },
         {
             code: "M05",

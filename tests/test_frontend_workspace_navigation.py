@@ -58,7 +58,7 @@ def test_project_list_buttons_keep_correct_spa_destinations_and_mobile_visibilit
     assert ".builder-actions .workspace-list-button { display: inline-flex;" in builder_css
     assert "grid-template-columns: minmax(220px, .7fr) auto minmax(520px, 1.3fr)" in builder_css
     assert ".builder-actions .button { flex: 0 0 auto; white-space: nowrap; }" in builder_css
-    assert "@media (max-width: 110rem)" in builder_css
+    assert "@media (max-width: 128rem)" in builder_css
     assert ".builder-actions .workspace-list-button { width: 40px;" in builder_css
 
 

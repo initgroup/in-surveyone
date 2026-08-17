@@ -12,6 +12,8 @@
         initialSurveyId: "",
         surveys: [],
         report: null,
+        responses: [],
+        trendAvailable: true,
         exporting: false,
         elements: {}
     };
@@ -137,8 +139,18 @@
             empty: find("empty-state"),
             content: find("report-content"),
             retry: find("retry"),
+            detailTitle: find("detail-title"),
+            detailMeta: find("detail-meta"),
+            openResponses: find("open-responses"),
             kpiGrid: find("kpi-grid"),
             updatedAt: find("updated-at"),
+            trendChart: find("trend-chart"),
+            trendTotal: find("trend-total"),
+            trendNote: find("trend-note"),
+            completionRing: find("completion-ring"),
+            completionValue: find("completion-value"),
+            completedCount: find("completed-count"),
+            partialCount: find("partial-count"),
             chartGrid: find("chart-grid"),
             chartEmpty: find("chart-empty"),
             questionCount: find("question-count"),
@@ -157,6 +169,10 @@
         state.elements.retry?.addEventListener("click", () => {
             if (state.surveys.length) loadReport();
             else loadSurveys();
+        }, { signal });
+        state.elements.openResponses?.addEventListener("click", () => {
+            const id = String(state.elements.surveySelect?.value || "");
+            if (id && typeof state.navigate === "function") state.navigate("M04001", { surveyId: id });
         }, { signal });
         state.root.querySelectorAll('[data-role="export"]').forEach((button) => {
             button.addEventListener("click", () => exportReport(button), { signal });
@@ -334,16 +350,26 @@
             if (cutoffDate) params.set("cutoffDate", cutoffDate);
             if (responseStatus && responseStatus !== "ALL") params.set("responseStatus", responseStatus);
             const query = params.toString();
-            const response = await state.api.get(`/api/surveys/${encodeURIComponent(id)}/report${query ? `?${query}` : ""}`);
+            const reportRequest = state.api.get(`/api/surveys/${encodeURIComponent(id)}/report${query ? `?${query}` : ""}`);
+            const trendRequest = responseStatus === "PARTIAL"
+                ? Promise.resolve([])
+                : state.api.get(`/api/surveys/${encodeURIComponent(id)}/responses?offset=0&limit=200`);
+            const [reportResult, trendResult] = await Promise.allSettled([reportRequest, trendRequest]);
             if (version !== state.requestVersion || !state.root) return;
-            const payload = unwrapEnvelope(response);
+            if (reportResult.status === "rejected") throw reportResult.reason;
+            const payload = unwrapEnvelope(reportResult.value);
             state.report = payload && typeof payload === "object" ? payload : {};
+            const trendPayload = trendResult.status === "fulfilled" ? unwrapEnvelope(trendResult.value) : [];
+            state.responses = asList(trendPayload, ["responses", "items", "rows", "results"]);
+            state.trendAvailable = trendResult.status === "fulfilled";
             renderReport(state.report);
             renderBasis();
             setView("content");
         } catch (error) {
             if (version !== state.requestVersion || !state.root) return;
             state.report = null;
+            state.responses = [];
+            state.trendAvailable = false;
             state.elements.errorMessage.textContent = errorMessage(error);
             setView("error");
         }
@@ -364,6 +390,21 @@
         return asList(read(source, ["responses", "rawResponses"], []), ["items", "rows"]).length;
     }
 
+    function deriveSummary(report) {
+        const source = reportRoot(report);
+        const summary = read(source, ["summary", "overview", "totals"], {});
+        const total = totalResponses(source);
+        const completedRaw = read(summary, ["completedResponses", "completeCount", "completed", "COMPLETED_RESPONSES"], read(source, ["completedResponses", "completeCount"], null));
+        const partialRaw = read(summary, ["partialResponses", "partialCount", "inProgress", "PARTIAL_RESPONSES"], read(source, ["partialResponses", "partialCount", "inProgress"], null));
+        const completed = completedRaw === null
+            ? (partialRaw === null ? total : Math.max(0, total - numberValue(partialRaw)))
+            : numberValue(completedRaw);
+        const partial = partialRaw === null ? Math.max(0, total - completed) : numberValue(partialRaw);
+        let completionRate = numberValue(read(summary, ["completionRate", "completeRate", "COMPLETION_RATE"], read(source, ["completionRate", "completeRate"], total ? completed / total : 0)));
+        if (completionRate > 1) completionRate /= 100;
+        return { total, completed, partial, completionRate: Math.max(0, Math.min(1, completionRate)) };
+    }
+
     function deriveKpis(report) {
         const source = reportRoot(report);
         const explicit = asList(read(source, ["kpis", "metrics", "keyMetrics"], []), ["items", "rows"]);
@@ -376,26 +417,13 @@
                 tone: String(read(item, ["tone", "status"], "neutral")).toLowerCase()
             }));
         }
-        const summary = read(source, ["summary", "overview", "totals"], {});
-        const total = totalResponses(source);
-        const completedRaw = read(summary, ["completedResponses", "completeCount", "completed", "COMPLETED_RESPONSES"], read(source, ["completedResponses", "completeCount"], null));
-        const partialRaw = read(summary, ["partialResponses", "partialCount", "inProgress", "PARTIAL_RESPONSES"], read(source, ["partialResponses", "partialCount", "inProgress"], null));
-        const completed = completedRaw === null
-            ? (partialRaw === null ? total : Math.max(0, total - numberValue(partialRaw)))
-            : numberValue(completedRaw);
-        const partial = partialRaw === null ? Math.max(0, total - completed) : numberValue(partialRaw);
-        let completionRate = read(summary, ["completionRate", "completeRate", "COMPLETION_RATE"], total ? completed / total : 0);
-        completionRate = numberValue(completionRate);
-        if (completionRate > 1) completionRate /= 100;
-        const averageSeconds = numberValue(read(summary, ["averageDurationSeconds", "avgDurationSeconds", "averageSeconds", "AVERAGE_DURATION_SECONDS"], read(source, ["averageDurationSeconds"], 0)));
-        const averageText = averageSeconds >= 60
-            ? `${Math.floor(averageSeconds / 60)}분 ${Math.round(averageSeconds % 60)}초`
-            : `${Math.round(averageSeconds)}초`;
+        const { total, completed, partial, completionRate } = deriveSummary(source);
+        const questionCount = asList(read(source, ["questions", "questionStats", "questionReports", "questionSummaries", "items"], []), ["items", "rows"]).length;
         return [
-            { label: "총 응답", value: total, unit: "count", note: "선택 기준 내 수집 응답", tone: "neutral" },
-            { label: "완료 응답", value: completed, unit: "count", note: partial ? `진행 중 ${formatNumber(partial, 0)}건` : "모든 응답 완료", tone: "positive" },
-            { label: "완료율", value: completionRate, unit: "rate", note: total ? `완료 ${formatNumber(completed, 0)} / 전체 ${formatNumber(total, 0)}` : "응답 없음", tone: completionRate >= 0.7 ? "positive" : "warning" },
-            { label: "평균 응답 시간", value: averageText, unit: "text", note: "완료 응답 기준", tone: "neutral" }
+            { label: "전체 응답", value: total, unit: "count", note: "현재 조회 기준", tone: "neutral" },
+            { label: "완료 응답", value: completed, unit: "count", note: total ? `전체의 ${formatNumber(completionRate * 100)}%` : "응답 없음", tone: "positive" },
+            { label: "진행 중", value: partial, unit: "count", note: partial ? "미완료 응답" : "진행 중 없음", tone: partial ? "warning" : "neutral" },
+            { label: "분석 문항", value: questionCount, unit: "question", note: "집계 가능한 문항", tone: "neutral" }
         ];
     }
 
@@ -408,7 +436,7 @@
         }
         if (unit === "text") return String(kpi.value || "-");
         if (typeof kpi.value === "number" || /^-?[\d,.]+$/.test(String(kpi.value || ""))) {
-            const suffix = unit && !new Set(["count", "number", "건"]).has(unit) ? ` ${kpi.unit}` : "건";
+            const suffix = unit === "question" ? "개" : (unit && !new Set(["count", "number", "건"]).has(unit) ? ` ${kpi.unit}` : "건");
             return `${formatNumber(kpi.value)}${suffix}`;
         }
         return String(kpi.value ?? "-");
@@ -498,6 +526,103 @@
         });
     }
 
+    function localDateKey(value) {
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return "";
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    }
+
+    function deriveTrendPoints() {
+        const cutoff = state.elements.cutoffDate?.value || todayValue();
+        const cutoffDate = new Date(`${cutoff}T12:00:00`);
+        const today = new Date(`${todayValue()}T12:00:00`);
+        const end = Number.isNaN(cutoffDate.getTime()) || cutoffDate > today ? today : cutoffDate;
+        const points = Array.from({ length: 8 }, (_value, index) => {
+            const date = new Date(end);
+            date.setDate(end.getDate() - (7 - index));
+            return { key: localDateKey(date), label: `${date.getMonth() + 1}.${date.getDate()}`, count: 0 };
+        });
+        const pointMap = new Map(points.map((point) => [point.key, point]));
+        const reportVersion = read(reportRoot(state.report), ["publishedVersion", "published_version", "version"], null);
+        state.responses.forEach((response) => {
+            const responseVersion = read(response, ["surveyVersion", "survey_version", "version"], null);
+            if (reportVersion !== null && responseVersion !== null && String(reportVersion) !== String(responseVersion)) return;
+            const submittedAt = read(response, ["submittedAt", "submitted_at", "createdAt", "created_at"], "");
+            const point = pointMap.get(localDateKey(submittedAt));
+            if (point) point.count += 1;
+        });
+        return points;
+    }
+
+    function svgElement(name, attributes = {}) {
+        const element = document.createElementNS("http://www.w3.org/2000/svg", name);
+        Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value)));
+        return element;
+    }
+
+    function renderTrend() {
+        const host = state.elements.trendChart;
+        if (!host) return;
+        host.replaceChildren();
+        const points = deriveTrendPoints();
+        const total = points.reduce((sum, point) => sum + point.count, 0);
+        const maximum = Math.max(1, ...points.map((point) => point.count));
+        const width = 440;
+        const height = 132;
+        const baseline = 100;
+        const step = width / Math.max(1, points.length - 1);
+        const coordinates = points.map((point, index) => ({
+            x: Math.round(index * step),
+            y: Math.round(baseline - (point.count / maximum) * 76)
+        }));
+        const svg = svgElement("svg", { viewBox: `0 0 ${width} ${height}`, "aria-hidden": "true", focusable: "false" });
+        [24, 62, baseline].forEach((y) => svg.append(svgElement("line", { x1: 0, y1: y, x2: width, y2: y, class: "report-trend-gridline" })));
+        const path = coordinates.map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`).join(" ");
+        const areaPath = coordinates.map((point) => `L${point.x} ${point.y}`).join(" ");
+        const area = `M0 ${baseline} ${areaPath} L${width} ${baseline} Z`;
+        svg.append(svgElement("path", { d: area, class: "report-trend-area" }));
+        svg.append(svgElement("path", { d: path, class: "report-trend-line" }));
+        coordinates.forEach((point) => svg.append(svgElement("circle", { cx: point.x, cy: point.y, r: 4, class: "report-trend-point" })));
+        const labels = document.createElement("div");
+        labels.className = "report-trend-labels";
+        points.forEach((point) => {
+            const label = document.createElement("span");
+            label.textContent = point.label;
+            labels.append(label);
+        });
+        host.append(svg, labels);
+        const detail = points.map((point) => `${point.label} ${point.count}건`).join(", ");
+        host.setAttribute("aria-label", `최근 8일 응답 추이: ${detail}`);
+        state.elements.trendTotal.textContent = `${formatNumber(total, 0)}건`;
+        state.elements.trendNote.textContent = !state.trendAvailable
+            ? "응답 추이는 불러오지 못했지만 나머지 집계는 정상 표시됩니다."
+            : (state.responses.length >= 200 ? "조회된 응답 최대 200건을 기준으로 표시합니다." : "최근 제출 응답을 날짜별로 집계했습니다.");
+    }
+
+    function renderCompletion(report) {
+        const { completed, partial, completionRate } = deriveSummary(report);
+        const percent = clampPercent(completionRate * 100);
+        const ring = state.elements.completionRing;
+        ring?.style.setProperty("--completion-rate", `${percent}%`);
+        ring?.setAttribute("aria-label", `완료율 ${formatNumber(percent)}%, 완료 ${formatNumber(completed, 0)}건, 진행 중 ${formatNumber(partial, 0)}건`);
+        state.elements.completionValue.textContent = `${formatNumber(percent)}%`;
+        state.elements.completedCount.textContent = `${formatNumber(completed, 0)}건`;
+        state.elements.partialCount.textContent = `${formatNumber(partial, 0)}건`;
+    }
+
+    function renderDetailHeader(report, questionCount) {
+        const source = reportRoot(report);
+        const survey = selectedSurvey();
+        const title = String(read(source, ["title", "surveyTitle", "survey_title"], survey ? surveyTitle(survey) : "선택한 조사"));
+        const version = read(source, ["publishedVersion", "published_version", "version"], null);
+        const status = survey ? surveyStatus(survey) : "";
+        state.elements.detailTitle.textContent = title;
+        state.elements.detailMeta.textContent = [status, version ? `확정 버전 v${formatNumber(version, 0)}` : "확정 버전 없음", `분석 문항 ${formatNumber(questionCount, 0)}개`].filter(Boolean).join(" · ");
+    }
+
     function renderCharts(questions) {
         const grid = state.elements.chartGrid;
         grid.replaceChildren();
@@ -567,7 +692,10 @@
     function renderReport(report) {
         const source = reportRoot(report);
         const questions = deriveQuestions(source);
+        renderDetailHeader(source, questions.length);
         renderKpis(source);
+        renderTrend();
+        renderCompletion(source);
         renderCharts(questions);
         renderQuestionTable(questions);
         const generatedAt = read(source, ["generatedAt", "updatedAt", "lastUpdatedAt", "generated_at", "UPDATED_AT"], new Date().toISOString());
@@ -589,6 +717,8 @@
             state.initialSurveyId = String(window.SurveyOneApp?.queryParams?.().get("surveyId") || "");
             state.surveys = [];
             state.report = null;
+            state.responses = [];
+            state.trendAvailable = true;
             state.exporting = false;
             cacheElements();
             if (state.elements.cutoffDate && !state.elements.cutoffDate.value) state.elements.cutoffDate.value = todayValue();
@@ -607,6 +737,8 @@
             state.initialSurveyId = "";
             state.surveys = [];
             state.report = null;
+            state.responses = [];
+            state.trendAvailable = true;
             state.exporting = false;
             state.elements = {};
         }

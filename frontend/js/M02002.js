@@ -68,7 +68,7 @@
                 this.root.querySelector("[data-template-replacement-note]").hidden = !replacing;
                 if (templateResult.status === "rejected") {
                     this.items = [];
-                    this.root.querySelector("[data-template-grid]").innerHTML = `<section class="empty-state project-empty"><span class="empty-icon">!</span><h2>템플릿을 불러오지 못했습니다</h2><p>${Common.escapeHtml(templateResult.reason?.message || "잠시 후 다시 시도해 주세요.")}</p><button class="button button-primary" data-create-blank>빈 설문으로 시작</button></section>`;
+                    this.root.querySelector("[data-template-grid]").innerHTML = `<section class="empty-state project-empty"><span class="empty-icon">!</span><h2>템플릿을 불러오지 못했습니다</h2><p>${Common.escapeHtml(templateResult.reason?.message || "잠시 후 다시 시도해 주세요.")}</p><button class="button button-function button-important" data-create-blank>빈 설문으로 시작</button></section>`;
                     this.root.querySelector("[data-template-count]").textContent = "템플릿 연결 실패";
                     return;
                 }
@@ -93,7 +93,7 @@
             grid.innerHTML = items.map((item, index) => `<article class="library-card ${String(item.id || item.code) === String(this.recommendedTemplateId) ? "is-recommended" : ""}">
                 <div class="library-cover" style="--cover:${coverGradients[index % coverGradients.length]}"><span class="library-cover-number">${String(index + 1).padStart(2, "0")}</span><span class="tag">${Common.escapeHtml(item.category || "일반")}</span></div>
                 <div class="library-content"><h3>${Common.escapeHtml(item.name || item.title)}</h3><p>${Common.escapeHtml(item.description || "목적에 맞게 자유롭게 편집할 수 있는 기본 설문입니다.")}</p><div class="library-meta"><span>${Common.formatNumber(item.questionCount || Common.questionsOf(item).length)}개 문항</span><span>약 ${item.estimatedMinutes || Math.max(1, Math.ceil(Common.questionsOf(item).length * .35))}분</span><span>${item.hasLogic ? "분기 포함" : "기본형"}</span></div></div>
-                <footer class="library-footer"><button class="button button-small" type="button" data-preview-template="${Common.escapeHtml(item.id || item.code)}">미리보기</button><button class="button button-small button-primary" type="button" data-start-template="${Common.escapeHtml(item.id || item.code)}">이 템플릿 사용</button></footer>
+                <footer class="library-footer"><button class="button button-small button-layer" type="button" data-preview-template="${Common.escapeHtml(item.id || item.code)}">미리보기</button><button class="button button-small button-function button-important" type="button" data-start-template="${Common.escapeHtml(item.id || item.code)}">이 템플릿 사용</button></footer>
             </article>`).join("");
         },
         async continueSurvey(templateId = null) {
@@ -132,7 +132,7 @@
             const item = this.items.find((candidate) => String(candidate.id || candidate.code) === String(id));
             if (!item) return;
             const questions = Common.questionsOf(item);
-            const dialog = this.context.openModal(`<p class="eyebrow">TEMPLATE PREVIEW</p><h2>${Common.escapeHtml(item.name || item.title)}</h2><p class="muted">${Common.escapeHtml(item.description || "")}</p><div class="template-preview-list">${questions.slice(0, 8).map((question, index) => `<div><span>${index + 1}</span><strong>${Common.escapeHtml(question.title || question.label || "문항")}</strong><small>${Common.escapeHtml(question.type || "question")}</small></div>`).join("") || "<p>템플릿을 사용하면 기본 문항을 확인할 수 있습니다.</p>"}</div><button class="button button-primary button-block" type="button" data-preview-use>이 템플릿 사용</button>`);
+            const dialog = this.context.openModal(`<p class="eyebrow">TEMPLATE PREVIEW</p><h2>${Common.escapeHtml(item.name || item.title)}</h2><p class="muted">${Common.escapeHtml(item.description || "")}</p><div class="template-preview-list">${questions.slice(0, 8).map((question, index) => `<div><span>${index + 1}</span><strong>${Common.escapeHtml(question.title || question.label || "문항")}</strong><small>${Common.escapeHtml(question.type || "question")}</small></div>`).join("") || "<p>템플릿을 사용하면 기본 문항을 확인할 수 있습니다.</p>"}</div><button class="button button-function button-important button-block" type="button" data-preview-use>이 템플릿 사용</button>`);
             dialog.querySelector("[data-preview-use]")?.addEventListener("click", () => { dialog.close(); void this.continueSurvey(id); }, { once: true });
         },
         guide() {

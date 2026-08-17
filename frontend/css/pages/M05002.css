@@ -187,6 +187,7 @@
 .custom-report-page .custom-report-button-primary { background: linear-gradient(135deg, var(--custom-brand), var(--custom-brand-strong)); color: #fff; box-shadow: 0 8px 18px rgba(49, 88, 213, 0.2); }
 .custom-report-page .custom-report-button-ghost { border-color: var(--custom-line); background: #fff; color: var(--custom-ink); }
 .custom-report-page .custom-report-button-danger { border-color: #f0c9d2; background: #fff7f9; color: var(--custom-danger); }
+.custom-report-page .custom-report-button:is(.button-function, .button-layer, .button-save, .button-delete) { border-color: color-mix(in srgb, var(--action-color) 36%, white); }
 .custom-report-page .custom-report-button small { padding: 2px 5px; border-radius: 4px; background: rgba(255, 255, 255, 0.16); font-size: 0.64rem; }
 
 .custom-report-page .custom-report-beta-note {

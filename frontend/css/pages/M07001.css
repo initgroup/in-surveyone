@@ -2,7 +2,7 @@
 .template-admin-hero h2 { max-width: 820px; margin: 7px 0 9px; font-size: clamp(25px, 3vw, 38px); line-height: 1.2; letter-spacing: -.045em; }
 .template-admin-hero p { max-width: 760px; margin: 0; color: #d9e6f7; line-height: 1.7; }
 .template-admin-hero .eyebrow { color: #67e1cd; }
-.template-admin-hero .button { flex: none; min-height: 46px; padding-inline: 20px; background: #fff; border-color: #fff; color: #17468f; }
+.template-admin-hero .button { flex: none; min-height: 46px; padding-inline: 20px; }
 .template-admin-principle { display: flex; gap: 12px; align-items: flex-start; margin: 16px 0; padding: 16px 18px; color: #24446c; background: #edf6ff; border: 1px solid #ccdef7; border-radius: 14px; }
 .template-admin-principle > span { display: grid; place-items: center; flex: none; width: 25px; height: 25px; color: #fff; background: #1d67c7; border-radius: 50%; font-weight: 900; }
 .template-admin-principle p { margin: 3px 0 0; color: #5f7188; line-height: 1.55; }

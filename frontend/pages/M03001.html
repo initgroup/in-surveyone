@@ -53,7 +53,7 @@
         </div>
         <div class="distribution-head-actions">
             <span class="distribution-save-state" data-distribution-save-state role="status">저장 전</span>
-            <button class="button" type="button" data-distribution-save>저장</button>
+            <button class="button button-save" type="button" data-distribution-save>저장</button>
             <button class="button workspace-list-button" type="button" data-distribution-project-back><span class="workspace-list-button-icon" aria-hidden="true">←</span><span>프로젝트 목록</span></button>
         </div>
     </header>
@@ -86,11 +86,11 @@
             <header class="card-header distribution-panel-head">
                 <div><span class="eyebrow">WHO WILL RECEIVE IT?</span><h3>응답자 정보와 전송 가능한 연락수단</h3><p>국가와 선호 언어는 분리해서 관리합니다. 한 명에게 여러 채널을 선택할 수 있습니다.</p></div>
                 <div class="distribution-panel-actions">
-                    <button class="button button-small" type="button" data-download-recipient-sample>CSV 양식</button>
-                    <button class="button button-small" type="button" data-download-recipient-xlsx>Excel 양식</button>
-                    <button class="button button-small" type="button" data-import-recipient>파일 가져오기</button>
+                    <button class="button button-small button-function" type="button" data-download-recipient-sample>CSV 양식</button>
+                    <button class="button button-small button-function" type="button" data-download-recipient-xlsx>Excel 양식</button>
+                    <button class="button button-small button-function" type="button" data-import-recipient>파일 가져오기</button>
                     <input type="file" accept=".csv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-recipient-file hidden>
-                    <button class="button button-small button-primary" type="button" data-add-recipient>＋ 대상자 추가</button>
+                    <button class="button button-small button-function button-important" type="button" data-add-recipient>대상자 추가</button>
                 </div>
             </header>
             <div class="card-body">
@@ -122,7 +122,7 @@
         <section class="card distribution-panel">
             <header class="card-header distribution-panel-head">
                 <div><span class="eyebrow">LANGUAGE-SPECIFIC INVITATIONS</span><h3>응답자 언어별 URL과 안내문</h3><p>확정 버전에 포함된 언어만 사용할 수 있습니다. 각 URL의 <code>lang</code> 값으로 기본 설문 언어가 정해집니다.</p></div>
-                <button class="button button-small" type="button" data-edit-survey-languages>설문 번역 확인</button>
+                <button class="button button-small button-navigation" type="button" data-edit-survey-languages>설문 번역 확인</button>
             </header>
             <div class="card-body">
                 <div class="distribution-language-summary" data-language-summary></div>
@@ -139,14 +139,14 @@
                 <div class="distribution-review" data-distribution-review></div>
                 <aside class="distribution-execute-note" data-execute-note role="note"></aside>
                 <aside class="distribution-queue-explanation" role="note"><strong>현재 실행 범위</strong><span>배포 계획을 저장하고 채널별 작업을 <code>QUEUED</code> 또는 <code>DISABLED</code>로 등록합니다. 실제 외부 전송은 운영 provider worker 연동 후 처리됩니다.</span></aside>
-                <div class="distribution-final-actions"><button class="button" type="button" data-distribution-save>저장</button><button class="button button-primary" type="button" data-distribution-execute>저장하고 발송 대기열 등록</button></div>
+                <div class="distribution-final-actions"><button class="button button-save" type="button" data-distribution-save>저장</button><button class="button button-batch button-important" type="button" data-distribution-execute>저장하고 발송 대기열 등록</button></div>
             </div>
         </section>
     </div>
 
     <footer class="distribution-step-actions">
-        <button class="button" type="button" data-distribution-previous>이전 단계</button>
+        <button class="button button-navigation button-navigation-back" type="button" data-distribution-previous>이전 단계</button>
         <span data-step-position>STEP 01 / 04</span>
-        <button class="button button-primary" type="button" data-distribution-next>다음 단계</button>
+        <button class="button button-navigation button-important" type="button" data-distribution-next>다음 단계</button>
     </footer>
 </section>

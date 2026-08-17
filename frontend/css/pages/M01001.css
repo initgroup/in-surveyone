@@ -32,26 +32,26 @@
 .visitor-start-heading p { margin: 0; color: var(--muted); font-size: 13px; }
 .visitor-browse-badge { flex: 0 0 auto; padding: 6px 10px; color: #51627b; background: #f2f4f7; border: 1px solid var(--line); border-radius: 999px; font-size: 11px; font-weight: 800; }
 .visitor-start-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.visitor-start-card { display: flex; flex-direction: column; min-width: 0; min-height: 218px; padding: clamp(19px, 2vw, 24px); background: #fbfcfd; border: 1px solid var(--line); border-radius: 14px; }
+.visitor-start-card { display: grid; grid-template-columns: minmax(0, 1fr) 154px; gap: clamp(16px, 2vw, 24px); align-items: stretch; min-width: 0; min-height: 218px; padding: clamp(19px, 2vw, 24px); background: #fbfcfd; border: 1px solid var(--line); border-radius: 14px; }
+.visitor-start-copy { display: flex; flex-direction: column; min-width: 0; }
 .visitor-start-card h3 { margin: 7px 0 7px; font-size: clamp(19px, 1.7vw, 22px); letter-spacing: -.03em; }
 .visitor-start-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
 .visitor-start-card ul { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 14px 0 16px; padding: 0; list-style: none; }
 .visitor-start-card li { display: flex; gap: 6px; align-items: center; min-height: 26px; color: #53627a; font-size: 11px; font-weight: 700; }
 .visitor-start-card li::before { color: var(--jade); content: "✓"; font-size: 11px; font-weight: 900; }
-.visitor-start-card .button { margin-top: auto; }
-.visitor-database-actions { display: grid; margin-top: auto; }
-.visitor-database-actions .button { width: 100%; }
+.visitor-start-action-box { display: grid; gap: 8px; align-content: center; align-self: stretch; width: 154px; min-height: 142px; margin: 0; padding: 12px; background: #fff; border: 1px solid #d7dee8; border-radius: 12px; }
+.visitor-start-action-box .button { width: 100%; min-height: 46px; margin: 0; padding: 8px 10px; box-shadow: none; line-height: 1.3; white-space: normal; }
+.visitor-database-actions { grid-template-columns: 1fr; }
 .visitor-card-topline { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
 .visitor-card-kicker { color: var(--blue-strong); font-size: 10px; font-weight: 900; letter-spacing: .04em; }
 .visitor-card-recommendation { padding: 4px 8px; color: #245f55; background: #e7f5f1; border-radius: 999px; font-size: 10px; font-weight: 850; white-space: nowrap; }
 .visitor-database-card { background: #f7f9fc; border-color: #cfd8e6; }
 .visitor-database-card.is-disabled { opacity: .72; }
 .visitor-start-card .visitor-database-status { min-height: 18px; margin: -2px 0 10px; color: var(--jade); font-size: 11px; font-weight: 750; }
-.visitor-database-card .button-primary { min-height: 44px; font-size: 13px; box-shadow: none; }
 .visitor-member-card { color: var(--ink); background: #fff; }
-.visitor-member-actions { display: grid; grid-template-columns: 1fr auto; gap: 7px; margin-top: auto; }
+.visitor-member-actions { grid-template-columns: 1fr; }
 .visitor-member-actions .button { min-height: 44px; font-size: 13px; }
-.visitor-member-actions .button-ghost { color: var(--blue-strong); }
+.visitor-member-card .visitor-start-action-box { background: #f7f9fb; }
 .is-visitor-dashboard > .page-section,
 .is-visitor-dashboard > .dashboard-grid { display: none; }
 .compact-heading { align-items: center; }
@@ -96,8 +96,9 @@
     .hero-actions { align-items: stretch; flex-direction: column; }
     .visitor-start { padding: 18px 14px; border-radius: 15px; }
     .visitor-start-heading { flex-direction: column; }
-    .visitor-start-card { min-height: 0; padding: 18px 16px; }
+    .visitor-start-card { grid-template-columns: 1fr; min-height: 0; padding: 18px 16px; }
     .visitor-start-card ul { margin: 13px 0 15px; }
+    .visitor-start-action-box { justify-self: end; width: 154px; min-height: 112px; padding: 9px; }
     .dashboard-template-grid { grid-template-columns: 1fr; }
     .recent-item { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
     .recent-meta { display: none; }

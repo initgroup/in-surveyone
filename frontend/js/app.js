@@ -1212,7 +1212,7 @@
         dom.messageCopy.title = "메시지 복사";
         dom.messageCancel.textContent = request.cancelLabel;
         dom.messageConfirm.textContent = request.confirmLabel;
-        dom.messageConfirm.className = `button ${request.destructive ? "button-danger" : "button-primary"}`;
+        dom.messageConfirm.className = `button ${request.destructive ? "button-delete" : "button-function"} button-important`;
         document.documentElement.classList.add("app-message-open");
         dom.messageDialog.showModal();
         requestAnimationFrame(() => dom.messageConfirm.focus({ preventScroll: true }));
@@ -1458,7 +1458,7 @@
     }
 
     function errorMarkup(message) {
-        return `<section class="empty-state error-state"><span class="empty-icon">!</span><h2>화면을 불러오지 못했습니다</h2><p>${Common.escapeHtml(message)}</p><button class="button button-primary" type="button" data-route-retry>다시 시도</button></section>`;
+        return `<section class="empty-state error-state"><span class="empty-icon">!</span><h2>화면을 불러오지 못했습니다</h2><p>${Common.escapeHtml(message)}</p><button class="button button-function button-important" type="button" data-route-retry>다시 시도</button></section>`;
     }
 
     window.Pages = window.Pages || {};

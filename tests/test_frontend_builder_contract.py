@@ -22,6 +22,21 @@ def test_builder_explicit_save_precedes_distribution_navigation() -> None:
     assert '/publish`, {})' in script
 
 
+def test_builder_language_status_never_collapses_into_vertical_text() -> None:
+    css = (PROJECT_ROOT / "frontend" / "css" / "pages" / "M02003.css").read_text(
+        encoding="utf-8"
+    )
+
+    status_rule = re.search(r"\.builder-language-status \{([^}]*)\}", css)
+    assert status_rule
+    declarations = status_rule.group(1)
+    assert "min-width: 112px" in declarations
+    assert "text-overflow: ellipsis" in declarations
+    assert "white-space: nowrap" in declarations
+    assert "word-break: keep-all" in declarations
+    assert "@media (max-width: 128rem)" in css
+
+
 def test_project_creation_is_a_single_menu_four_step_flow() -> None:
     menu = (PROJECT_ROOT / "frontend" / "config" / "menu.config.js").read_text(encoding="utf-8")
     project_page = (PROJECT_ROOT / "frontend" / "pages" / "M02001.html").read_text(encoding="utf-8")

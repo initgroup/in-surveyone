@@ -11,6 +11,24 @@
     --jade: #087a67;
     --amber: #d08a13;
     --red: #cf3c4f;
+    --action-navigation: #405168;
+    --action-navigation-soft: #f7f9fb;
+    --action-navigation-strong: #27384d;
+    --action-function: #405168;
+    --action-function-soft: #f7f9fb;
+    --action-function-strong: #27384d;
+    --action-layer: #405168;
+    --action-layer-soft: #f7f9fb;
+    --action-layer-strong: #27384d;
+    --action-save: #405168;
+    --action-save-soft: #f7f9fb;
+    --action-save-strong: #27384d;
+    --action-batch: #405168;
+    --action-batch-soft: #f7f9fb;
+    --action-batch-strong: #27384d;
+    --action-delete: #b92f45;
+    --action-delete-soft: #fff1f3;
+    --action-delete-strong: #9f2438;
     --paper: #f7f6f3;
     --paper-warm: #f6f4ee;
     --surface: #ffffff;
@@ -388,6 +406,136 @@ img, svg { display: block; max-width: 100%; }
 .button-small { min-height: 36px; padding: 7px 12px; font-size: 12px; border-radius: 9px; }
 .button-block { width: 100%; }
 .button-icon { width: 40px; padding: 0; }
+
+/*
+ * Content action language
+ * navigation = another page/workspace, function = current screen only,
+ * layer = dialog/editor, save = persistent write, batch = queued/stateful work,
+ * delete = destructive removal. App menus and navigation bars keep their own UI.
+ */
+.button.button-navigation,
+.button.button-function,
+.button.button-layer,
+.button.button-save,
+.button.button-batch,
+.button.button-delete {
+    --action-color: var(--action-function);
+    --action-soft: var(--action-function-soft);
+    --action-strong: var(--action-function-strong);
+    color: var(--action-color);
+    background: var(--action-soft);
+    border-color: color-mix(in srgb, var(--action-color) 36%, white);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--action-color) 5%, transparent);
+}
+.button.button-navigation { --action-color: var(--action-navigation); --action-soft: var(--action-navigation-soft); --action-strong: var(--action-navigation-strong); }
+.button.button-layer { --action-color: var(--action-layer); --action-soft: var(--action-layer-soft); --action-strong: var(--action-layer-strong); }
+.button.button-save { --action-color: var(--action-save); --action-soft: var(--action-save-soft); --action-strong: var(--action-save-strong); }
+.button.button-batch { --action-color: var(--action-batch); --action-soft: var(--action-batch-soft); --action-strong: var(--action-batch-strong); }
+.button.button-delete { --action-color: var(--action-delete); --action-soft: var(--action-delete-soft); --action-strong: var(--action-delete-strong); }
+.button.button-navigation:hover,
+.button.button-function:hover,
+.button.button-layer:hover,
+.button.button-save:hover,
+.button.button-batch:hover,
+.button.button-delete:hover {
+    color: var(--action-strong);
+    background: color-mix(in srgb, var(--action-soft) 72%, white);
+    border-color: color-mix(in srgb, var(--action-color) 62%, white);
+    box-shadow: 0 4px 11px color-mix(in srgb, var(--action-color) 13%, transparent);
+}
+.button.button-important {
+    min-height: 42px;
+    color: #fff;
+    background: var(--action-strong, var(--blue-strong));
+    border-color: var(--action-strong, var(--blue-strong));
+    box-shadow: 0 7px 16px color-mix(in srgb, var(--action-strong, var(--blue-strong)) 23%, transparent);
+    font-weight: 850;
+}
+.button.button-important:hover {
+    color: #fff;
+    background: color-mix(in srgb, var(--action-strong, var(--blue-strong)) 88%, black);
+    border-color: color-mix(in srgb, var(--action-strong, var(--blue-strong)) 88%, black);
+    box-shadow: 0 9px 20px color-mix(in srgb, var(--action-strong, var(--blue-strong)) 29%, transparent);
+}
+.button:is(.button-navigation, .button-function, .button-layer, .button-save, .button-batch, .button-delete):not(.button-icon)::before {
+    display: inline-block;
+    flex: 0 0 auto;
+    width: 12px;
+    height: 12px;
+    color: currentColor;
+    content: "";
+}
+.button.button-navigation:not(.button-icon)::before {
+    width: 8px;
+    height: 8px;
+    margin-right: 2px;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    transform: rotate(45deg);
+}
+.button.button-navigation-back:not(.button-icon)::before { transform: rotate(-135deg); }
+.button.button-function:not(.button-icon)::before {
+    border: 2px solid currentColor;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 3px var(--action-soft);
+}
+.button.button-layer:not(.button-icon)::before {
+    width: 10px;
+    height: 9px;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    box-shadow: 3px -3px 0 -1px var(--action-soft), 3px -3px 0 0 currentColor;
+}
+.button.button-save:not(.button-icon)::before {
+    width: 9px;
+    height: 6px;
+    margin: -2px 1px 2px 0;
+    border-bottom: 2px solid currentColor;
+    border-left: 2px solid currentColor;
+    transform: rotate(-45deg);
+}
+.button.button-batch:not(.button-icon)::before {
+    background:
+        linear-gradient(currentColor 0 0) 0 0 / 5px 5px no-repeat,
+        linear-gradient(currentColor 0 0) 100% 0 / 5px 5px no-repeat,
+        linear-gradient(currentColor 0 0) 0 100% / 5px 5px no-repeat,
+        linear-gradient(currentColor 0 0) 100% 100% / 5px 5px no-repeat;
+    border-radius: 2px;
+}
+.button.button-delete:not(.button-icon)::before {
+    width: 9px;
+    height: 10px;
+    border: 1.5px solid currentColor;
+    border-top-width: 2px;
+    border-radius: 1px 1px 3px 3px;
+    box-shadow: 0 -3px 0 -1px var(--action-soft), 0 -4px 0 -1px currentColor;
+}
+.button.button-important::before { box-shadow: none; }
+.button.button-important.button-function::before { box-shadow: inset 0 0 0 3px var(--action-strong); }
+.button.button-important.button-layer::before { box-shadow: 3px -3px 0 -1px var(--action-strong), 3px -3px 0 0 currentColor; }
+.button.button-important.button-delete::before { box-shadow: 0 -3px 0 -1px var(--action-strong), 0 -4px 0 -1px currentColor; }
+.button.button-important:disabled::before { opacity: .8; }
+.button.button-cue-hidden::before { display: none !important; }
+.icon-button.icon-button-delete {
+    color: var(--action-delete);
+    background: var(--action-delete-soft);
+    border: 1px solid color-mix(in srgb, var(--action-delete) 34%, white);
+}
+.icon-button.icon-button-delete:hover {
+    color: var(--action-delete-strong);
+    background: #fff;
+    border-color: color-mix(in srgb, var(--action-delete) 62%, white);
+}
+.icon-button.icon-button-layer {
+    color: var(--action-layer);
+    background: var(--action-layer-soft);
+    border: 1px solid color-mix(in srgb, var(--action-layer) 28%, white);
+}
+.icon-button.icon-button-layer:hover {
+    color: var(--action-layer-strong);
+    background: #fff;
+    border-color: color-mix(in srgb, var(--action-layer) 54%, white);
+}
 .workspace-list-button {
     flex: 0 0 auto;
     min-height: 40px;
@@ -703,19 +851,22 @@ html.app-message-open, html.app-message-open body { overflow: hidden; overscroll
 .help-tip strong { color: var(--blue-strong); font-size: 10px; }
 .help-tip span { font-size: 11px; }
 
-.toast-region { position: fixed; z-index: 200; right: 22px; bottom: 22px; display: grid; gap: 8px; width: min(410px, calc(100vw - 32px)); pointer-events: none; }
-.toast { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 12px; color: #fff; background: var(--navy-deep); border: 1px solid rgba(255,255,255,.13); border-radius: 12px; box-shadow: var(--shadow-md); opacity: 0; pointer-events: auto; transform: translateY(12px); transition: opacity .2s, transform .2s; }
+.toast-region { position: fixed; z-index: 200; top: calc(var(--header-height) + 12px); right: 22px; bottom: auto; display: grid; gap: 8px; width: min(390px, calc(100vw - 32px)); pointer-events: none; }
+.toast { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 12px; color: var(--ink); background: #fff; border: 1px solid var(--line-strong); border-left: 4px solid var(--navy); border-radius: 10px; box-shadow: 0 10px 28px rgba(15,34,68,.14); opacity: 0; pointer-events: auto; transform: translateY(-10px); transition: opacity .2s, transform .2s; }
 .toast.is-visible { opacity: 1; transform: translateY(0); }
-.toast-success { background: #0a6456; }
-.toast-error { background: #9f2637; }
-.toast-warning { background: #835b05; }
-.toast-icon { display: grid; place-items: center; width: 26px; height: 26px; color: currentColor; background: rgba(255,255,255,.12); border-radius: 50%; }
+.toast-success { border-left-color: var(--jade); }
+.toast-error { border-left-color: var(--red); }
+.toast-warning { border-left-color: var(--amber); }
+.toast-icon { display: grid; place-items: center; width: 26px; height: 26px; color: var(--navy); background: #f1f4f7; border-radius: 50%; }
+.toast-success .toast-icon { color: var(--jade); background: #edf8f5; }
+.toast-error .toast-icon { color: var(--red); background: #fff1f3; }
+.toast-warning .toast-icon { color: #8a5b00; background: #fff7e8; }
 .toast-copy { display: grid; gap: 2px; min-width: 0; }
 .toast-copy strong { font-size: 10px; }
 .toast-copy span { font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .toast-actions { display: flex; gap: 2px; }
-.toast-action { display: grid; place-items: center; width: 34px; min-height: 34px; padding: 0; color: #fff; background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
-.toast-action:hover, .toast-action:focus-visible { background: rgba(255,255,255,.15); }
+.toast-action { display: grid; place-items: center; width: 34px; min-height: 34px; padding: 0; color: var(--muted); background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
+.toast-action:hover, .toast-action:focus-visible { color: var(--ink); background: #f1f4f7; }
 
 .svg-icon { flex: 0 0 auto; }
 
@@ -812,7 +963,7 @@ html.app-message-open, html.app-message-open body { overflow: hidden; overscroll
     .auth-panel { max-height: 52vh; }
     .guest-account-card { padding: 14px; }
     .guest-credential-actions { grid-template-columns: 1fr; }
-    .toast-region { right: 16px; bottom: calc(80px + env(safe-area-inset-bottom)); }
+    .toast-region { top: calc(var(--header-height) + 10px); right: 16px; bottom: auto; }
     .button, input, select, textarea { min-height: 44px; }
     .segmented-control button { min-height: 40px; }
 }

@@ -1,134 +1,78 @@
 <section class="survey-report-page survey-report-basic" data-page="M05001" aria-labelledby="m05001-title">
     <header class="report-hero">
         <div>
-            <p class="report-eyebrow">SURVEY INSIGHT</p>
+            <p class="report-eyebrow">STANDARD REPORT</p>
             <div class="report-title-row">
                 <h2 id="m05001-title">기본형 보고서</h2>
-                <span class="report-badge">Beta</span>
+                <span class="report-badge">실시간 집계</span>
             </div>
-            <p class="report-lead">응답 현황과 문항별 분포를 같은 기준으로 빠르게 확인합니다.</p>
+            <p class="report-lead">조사별 응답 흐름과 문항 결과를 한 화면에서 검토합니다.</p>
         </div>
-        <div class="report-hero-mark" aria-hidden="true">
-            <span></span><span></span><span></span>
-        </div>
+        <p class="report-hero-note">조사를 선택하면 상세 분석 화면이 열립니다.</p>
     </header>
 
     <form class="report-filter-card" data-role="filter-form">
+        <div class="report-filter-intro">
+            <span class="report-step-number" aria-hidden="true">01</span>
+            <div><strong>조사 선택 및 집계 기준</strong><p>기존 조사 목록을 조회한 뒤 분석할 대상을 선택하세요.</p></div>
+        </div>
         <div class="report-filter-grid">
             <label class="report-field report-field-wide">
-                <span>설문 프로젝트</span>
-                <select data-role="survey-select" required aria-describedby="m05001-survey-help">
-                    <option value="">설문을 불러오는 중입니다</option>
-                </select>
-                <small id="m05001-survey-help">보고서에 사용할 설문을 선택하세요.</small>
+                <span>조사 프로젝트</span>
+                <select data-role="survey-select" required aria-describedby="m05001-survey-help"><option value="">조사 목록을 불러오는 중입니다</option></select>
+                <small id="m05001-survey-help">보고서에 사용할 조사를 선택하세요.</small>
             </label>
-            <label class="report-field">
-                <span>응답 기준일</span>
-                <input type="date" data-role="cutoff-date">
-            </label>
-            <label class="report-field">
-                <span>응답 상태</span>
-                <select data-role="response-filter">
-                    <option value="ALL">전체 응답</option>
-                    <option value="COMPLETE">완료 응답</option>
-                    <option value="PARTIAL">진행 중 응답</option>
-                </select>
-            </label>
+            <label class="report-field"><span>응답 기준일</span><input type="date" data-role="cutoff-date"></label>
+            <label class="report-field"><span>응답 상태</span><select data-role="response-filter"><option value="ALL">전체 응답</option><option value="COMPLETE">완료 응답</option><option value="PARTIAL">진행 중 응답</option></select></label>
+            <button class="button report-button button-function button-important" type="submit" data-role="apply-filter"><span aria-hidden="true">↻</span> 보고서 조회</button>
         </div>
-        <div class="report-filter-actions">
-            <p data-role="basis-text" aria-live="polite">설문을 선택하면 집계 기준이 표시됩니다.</p>
-            <button class="report-button report-button-primary" type="submit" data-role="apply-filter">
-                <span aria-hidden="true">↻</span> 보고서 조회
-            </button>
-        </div>
+        <p class="report-basis" data-role="basis-text" aria-live="polite">조사를 선택하면 집계 기준이 표시됩니다.</p>
     </form>
 
-    <div class="report-state report-state-loading" data-role="loading-state" role="status" aria-live="polite">
-        <span class="report-spinner" aria-hidden="true"></span>
-        <strong>보고서 데이터를 준비하고 있습니다</strong>
-        <p>설문과 응답 현황을 안전하게 집계하는 중입니다.</p>
-    </div>
-
-    <div class="report-state report-state-error" data-role="error-state" role="alert" hidden>
-        <span class="report-state-icon" aria-hidden="true">!</span>
-        <strong>보고서를 불러오지 못했습니다</strong>
-        <p data-role="error-message">잠시 후 다시 시도해 주세요.</p>
-        <button class="report-button report-button-secondary" type="button" data-role="retry">다시 시도</button>
-    </div>
-
-    <div class="report-state report-state-empty" data-role="empty-state" hidden>
-        <span class="report-state-icon" aria-hidden="true">○</span>
-        <strong>표시할 설문이 없습니다</strong>
-        <p>새 설문을 만들거나 응답이 있는 설문을 선택해 주세요.</p>
-    </div>
+    <div class="report-state report-state-loading" data-role="loading-state" role="status" aria-live="polite"><span class="report-spinner" aria-hidden="true"></span><strong>보고서 데이터를 준비하고 있습니다</strong><p>조사와 응답 현황을 안전하게 집계하는 중입니다.</p></div>
+    <div class="report-state report-state-error" data-role="error-state" role="alert" hidden><span class="report-state-icon" aria-hidden="true">!</span><strong>보고서를 불러오지 못했습니다</strong><p data-role="error-message">잠시 후 다시 시도해 주세요.</p><button class="button report-button button-function" type="button" data-role="retry">다시 시도</button></div>
+    <div class="report-state report-state-empty" data-role="empty-state" hidden><span class="report-state-icon" aria-hidden="true">○</span><strong>표시할 조사가 없습니다</strong><p>새 조사를 만들거나 응답이 있는 조사를 선택해 주세요.</p></div>
 
     <div class="report-content" data-role="report-content" hidden>
-        <section aria-labelledby="m05001-kpi-title">
-            <div class="report-section-heading">
-                <div>
-                    <p class="report-section-kicker">AT A GLANCE</p>
-                    <h2 id="m05001-kpi-title">응답 핵심 지표</h2>
+        <header class="report-workspace-head">
+            <div class="report-workspace-title"><p class="report-section-kicker">SELECTED SURVEY</p><h2 data-role="detail-title">선택한 조사</h2><p data-role="detail-meta">조사 정보를 확인하는 중입니다.</p></div>
+            <div class="report-workspace-actions"><span class="report-updated" data-role="updated-at"></span><button class="button report-button button-navigation" type="button" data-role="open-responses">응답 탐색 열기 <span aria-hidden="true">→</span></button></div>
+        </header>
+
+        <section class="report-overview-grid" aria-labelledby="m05001-overview-title">
+            <article class="report-panel report-summary-panel">
+                <div class="report-card-heading"><div><p class="report-section-kicker">AT A GLANCE</p><h2 id="m05001-overview-title">응답 현황</h2></div><span>선택 기준</span></div>
+                <div class="report-kpi-grid" data-role="kpi-grid"></div>
+            </article>
+            <article class="report-panel report-trend-panel" aria-labelledby="m05001-trend-title">
+                <div class="report-card-heading"><div><p class="report-section-kicker">RECENT 8 DAYS</p><h2 id="m05001-trend-title">응답 추이</h2></div><strong data-role="trend-total">0건</strong></div>
+                <div class="report-trend-chart" data-role="trend-chart" role="img" aria-label="최근 8일 응답 추이"></div>
+                <p class="report-chart-note" data-role="trend-note">최근 제출 응답을 날짜별로 집계합니다.</p>
+            </article>
+            <article class="report-panel report-completion-panel" aria-labelledby="m05001-completion-title">
+                <div class="report-card-heading"><div><p class="report-section-kicker">COMPLETION</p><h2 id="m05001-completion-title">완료 현황</h2></div></div>
+                <div class="report-completion-body">
+                    <div class="report-completion-ring" data-role="completion-ring" role="img" aria-label="완료율 0%"><span><strong data-role="completion-value">0%</strong><small>완료율</small></span></div>
+                    <dl class="report-completion-legend"><div><dt><i class="is-complete" aria-hidden="true"></i>완료</dt><dd data-role="completed-count">0건</dd></div><div><dt><i class="is-partial" aria-hidden="true"></i>진행 중</dt><dd data-role="partial-count">0건</dd></div></dl>
                 </div>
-                <span class="report-updated" data-role="updated-at"></span>
-            </div>
-            <div class="report-kpi-grid" data-role="kpi-grid"></div>
+            </article>
         </section>
 
-        <section class="report-panel" aria-labelledby="m05001-chart-title">
-            <div class="report-section-heading">
-                <div>
-                    <p class="report-section-kicker">QUESTION DISTRIBUTION</p>
-                    <h2 id="m05001-chart-title">문항별 응답 분포</h2>
-                </div>
-                <p>막대의 길이는 각 보기의 응답 비율을 나타냅니다.</p>
-            </div>
+        <section class="report-panel report-question-panel" aria-labelledby="m05001-chart-title">
+            <div class="report-section-heading"><div><p class="report-section-kicker">QUESTION DISTRIBUTION</p><h2 id="m05001-chart-title">주요 문항 응답 분포</h2></div><p>선택형 문항의 보기별 응답 비율입니다.</p></div>
             <div class="report-chart-grid" data-role="chart-grid"></div>
-            <div class="report-inline-empty" data-role="chart-empty" hidden>
-                집계 가능한 선택형 문항이 없습니다.
-            </div>
+            <div class="report-inline-empty" data-role="chart-empty" hidden>집계 가능한 선택형 문항이 없습니다.</div>
         </section>
 
-        <section class="report-panel" aria-labelledby="m05001-table-title">
-            <div class="report-section-heading">
-                <div>
-                    <p class="report-section-kicker">QUESTION SUMMARY</p>
-                    <h2 id="m05001-table-title">문항 요약</h2>
-                </div>
-                <p data-role="question-count"></p>
-            </div>
-            <div class="report-table-wrap">
-                <table class="report-table">
-                    <caption class="sr-only">선택한 설문의 문항별 응답 집계</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">번호</th>
-                            <th scope="col">문항</th>
-                            <th scope="col">유형</th>
-                            <th scope="col">응답</th>
-                            <th scope="col">무응답</th>
-                            <th scope="col">주요 결과</th>
-                        </tr>
-                    </thead>
-                    <tbody data-role="question-table-body"></tbody>
-                </table>
-            </div>
-            <div class="report-inline-empty" data-role="table-empty" hidden>
-                표시할 문항 집계가 없습니다.
-            </div>
+        <section class="report-panel report-table-panel" aria-labelledby="m05001-table-title">
+            <div class="report-section-heading"><div><p class="report-section-kicker">QUESTION SUMMARY</p><h2 id="m05001-table-title">전체 문항 요약</h2></div><p data-role="question-count"></p></div>
+            <div class="report-table-wrap"><table class="report-table"><caption class="sr-only">선택한 조사의 문항별 응답 집계</caption><thead><tr><th scope="col">번호</th><th scope="col">문항</th><th scope="col">유형</th><th scope="col">응답</th><th scope="col">무응답</th><th scope="col">주요 결과</th></tr></thead><tbody data-role="question-table-body"></tbody></table></div>
+            <div class="report-inline-empty" data-role="table-empty" hidden>표시할 문항 집계가 없습니다.</div>
         </section>
 
         <section class="report-export-card" aria-labelledby="m05001-export-title">
-            <div>
-                <div class="report-title-row">
-                    <h2 id="m05001-export-title">보고서 내보내기</h2>
-                    <span class="report-badge report-badge-soft">Download</span>
-                </div>
-                <p id="m05001-export-help">현재 조회한 기준을 그대로 적용해 Excel 집계표 또는 인쇄용 PDF 보고서를 생성합니다.</p>
-            </div>
-            <div class="report-export-actions" aria-describedby="m05001-export-help">
-                <button class="report-button report-button-secondary" type="button" data-role="export" data-format="xlsx">Excel <small>.xlsx</small></button>
-                <button class="report-button report-button-secondary" type="button" data-role="export" data-format="pdf">PDF <small>A4</small></button>
-            </div>
+            <div><p class="report-section-kicker">EXPORT</p><h2 id="m05001-export-title">보고서 내보내기</h2><p id="m05001-export-help">현재 조회한 기준을 그대로 적용해 Excel 집계표 또는 인쇄용 PDF 보고서를 생성합니다.</p></div>
+            <div class="report-export-actions" aria-describedby="m05001-export-help"><button class="button report-button button-batch button-important" type="button" data-role="export" data-format="xlsx">Excel <small>.xlsx</small></button><button class="button report-button button-batch button-important" type="button" data-role="export" data-format="pdf">PDF <small>A4</small></button></div>
         </section>
     </div>
 </section>

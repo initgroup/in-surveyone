@@ -21,19 +21,19 @@
             <button type="button" role="tab" aria-selected="false" data-builder-mode="settings">설정</button>
         </div>
         <div class="builder-actions">
-            <button class="button button-small builder-template-button" type="button" data-builder-template-library><span aria-hidden="true">✦</span> 템플릿으로 시작</button>
-            <button class="button button-small builder-code-button" type="button" data-builder-code>&lt;/&gt; HTML·CSS·JS</button>
+            <button class="button button-small button-layer builder-template-button" type="button" data-builder-template-library>템플릿으로 시작</button>
+            <button class="button button-small button-layer builder-code-button" type="button" data-builder-code>HTML·CSS·JS</button>
             <label class="builder-edit-language">
                 <span>편집 언어</span>
                 <select data-edit-locale aria-describedby="builderLanguageStatus"></select>
             </label>
             <span class="builder-language-status" id="builderLanguageStatus" data-language-status aria-live="polite"></span>
             <span class="builder-save-label" data-builder-save-label role="status" aria-live="polite">저장됨</span>
-            <button class="button button-small" type="button" data-builder-save>저장</button>
-            <button class="button button-small" type="button" data-builder-preview>미리보기</button>
-            <button class="button button-small" type="button" data-builder-distribute>배포 준비</button>
-            <button class="button button-small button-primary builder-template-register" type="button" data-template-admin-publish hidden>공용 템플릿 등록</button>
-            <button class="button button-small button-primary" type="button" data-builder-publish>저장·확정 및 URL 발급</button>
+            <button class="button button-small button-save" type="button" data-builder-save>저장</button>
+            <button class="button button-small button-layer" type="button" data-builder-preview>미리보기</button>
+            <button class="button button-small button-navigation" type="button" data-builder-distribute>배포 준비</button>
+            <button class="button button-small button-save button-important builder-template-register" type="button" data-template-admin-publish hidden>공용 템플릿 등록</button>
+            <button class="button button-small button-batch button-important" type="button" data-builder-publish>저장·확정 및 URL 발급</button>
             <button class="button workspace-list-button" type="button" data-builder-back aria-label="프로젝트 목록으로 돌아가기" title="프로젝트 목록"><span class="workspace-list-button-icon" aria-hidden="true">←</span><span class="workspace-list-button-label" data-builder-back-label>프로젝트 목록</span></button>
         </div>
     </header>
@@ -49,7 +49,7 @@
             <aside class="builder-template-start" data-builder-template-start aria-labelledby="builderTemplateStartTitle" hidden>
                 <span class="builder-template-start-icon" aria-hidden="true">✦</span>
                 <div><strong id="builderTemplateStartTitle">템플릿으로 빠르게 시작하세요</strong><p>목적에 맞는 설문 구조를 선택한 뒤 문항과 문구를 자유롭게 수정할 수 있습니다.</p></div>
-                <button class="button button-primary" type="button" data-builder-template-library>템플릿 둘러보기</button>
+                <button class="button button-layer button-important" type="button" data-builder-template-library>템플릿 둘러보기</button>
             </aside>
             <section class="survey-cover-card">
                 <div class="survey-cover-accent" data-cover-accent></div>
@@ -70,7 +70,7 @@
                 <section class="builder-feature-panel">
                     <span class="feature-mark">↳</span>
                     <div><span class="eyebrow">ANSWER-BASED ROUTING</span><h3>응답에 따라 다음 섹션을 연결하세요.</h3><p>단일선택·복수응답·드롭다운 문항을 기준으로 조건을 만들 수 있습니다. 배포 전 도달 불가능한 섹션과 순환 분기를 자동 점검합니다.</p></div>
-                    <button class="button button-secondary" type="button" data-add-rule>첫 분기 규칙 만들기</button>
+                    <button class="button button-function" type="button" data-add-rule>첫 분기 규칙 만들기</button>
                 </section>
                 <div class="logic-rule-list" data-logic-rules></div>
             </div>
@@ -115,7 +115,7 @@
                     <section class="question-condition-builder" data-prop-condition-builder hidden>
                         <div class="question-condition-heading"><div><strong>활성화 조건</strong><small>안정적인 문항 ID를 사용하며 여러 조건을 조합할 수 있습니다.</small></div><select data-condition-combinator aria-label="조건 결합 방식"><option value="all">모두 충족(AND)</option><option value="any">하나 이상 충족(OR)</option></select></div>
                         <div data-condition-list></div>
-                        <button class="button button-small" type="button" data-add-condition>＋ 조건 추가</button>
+                        <button class="button button-small button-function" type="button" data-add-condition>조건 추가</button>
                     </section>
                     <label class="setting-row compact"><span><strong>문항 설명 표시</strong></span><input type="checkbox" data-prop-description-enabled></label>
                     <label class="form-field" data-prop-description-field hidden>문항 설명<textarea rows="3" data-prop-description placeholder="응답 기준이나 도움말"></textarea></label>
@@ -149,19 +149,19 @@
             <section class="builder-skin-quick">
                 <span class="eyebrow">PROJECT SKIN</span><strong>응답 화면 스타일</strong>
                 <div class="skin-dot-row" data-builder-skins></div>
-                <button class="button button-small button-block" type="button" data-open-skins>스킨 상세 설정</button>
+                <button class="button button-small button-navigation button-block" type="button" data-open-skins>스킨 상세 설정</button>
             </section>
         </aside>
     </div>
 
     <div class="builder-mobile-actions">
-        <button class="button" type="button" data-mobile-tools>＋ 문항</button>
-        <button class="button" type="button" data-builder-template-library>템플릿</button>
-        <button class="button" type="button" data-builder-code>&lt;/&gt; 코드</button>
-        <button class="button" type="button" data-builder-save>저장</button>
-        <button class="button" type="button" data-builder-preview>미리보기</button>
-        <button class="button button-primary" type="button" data-builder-distribute>배포 준비</button>
-        <button class="button button-primary builder-template-register" type="button" data-template-admin-publish hidden>템플릿 등록</button>
+        <button class="button button-function" type="button" data-mobile-tools>문항</button>
+        <button class="button button-layer" type="button" data-builder-template-library>템플릿</button>
+        <button class="button button-layer" type="button" data-builder-code>코드</button>
+        <button class="button button-save" type="button" data-builder-save>저장</button>
+        <button class="button button-layer" type="button" data-builder-preview>미리보기</button>
+        <button class="button button-navigation button-important" type="button" data-builder-distribute>배포 준비</button>
+        <button class="button button-save button-important builder-template-register" type="button" data-template-admin-publish hidden>템플릿 등록</button>
     </div>
 </section>
 
@@ -175,7 +175,7 @@
                 <button class="icon-button" type="button" data-question-up aria-label="문항 위로 이동">↑</button>
                 <button class="icon-button" type="button" data-question-down aria-label="문항 아래로 이동">↓</button>
                 <button class="icon-button" type="button" data-question-duplicate aria-label="문항 복제">⧉</button>
-                <button class="icon-button" type="button" data-question-delete aria-label="문항 삭제">×</button>
+                <button class="icon-button icon-button-delete" type="button" data-question-delete aria-label="문항 삭제">×</button>
             </div>
         </header>
         <input class="question-title-input" type="text" placeholder="질문을 입력하세요" data-question-title>

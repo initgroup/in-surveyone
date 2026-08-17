@@ -122,7 +122,7 @@
                 <div class="source-editor-workbench"><div class="source-editor-tabs" role="tablist" aria-label="소스 종류">${tabButtons}</div>${panels}<footer><output data-code-metrics></output><output data-code-status role="status"></output></footer></div>
                 <aside class="source-editor-preview"><header><strong>보안 미리보기</strong><small>외부 통신·쿠키·부모 화면 접근 차단</small></header><iframe title="사용자 코드 격리 미리보기" data-code-preview></iframe></aside>
             </div>
-            <footer class="source-editor-actions"><button class="button" type="button" data-code-cancel>취소</button><button class="button button-primary" type="button" data-code-apply>코드 적용</button></footer>
+            <footer class="source-editor-actions"><button class="button button-function" type="button" data-code-cancel>취소</button><button class="button button-function button-important" type="button" data-code-apply>코드 적용</button></footer>
         </section>`;
     }
 

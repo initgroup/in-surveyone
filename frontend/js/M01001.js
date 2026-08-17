@@ -169,7 +169,7 @@
                     ? "현재는 둘러보기 상태입니다. 위에서 시작 방식을 선택하면 내 프로젝트가 여기에 표시됩니다."
                     : "아직 만든 설문이 없습니다.";
                 const action = this.isVisitor ? "체험 시작하기" : "첫 설문 만들기";
-                host.innerHTML = `<div class="dashboard-inline-empty"><span>${message}</span><button class="button button-small button-secondary" data-dashboard-create>${action}</button></div>`;
+                host.innerHTML = `<div class="dashboard-inline-empty"><span>${message}</span><button class="button button-small button-function button-important" data-dashboard-create>${action}</button></div>`;
                 return;
             }
             host.innerHTML = items.slice(0, 4).map((item) => {
@@ -179,7 +179,7 @@
                 return `<article class="recent-item">
                     <div class="recent-title"><span class="status-badge status-${Common.escapeHtml(status)}">${statusLabel}</span><strong>${Common.escapeHtml(item.title)}</strong><small title="${Common.escapeHtml(item.id)}">${Common.escapeHtml(item.category || item.templateName || "직접 작성")} · ID ${Common.escapeHtml(shortId)}</small></div>
                     <div class="recent-meta"><span>응답</span><strong>${Common.formatNumber(item.responseCount || 0)}</strong></div>
-                    <button class="button recent-action" type="button" data-open-survey="${Common.escapeHtml(item.id)}" aria-label="${Common.escapeHtml(item.title)} 열기">→</button>
+                    <button class="button button-navigation button-icon recent-action" type="button" data-open-survey="${Common.escapeHtml(item.id)}" aria-label="${Common.escapeHtml(item.title)} 열기">→</button>
                 </article>`;
             }).join("");
         },
