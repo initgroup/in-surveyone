@@ -971,6 +971,7 @@ html.app-message-open, html.app-message-open body { overflow: hidden; overscroll
 @media (max-width: 23rem) {
     :root { --content-gutter: 12px; }
     .app-header { padding: 0 9px; }
+    .header-page-actions { display: none; }
     .brand { width: 94px; }
     .brand img { width: 92px; }
     .header-help { display: none; }
@@ -986,3 +987,23 @@ html.app-message-open, html.app-message-open body { overflow: hidden; overscroll
     *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
     .header-page-refresh.is-refreshing > span:first-child { animation: none; }
 }
+
+/* Shared publication links: independent of delivery recipients and channels. */
+.publication-links{min-width:0}
+.publication-links h2{margin:0 0 8px}
+.publication-links>[data-publication-title]{overflow-wrap:anywhere;font-weight:700}
+.publication-links>[data-publication-status]{display:block;margin:12px 0;color:#345574;font-size:14px}
+.publication-link-list{display:grid;gap:14px}
+.publication-link-card{min-width:0;padding:18px;border:1px solid #c7d5e8;border-radius:12px;background:#f9fbff}
+.publication-link-card header{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.publication-link-card h3{margin:0;font-size:17px;overflow-wrap:anywhere}
+.publication-default{padding:3px 8px;color:#155f48;background:#e5f6ef;border-radius:20px;font-size:12px;font-weight:700}
+.publication-link-card input{width:100%;min-width:0;min-height:46px;font-size:14px}
+.publication-link-actions,.publication-common-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.publication-links .button{min-height:44px}
+.publication-guidance{font-size:14px;line-height:1.7;color:#44566d}
+.publication-regenerate{display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:18px;margin-top:20px;border:1px solid #e2c7a5;border-radius:12px;background:#fffaf3}
+.publication-regenerate>div{flex:1;min-width:180px}
+.publication-regenerate p{font-size:14px;line-height:1.7;margin:8px 0 0}
+.publication-done{display:flex;justify-content:flex-end;margin-top:18px}
+@media(max-width:480px){.publication-link-card{padding:13px}.publication-link-actions>*{flex:1}.publication-regenerate>div{min-width:0;flex-basis:100%}.publication-regenerate>.button{width:100%}}

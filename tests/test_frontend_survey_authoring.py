@@ -328,3 +328,35 @@ q.type="multiple";q.settings.choiceInput="codes";q.settings.maxSelections=2;
 q.options[0].code="1";q.options[1].code="2";
 assert(!runtime.answerMarkup(q,{titleId:"title",describedBy:"error"}).includes('data-choice-layout='));
 """)
+
+
+def test_publication_dialog_displays_each_audience_and_escapes_labels() -> None:
+    _node(HARNESS + r"""
+eval(fs.readFileSync("frontend/js/publication-links.js","utf8"));
+const links=["evaluation","cooperation","all"].map(code=>({audienceCode:code,label:code,url:`/s/test?audience=${code}`,isDefault:code==="evaluation"}));
+links[1].label='<img src=x onerror=alert(1)>';
+const html=SurveyPublicationLinks.linksMarkup({links},"https://survey.example.test");
+assert.equal([...html.matchAll(/data-publication-link>/g)].length,3);
+for(const code of ["evaluation","cooperation","all"])assert(html.includes(`https://survey.example.test/s/test?audience=${code}`));
+assert(!html.includes('<img'));
+assert(html.includes('&lt;img'));
+assert.equal(SurveyPublicationLinks.absoluteUrl('/s/test?audience=all','https://survey.example.test'),'https://survey.example.test/s/test?audience=all');
+assert.throws(()=>SurveyPublicationLinks.absoluteUrl('javascript:alert(1)','https://survey.example.test'));
+""")
+
+
+def test_publish_opens_audience_links_only_after_save_and_confirmation_success() -> None:
+    _node(r"""
+const assert=require("node:assert/strict"),fs=require("node:fs");global.window=global;
+eval(fs.readFileSync("frontend/js/M02003.js","utf8"));
+(async()=>{
+ const page=Object.create(Pages.M02003),events=[],button={},status={},manage={};
+ page.root={querySelector(selector){return selector==='[data-builder-publish]'?button:status},querySelectorAll(){return [manage]}};
+ page.survey={id:'test',status:'draft',questions:[{type:'single'}]};page.publishing=false;page.destroyed=false;
+ page.saveExplicit=async()=>{events.push('save');return true};
+ page.context={api:{post:async()=>{events.push('publish');return {version:1,slug:'same-url',publicUrl:'/s/same-url'}}},toast(){}};
+ page.openPublicLinks=async()=>{events.push('links');assert.equal(page.survey.publishedVersion,1)};
+ await page.publishSurvey();assert.deepEqual(events,['save','publish','links']);assert.equal(manage.hidden,false);assert.equal(button.textContent,'재확정 · 기존 URL 유지');assert.equal(button.disabled,false);
+ events.length=0;page.saveExplicit=async()=>false;await page.publishSurvey();assert.deepEqual(events,[]);
+})().catch(error=>{console.error(error);process.exit(1)});
+""")

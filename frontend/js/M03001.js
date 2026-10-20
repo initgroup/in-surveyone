@@ -65,7 +65,6 @@
             this.recipientPage = 1;
             this.recipientPageSize = 25;
             this.importingRecipients = false;
-            this.regeneratingUrl = false;
             this.bind();
             await this.load();
         },
@@ -74,6 +73,8 @@
             this.onClick = async (event) => {
                 const layout = event.target.closest("[data-distribution-layout]");
                 if (layout) return this.changeLayout(layout.dataset.distributionLayout);
+                const projectUrls = event.target.closest("[data-project-url-management]");
+                if (projectUrls) return this.openProjectUrls(projectUrls.dataset.projectUrlManagement || this.current?.id);
                 const open = event.target.closest("[data-open-distribution-project]");
                 if (open) return this.openProject(open.dataset.openDistributionProject);
                 if (event.target.closest("[data-distribution-project-back]")) return this.backToProjects();
@@ -97,7 +98,6 @@
                 if (event.target.closest("[data-edit-survey-languages]")) return this.context.navigate("M02003", { surveyId: this.current.id });
                 const emailEditor = event.target.closest("[data-edit-email-html]");
                 if (emailEditor) return this.openEmailEditor(emailEditor.dataset.editEmailHtml);
-                if (event.target.closest("[data-regenerate-public-url]")) return this.regeneratePublicUrl();
                 const copy = event.target.closest("[data-copy-language-url]");
                 if (copy) return this.copyLanguageUrl(copy.dataset.copyLanguageUrl);
             };
@@ -223,9 +223,17 @@
             const urlMarkup = publicUrl
                 ? `<div class="distribution-project-public-url"><span>설문 URL</span><a href="${Common.escapeHtml(publicUrl)}" target="_blank" rel="noopener noreferrer" title="${Common.escapeHtml(publicUrl)}"><code>${Common.escapeHtml(publicUrl)}</code><b aria-hidden="true">↗</b><span class="sr-only">새 탭에서 설문 열기</span></a><small>${Common.formatDate(item.publishedAt || item.updatedAt)} 확정</small></div>`
                 : `<span>${Common.formatDate(item.publishedAt || item.updatedAt)} 확정</span>`;
-            return `<article class="distribution-project-card"><header><span class="status-badge status-published">확정 v${version}</span><span class="distribution-project-state">${deploymentLabel}</span></header><button type="button" class="distribution-project-main" data-open-distribution-project="${Common.escapeHtml(item.id)}"><span class="project-category">${Common.escapeHtml(item.category || "설문")}</span><h3>${Common.escapeHtml(item.title || "제목 없는 설문")}</h3><span class="project-id">프로젝트 ID <code>${Common.escapeHtml(item.id)}</code></span><p>${Common.escapeHtml(item.description || "대상자와 채널을 설정해 배포를 시작하세요.")}</p>${periodMarkup}</button><dl><div><dt>확정 버전</dt><dd>v${version}</dd></div><div><dt>문항</dt><dd>${Common.formatNumber(item.questionCount || 0)}</dd></div><div><dt>응답</dt><dd>${Common.formatNumber(responses)}</dd></div></dl><footer>${urlMarkup}<button class="button button-small button-function button-important" type="button" data-open-distribution-project="${Common.escapeHtml(item.id)}">배포 작업</button></footer></article>`;
+            return `<article class="distribution-project-card"><header><span class="status-badge status-published">확정 v${version}</span><span class="distribution-project-state">${deploymentLabel}</span></header><button type="button" class="distribution-project-main" data-open-distribution-project="${Common.escapeHtml(item.id)}"><span class="project-category">${Common.escapeHtml(item.category || "설문")}</span><h3>${Common.escapeHtml(item.title || "제목 없는 설문")}</h3><span class="project-id">프로젝트 ID <code>${Common.escapeHtml(item.id)}</code></span><p>${Common.escapeHtml(item.description || "대상자와 채널을 설정해 배포를 시작하세요.")}</p>${periodMarkup}</button><dl><div><dt>확정 버전</dt><dd>v${version}</dd></div><div><dt>문항</dt><dd>${Common.formatNumber(item.questionCount || 0)}</dd></div><div><dt>응답</dt><dd>${Common.formatNumber(responses)}</dd></div></dl><footer>${urlMarkup}<div class="distribution-project-url-actions"><button class="button button-small button-navigation" type="button" data-project-url-management="${Common.escapeHtml(item.id)}">프로젝트 URL 관리</button><button class="button button-small button-function button-important" type="button" data-open-distribution-project="${Common.escapeHtml(item.id)}">배포 작업</button></div></footer></article>`;
         },
 
+        async openProjectUrls(surveyId) {
+            if (!surveyId) return;
+            if (this.dirty && !(await this.context.confirmMessage(
+                "저장하지 않은 배포 변경사항이 있습니다. 변경사항을 버리고 설문 프로젝트의 URL 관리로 이동할까요?",
+                { title: "설문 프로젝트로 이동", confirmLabel: "변경 버리고 이동", tone: "warning", destructive: true }
+            ))) return;
+            return this.context.navigate("M02001", { urlId: surveyId });
+        },
         async openProject(id) {
             try {
                 const [detailPayload, deploymentPayload] = await Promise.all([
@@ -825,7 +833,7 @@
             if (selected.has("KAKAO")) fields.push(`<label class="form-field">카카오 안내문<textarea rows="3" maxlength="1000" data-message-locale="${locale}" data-message-field="kakaoBody">${Common.escapeHtml(messages.kakaoBody)}</textarea></label>`);
             if (selected.has("FAX")) fields.push(`<label class="form-field">팩스 표지 제목<input data-message-locale="${locale}" data-message-field="faxTitle" value="${Common.escapeHtml(messages.faxTitle)}"></label><label class="form-field">팩스 안내문<textarea rows="4" data-message-locale="${locale}" data-message-field="faxBody">${Common.escapeHtml(messages.faxBody)}</textarea></label>`);
             const languageUrl = this.languageUrl(locale);
-            return `<details class="distribution-message-card" ${open ? "open" : ""}><summary><span><strong>${Common.escapeHtml(this.localeLabel(locale))}</strong><small>${Common.formatNumber(this.draft.recipients.filter((item) => this.localeCode(item.preferredLanguage) === locale).length)}명 대상</small></span><b>${this.enabledLocales().includes(locale) ? "확정 번역 사용" : "기본 언어 대체"}</b></summary><div class="distribution-language-url"><label>설문 URL<input readonly value="${Common.escapeHtml(languageUrl)}"></label><div class="distribution-url-actions"><button class="button button-small button-batch" type="button" data-regenerate-public-url>URL 재발급</button><button class="button button-small button-function" type="button" data-copy-language-url="${locale}">URL 복사</button><a class="button button-small button-navigation distribution-open-url" href="${Common.escapeHtml(languageUrl)}" target="_blank" rel="noopener noreferrer" title="새 탭에서 설문 열기" aria-label="${Common.escapeHtml(this.localeLabel(locale))} 설문을 새 탭에서 열기"></a></div></div><div class="distribution-message-fields">${fields.join("") || '<p class="muted">STEP 02에서 발송 채널을 선택하면 안내문 입력란이 표시됩니다.</p>'}</div></details>`;
+            return `<details class="distribution-message-card" ${open ? "open" : ""}><summary><span><strong>${Common.escapeHtml(this.localeLabel(locale))}</strong><small>${Common.formatNumber(this.draft.recipients.filter((item) => this.localeCode(item.preferredLanguage) === locale).length)}명 대상</small></span><b>${this.enabledLocales().includes(locale) ? "확정 번역 사용" : "기본 언어 대체"}</b></summary><div class="distribution-language-url"><label>설문 URL<input readonly value="${Common.escapeHtml(languageUrl)}"></label><div class="distribution-url-actions"><button class="button button-small button-navigation" type="button" data-project-url-management="${Common.escapeHtml(this.current.id)}">프로젝트 URL 관리</button><button class="button button-small button-function" type="button" data-copy-language-url="${locale}">URL 복사</button><a class="button button-small button-navigation distribution-open-url" href="${Common.escapeHtml(languageUrl)}" target="_blank" rel="noopener noreferrer" title="새 탭에서 설문 열기" aria-label="${Common.escapeHtml(this.localeLabel(locale))} 설문을 새 탭에서 열기"></a></div></div><div class="distribution-message-fields">${fields.join("") || '<p class="muted">STEP 02에서 발송 채널을 선택하면 안내문 입력란이 표시됩니다.</p>'}</div></details>`;
         },
 
         updateMessageField(element) {
@@ -887,45 +895,6 @@
                     }
                 });
             });
-        },
-
-        async regeneratePublicUrl() {
-            if (this.regeneratingUrl || !this.current || this.draft?.executionStatus) return;
-            if (!(await this.context.confirmMessage(
-                "설문 URL을 재발급하면 기존 URL은 즉시 사용할 수 없게 됩니다. 이미 발송한 링크와 QR 코드도 새 URL로 다시 안내해야 합니다.",
-                { title: "설문 URL 재발급", confirmLabel: "기존 URL 폐기 후 재발급", tone: "warning", destructive: true }
-            ))) return;
-            const previousUrl = this.publicUrl();
-            const wasDirty = this.dirty;
-            this.regeneratingUrl = true;
-            this.setActionDisabled(true);
-            this.updateSaveState("URL 재발급 중…");
-            try {
-                const payload = await this.context.api.post(`/api/surveys/${encodeURIComponent(this.current.id)}/public-url/regenerate`, {});
-                const result = payload?.publicUrl ? payload : payload?.data || payload;
-                this.current.slug = result.slug;
-                this.current.publicSlug = result.slug;
-                this.current.publicUrl = result.publicUrl;
-                const listItem = this.items.find((item) => String(item.id) === String(this.current.id));
-                if (listItem) {
-                    listItem.slug = result.slug;
-                    listItem.publicUrl = result.publicUrl;
-                }
-                const nextUrl = this.publicUrl();
-                this.replaceDraftPublicUrl(previousUrl, nextUrl);
-                if (Number.isInteger(result.deploymentRevision)) this.draft.revision = result.deploymentRevision;
-                this.renderMessages();
-                if (this.step === 4) this.renderReview();
-                this.dirty = wasDirty;
-                this.updateSaveState(wasDirty ? null : `URL 재발급됨${this.draft.revision ? ` · 초안 r${this.draft.revision} 동기화` : ""}`);
-                this.context.toast("새 설문 URL을 발급했습니다. 기존 URL은 더 이상 열리지 않습니다.", "success");
-            } catch (error) {
-                this.updateSaveState("URL 재발급 실패");
-                this.context.toast(error.message, "error");
-            } finally {
-                this.regeneratingUrl = false;
-                this.setActionDisabled(false);
-            }
         },
 
         languageUrl(locale) {
@@ -1031,7 +1000,7 @@
                 const ready = this.providerReady(channel.code);
                 return `<div class="distribution-review-channel ${ready ? "is-ready" : "is-disabled"}"><span class="distribution-channel-icon channel-${channel.code.toLowerCase()}">${channel.icon}</span><span><strong>${channel.label}</strong><small>${Common.formatNumber(count)}명 대상</small></span><b>${ready ? "실행 가능" : "DISABLED 예정"}</b></div>`;
             }).join("");
-            this.root.querySelector("[data-distribution-review]").innerHTML = `<div class="distribution-review-summary"><article><span>대상자</span><strong>${Common.formatNumber(this.draft.recipients.length)}명</strong><small>수신 동의·보유기간 서버 검증 필요</small></article><article><span>언어</span><strong>${languageCounts.length}개</strong><small>${languageCounts.map((item) => `${this.localeLabel(item.locale).split(" · ")[0]} ${item.count}명`).join(" · ")}</small></article><article><span>전송 방식</span><strong>${this.draft.schedule.strategy === "ALL_AVAILABLE" ? "모든 선택 채널" : "우선순위·대체"}</strong><small>${selected.map((item) => item.label).join(" · ")}</small></article><article><span>발송 시점</span><strong>${schedule}</strong><small>확정 버전 v${this.current.publishedVersion || this.current.version || 1}</small></article></div><section class="distribution-review-section"><h4>채널별 실행 준비</h4><div class="distribution-review-channels">${channelCards}</div></section><section class="distribution-review-section"><h4>언어별 설문 URL</h4><div class="distribution-review-languages">${languageCounts.map((item) => { const url = this.languageUrl(item.locale); return `<div><span><strong>${Common.escapeHtml(this.localeLabel(item.locale))}</strong><small>${item.count}명</small></span><code>${Common.escapeHtml(url)}</code><div class="distribution-url-actions"><button class="button button-small button-batch" type="button" data-regenerate-public-url>URL 재발급</button><button class="button button-small button-function" type="button" data-copy-language-url="${item.locale}">복사</button><a class="button button-small button-navigation distribution-open-url" href="${Common.escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="새 탭에서 설문 열기" aria-label="${Common.escapeHtml(this.localeLabel(item.locale))} 설문을 새 탭에서 열기"></a></div></div>`; }).join("")}</div></section>`;
+            this.root.querySelector("[data-distribution-review]").innerHTML = `<div class="distribution-review-summary"><article><span>대상자</span><strong>${Common.formatNumber(this.draft.recipients.length)}명</strong><small>수신 동의·보유기간 서버 검증 필요</small></article><article><span>언어</span><strong>${languageCounts.length}개</strong><small>${languageCounts.map((item) => `${this.localeLabel(item.locale).split(" · ")[0]} ${item.count}명`).join(" · ")}</small></article><article><span>전송 방식</span><strong>${this.draft.schedule.strategy === "ALL_AVAILABLE" ? "모든 선택 채널" : "우선순위·대체"}</strong><small>${selected.map((item) => item.label).join(" · ")}</small></article><article><span>발송 시점</span><strong>${schedule}</strong><small>확정 버전 v${this.current.publishedVersion || this.current.version || 1}</small></article></div><section class="distribution-review-section"><h4>채널별 실행 준비</h4><div class="distribution-review-channels">${channelCards}</div></section><section class="distribution-review-section"><h4>언어별 설문 URL</h4><div class="distribution-review-languages">${languageCounts.map((item) => { const url = this.languageUrl(item.locale); return `<div><span><strong>${Common.escapeHtml(this.localeLabel(item.locale))}</strong><small>${item.count}명</small></span><code>${Common.escapeHtml(url)}</code><div class="distribution-url-actions"><button class="button button-small button-navigation" type="button" data-project-url-management="${Common.escapeHtml(this.current.id)}">프로젝트 URL 관리</button><button class="button button-small button-function" type="button" data-copy-language-url="${item.locale}">복사</button><a class="button button-small button-navigation distribution-open-url" href="${Common.escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="새 탭에서 설문 열기" aria-label="${Common.escapeHtml(this.localeLabel(item.locale))} 설문을 새 탭에서 열기"></a></div></div>`; }).join("")}</div></section>`;
             const disabled = selected.filter((item) => !this.providerReady(item.code));
             const note = this.root.querySelector("[data-execute-note]");
             note.className = `distribution-execute-note${disabled.length ? " is-warning" : " is-ready"}`;

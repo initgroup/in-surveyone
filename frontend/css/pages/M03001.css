@@ -222,3 +222,8 @@
 .distribution-email-html-field { display: grid; gap: 7px; }
 .distribution-message-field-heading { display: flex; gap: 12px; align-items: center; justify-content: space-between; font-weight: 750; }
 .distribution-email-html-field > small { color: var(--muted); font-size: 10px; }
+
+.distribution-project-card>footer{flex-wrap:wrap}
+.distribution-project-card>footer>.distribution-project-public-url{flex-basis:100%}
+.distribution-project-url-actions{display:flex;flex-wrap:wrap;gap:8px;width:100%}
+.distribution-project-url-actions>.button{flex:1;min-height:44px}

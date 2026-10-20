@@ -75,8 +75,9 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     assert "replaceMaskedContact(button)" in script
     assert "연락처 마스킹 표시" in script
     assert "distribution-project-public-url" in script
-    assert "data-regenerate-public-url" in script
-    assert "/public-url/regenerate" in script
+    assert "data-project-url-management" in script
+    assert 'this.context.navigate("M02001", { urlId: surveyId })' in script
+    assert "/public-url/regenerate" not in script
     assert "replaceDraftPublicUrl(previousUrl, nextUrl)" in script
     assert "loadPublishedSurveyState(this.current)" in script
     assert "renderProjectContext()" in script

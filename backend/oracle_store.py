@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.publication_links import public_link_items
+
 from backend.survey_audience import audience_submission, validate_audiences
 
 import hashlib
@@ -1891,6 +1893,7 @@ class OracleStore(MemoryStore):
                 detail.translations,
             )
         return PublishResult(
+            links=public_link_items(public),
             survey_id=survey_id,
             slug=slug,
             version=version,

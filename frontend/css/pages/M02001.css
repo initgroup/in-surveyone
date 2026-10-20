@@ -27,7 +27,8 @@
 .project-public-url { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: center; margin: 0 17px 12px; padding: 9px 10px; background: #f3f7ff; border: 1px solid #dce6f8; border-radius: 9px; }
 .project-public-url > span { grid-column: 1 / -1; color: var(--muted); font-size: 10px; font-weight: 750; }
 .project-public-url code { min-width: 0; overflow: hidden; color: var(--blue-strong); font-family: inherit; font-size: 13px; font-weight: 650; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
-.project-public-url .button { min-height: 28px; padding: 4px 9px; }
+.project-public-url .button { min-height: 44px; padding: 6px 9px; }
+.project-public-url [data-project-public-links] { grid-column: 1 / -1; width: 100%; }
 .project-category { color: var(--blue); font-size: 10px; font-weight: 850; }
 .project-stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0 17px 15px; padding: 12px 0; background: #f7f9fc; border-radius: 10px; }
 .project-stats div { display: grid; gap: 2px; text-align: center; border-right: 1px solid #e2e7ef; }

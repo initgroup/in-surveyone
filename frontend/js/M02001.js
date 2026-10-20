@@ -57,6 +57,7 @@
             this.resumeFlow = params.get("flow") === "new";
             if (params.get("create") === "1") this.openCreateForm();
             else if (params.get("editId")) await this.openEditForm(params.get("editId"));
+            else if (params.get("urlId")) await this.openPublicLinks(params.get("urlId"));
         },
         bind() {
             this.onClick = async (event) => {
@@ -92,6 +93,8 @@
                 if (publish) return this.publish(publish.dataset.publishId);
                 const share = event.target.closest("[data-share-id]");
                 if (share) return this.context.navigate("M03001", { surveyId: share.dataset.shareId });
+                const publicLinks = event.target.closest("[data-project-public-links]");
+                if (publicLinks) return this.openPublicLinks(publicLinks.dataset.projectPublicLinks);
                 const copyUrl = event.target.closest("[data-copy-public-url]");
                 if (copyUrl) return this.copyPublicUrl(copyUrl.dataset.copyPublicUrl);
                 const close = event.target.closest("[data-close-id]");
@@ -312,6 +315,7 @@
                     else {
                         this.editingId = survey.id;
                         submitButtons.forEach((button) => { button.disabled = false; });
+                        if (publishAfterSave) await this.openPublicLinks(survey.id);
                     }
                 } else {
                     this.context.toast("STEP 01 기본정보를 저장했습니다.", "success");
@@ -366,7 +370,7 @@
             const started = item.startedResponseCount || count;
             const completion = item.completionRate ?? (started ? Math.round(count / started * 100) : 0);
             const publicUrl = this.absolutePublicUrl(item.publicUrl);
-            const urlMarkup = published && publicUrl ? `<div class="project-public-url"><span>프로젝트 배포 URL</span><code title="${Common.escapeHtml(publicUrl)}">${Common.escapeHtml(publicUrl)}</code><button class="button button-small button-function" type="button" data-copy-public-url="${Common.escapeHtml(item.id)}">복사</button></div>` : "";
+            const urlMarkup = published && publicUrl ? `<div class="project-public-url"><span>프로젝트 배포 URL</span><code title="${Common.escapeHtml(publicUrl)}">${Common.escapeHtml(publicUrl)}</code><button class="button button-small button-function" type="button" data-copy-public-url="${Common.escapeHtml(item.id)}">기본 URL 복사</button><button class="button button-small button-layer" type="button" data-project-public-links="${Common.escapeHtml(item.id)}">대상별 URL · 관리</button></div>` : "";
             const distributionLabel = stage === "active" ? "배포 관리" : "배포 준비";
             return `<article class="project-card"><header class="project-card-head"><span class="status-badge status-${Common.escapeHtml(stage)}">${statusLabels[stage] || stage}</span><button class="icon-button icon-button-layer project-more" type="button" data-more-id="${Common.escapeHtml(item.id)}" aria-label="${Common.escapeHtml(item.title)} 프로젝트 작업 레이어 열기">•••</button></header><button class="project-card-main" type="button" data-open-id="${Common.escapeHtml(item.id)}"><span class="project-category">${Common.escapeHtml(item.category || item.templateName || "직접 작성")}</span><h3>${Common.escapeHtml(item.title)}</h3><span class="project-id">프로젝트 ID <code>${Common.escapeHtml(item.id)}</code></span><p>${Common.escapeHtml(item.description || "설문 설명을 입력해 주세요.")}</p></button>${urlMarkup}<dl class="project-stats"><div><dt>문항</dt><dd>${Common.formatNumber(item.questionCount || item.questions?.length || 0)}</dd></div><div><dt>응답</dt><dd>${Common.formatNumber(count)}</dd></div><div><dt>완료율</dt><dd>${completion}%</dd></div></dl><footer class="project-card-footer"><span>${Common.formatDate(item.updatedAt || item.createdAt)} 수정</span><div class="project-card-actions">${published ? `<button class="button button-small button-navigation" type="button" data-share-id="${Common.escapeHtml(item.id)}">${distributionLabel}</button><button class="button button-small button-batch" type="button" data-close-id="${Common.escapeHtml(item.id)}">배포 종료</button>` : `<button class="button button-small button-batch button-important" type="button" data-publish-id="${Common.escapeHtml(item.id)}">확정 및 URL 발급</button>`}<button class="button button-small button-navigation" type="button" data-open-id="${Common.escapeHtml(item.id)}">편집</button><button class="button button-small button-navigation" type="button" data-basic-id="${Common.escapeHtml(item.id)}">기본정보</button>${!published ? `<button class="button button-small button-delete" type="button" data-delete-id="${Common.escapeHtml(item.id)}">삭제</button>` : ""}</div></footer></article>`;
         },
@@ -374,6 +378,22 @@
             if (!value) return "";
             try { return new URL(String(value), location.origin).href; }
             catch { return ""; }
+        },
+        async openPublicLinks(id) {
+            try {
+                await window.SurveyPublicationLinks.open({
+                    context: this.context, surveyId: id,
+                    onRegenerate: result => {
+                        if (!this.root || this.context.isCurrentRoute?.() === false) return;
+                        const item = this.items.find(candidate => String(candidate.id) === String(id));
+                        if (item) {
+                            item.slug = result.slug;
+                            item.publicUrl = result.publicUrl;
+                            this.render();
+                        }
+                    }
+                });
+            } catch (error) { this.context.toast(error.message, "error"); }
         },
         async copyPublicUrl(id) {
             const item = this.items.find((candidate) => String(candidate.id) === String(id));
@@ -390,7 +410,8 @@
             try {
                 await this.context.api.post(`/api/surveys/${encodeURIComponent(id)}/publish`, {});
                 await this.loadPage(this.page);
-                this.context.toast("설문을 확정했습니다. 프로젝트 배포 URL을 복사하거나 배포 준비를 진행할 수 있습니다.", "success");
+                this.context.toast("설문을 확정했습니다. 대상별 URL을 확인하세요.", "success");
+                await this.openPublicLinks(id);
             } catch (error) { this.context.toast(error.message, "error"); }
         },
         showActions(id) {
@@ -399,10 +420,11 @@
             const status = item.status === "active" ? "published" : item.status;
             const deletable = status !== "published";
             const publicUrl = this.absolutePublicUrl(item.publicUrl);
-            const dialog = this.context.openModal(`<p class="eyebrow">PROJECT ACTIONS</p><h2>${Common.escapeHtml(item.title)}</h2><p class="project-modal-id">프로젝트 ID <code>${Common.escapeHtml(item.id)}</code></p>${status === "published" && publicUrl ? `<p class="project-modal-id">프로젝트 배포 URL <code>${Common.escapeHtml(publicUrl)}</code></p>` : ""}<div class="project-action-menu"><button class="button button-navigation" data-modal-basic>기본정보 수정</button><button class="button button-navigation" data-modal-edit>설문 편집</button><button class="button button-navigation" data-modal-skin>프로젝트 스킨</button>${status === "published" ? '<button class="button button-function" data-modal-copy-url>배포 URL 복사</button>' : ""}<button class="button button-navigation" data-modal-share>배포 센터</button><button class="button button-navigation" data-modal-report>결과 보고서</button>${status === "published" ? '<button class="button button-batch" data-modal-close>배포 종료</button>' : ""}<button class="button button-delete" data-modal-delete ${deletable ? "" : "disabled"}>${deletable ? "프로젝트 삭제" : "확정·진행 중에는 삭제할 수 없음"}</button></div>${deletable ? "" : '<p class="project-delete-note" role="note">확정 또는 진행 중인 설문은 버전과 응답 보호를 위해 삭제할 수 없습니다. 먼저 배포를 종료해 주세요.</p>'}`);
+            const dialog = this.context.openModal(`<p class="eyebrow">PROJECT ACTIONS</p><h2>${Common.escapeHtml(item.title)}</h2><p class="project-modal-id">프로젝트 ID <code>${Common.escapeHtml(item.id)}</code></p>${status === "published" && publicUrl ? `<p class="project-modal-id">프로젝트 배포 URL <code>${Common.escapeHtml(publicUrl)}</code></p>` : ""}<div class="project-action-menu"><button class="button button-navigation" data-modal-basic>기본정보 수정</button><button class="button button-navigation" data-modal-edit>설문 편집</button><button class="button button-navigation" data-modal-skin>프로젝트 스킨</button>${status === "published" ? '<button class="button button-layer" data-modal-public-links>대상별 URL · 관리</button><button class="button button-function" data-modal-copy-url>기본 URL 복사</button>' : ""}<button class="button button-navigation" data-modal-share>배포 센터</button><button class="button button-navigation" data-modal-report>결과 보고서</button>${status === "published" ? '<button class="button button-batch" data-modal-close>배포 종료</button>' : ""}<button class="button button-delete" data-modal-delete ${deletable ? "" : "disabled"}>${deletable ? "프로젝트 삭제" : "확정·진행 중에는 삭제할 수 없음"}</button></div>${deletable ? "" : '<p class="project-delete-note" role="note">확정 또는 진행 중인 설문은 버전과 응답 보호를 위해 삭제할 수 없습니다. 먼저 배포를 종료해 주세요.</p>'}`);
             dialog.querySelector("[data-modal-basic]").addEventListener("click", () => { dialog.close(); this.context.navigate("M02001", { editId: id }); });
             dialog.querySelector("[data-modal-edit]").addEventListener("click", () => { dialog.close(); this.context.navigate("M02003", { surveyId: id }); });
             dialog.querySelector("[data-modal-skin]").addEventListener("click", () => { dialog.close(); this.context.navigate("M02005", { surveyId: id, flow: "project" }); });
+            dialog.querySelector("[data-modal-public-links]")?.addEventListener("click", () => { dialog.close(); void this.openPublicLinks(id); });
             dialog.querySelector("[data-modal-copy-url]")?.addEventListener("click", () => void this.copyPublicUrl(id));
             dialog.querySelector("[data-modal-share]").addEventListener("click", () => { dialog.close(); this.context.navigate("M03001", { surveyId: id }); });
             dialog.querySelector("[data-modal-report]").addEventListener("click", () => { dialog.close(); this.context.navigate("M05001", { surveyId: id }); });

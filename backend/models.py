@@ -1721,7 +1721,24 @@ class PublishRequest(ApiModel):
         return normalized
 
 
+class SurveyPublicLink(ApiModel):
+    audience_code: str | None = None
+    label: str
+    url: str
+    is_default: bool = False
+
+
+class SurveyPublicLinks(ApiModel):
+    survey_id: str
+    title: str
+    version: int
+    slug: str
+    public_url: str
+    links: list[SurveyPublicLink]
+
+
 class PublishResult(ApiModel):
+    links: list[SurveyPublicLink] = Field(default_factory=list)
     survey_id: str
     slug: str
     version: int

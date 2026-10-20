@@ -157,6 +157,7 @@
                 if (event.target.closest("[data-import-draft]")) return this.root.querySelector("[data-import-draft-file]").click();
                 if (event.target.closest("[data-builder-distribute]")) return this.prepareDistribution();
                 if (event.target.closest("[data-template-admin-publish]")) return this.openAdminTemplatePublish();
+                if (event.target.closest("[data-builder-public-links]")) return this.openPublicLinks();
                 if (event.target.closest("[data-builder-publish]")) return this.publishSurvey();
                 if (event.target.closest("[data-properties-close]")) return this.closeProperties();
                 const skin = event.target.closest("[data-skin-code]");
@@ -538,6 +539,7 @@
             if (this.templateAdmin) this.root.querySelector("[data-builder-status]").textContent = this.templateCode ? `공용 템플릿 ${this.templateCode} 편집 중` : "새 공용 템플릿 편집 중";
             this.renderLanguageControls();
             this.renderAudienceSummary();
+            this.updatePublishActions();
             const localizedTitle = this.localizedSurveyField("title") || "제목 없는 설문";
             this.root.querySelector("[data-builder-title]").value = localizedTitle;
             this.root.querySelector("[data-survey-heading]").value = localizedTitle;
@@ -1660,6 +1662,24 @@
                 this.publishing = false;
             }
         },
+        updatePublishActions() {
+            const published = !this.templateAdmin && ["published", "active"].includes(this.survey.status) && Boolean(this.survey.slug || this.survey.publicUrl);
+            this.root.querySelectorAll("[data-builder-public-links]").forEach(button => { button.hidden = !published; });
+            const publish = this.root.querySelector("[data-builder-publish]");
+            publish.textContent = published ? "재확정 · 기존 URL 유지" : "저장·확정 및 URL 발급";
+            publish.title = "저장만으로는 공개되지 않습니다. 확정 후 대상별 URL을 확인할 수 있습니다.";
+        },
+        async openPublicLinks() {
+            try {
+                await window.SurveyPublicationLinks.open({
+                    context: this.context, surveyId: this.survey.id,
+                    onRegenerate: result => {
+                        if (this.destroyed) return;
+                        this.survey.slug = result.slug; this.survey.publicUrl = result.publicUrl;
+                    }
+                });
+            } catch (error) { this.context.toast(error.message, "error"); }
+        },
         async publishSurvey() {
             if (this.publishing) return;
             if (!this.survey.questions.some((question) => question.type !== "notice")) return this.context.toast("확정하려면 응답 가능한 문항을 한 개 이상 추가하세요.", "error");
@@ -1678,8 +1698,11 @@
                 this.survey.status = "published";
                 this.survey.slug = published.slug;
                 this.survey.publicUrl = published.publicUrl;
+                this.survey.publishedVersion = published.version;
+                this.updatePublishActions();
                 this.root.querySelector("[data-builder-status]").textContent = "배포됨";
-                this.context.toast(`설문을 확정했습니다. 응답 URL: ${published.publicUrl}`, "success");
+                this.context.toast(`설문 v${published.version}을 확정했습니다. 대상별 URL을 확인하세요.`, "success");
+                await this.openPublicLinks();
             } catch (error) {
                 this.context.toast(error.message, "error");
             } finally {
