@@ -10,6 +10,23 @@
         javascript: { label: "JavaScript", mode: "javascript", placeholder: 'document.querySelector(".custom-intro")?.classList.add("is-ready");' }
     });
     let acePromise = null;
+    const EVENT_TYPES = Object.freeze(["load", "answerChange", "pageChange", "beforeSubmit"]);
+    const EVENT_EXAMPLE = `SurveyOne.on("load", ({ survey }) => {
+  const output = document.querySelector("[data-survey-event]");
+  if (output) output.textContent = (survey?.title || "설문") + " 준비 완료";
+});
+SurveyOne.on("pageChange", ({ questionId }) => {
+  const output = document.querySelector("[data-survey-event]");
+  if (output) output.textContent = questionId ? "문항 이동: " + questionId : "설문 안내";
+});
+// answerChange: { questionId, answer } — 변경한 문항만 전달됩니다.
+// beforeSubmit: 제출 직전 알림이며 제출을 취소하거나 응답을 변경하지 않습니다.
+// SurveyOne.on()은 등록 해제 함수를 반환합니다. DOM 편집은 이 격리 영역 안에서 합니다.`;
+
+    function sendEvent(frame, type, detail = {}) {
+        if (!EVENT_TYPES.includes(type) || !frame?.contentWindow) return;
+        frame.contentWindow.postMessage({ type: "surveyone-lifecycle", event: type, detail }, "*");
+    }
 
     function byteLength(value) {
         return new TextEncoder().encode(String(value || "")).length;
@@ -94,6 +111,41 @@
         const html = source.html.trim() || '<section class="custom-code-empty"><strong>미리보기할 HTML을 입력해 주세요.</strong></section>';
         const resizeScript = email ? "" : `<script>
             (() => {
+                const allowed = new Set(["load", "answerChange", "pageChange", "beforeSubmit"]);
+                const handlers = new Map();
+                let context = Object.freeze({});
+                const immutable = (value) => {
+                    if (value && typeof value === "object") {
+                        Object.values(value).forEach(immutable);
+                        Object.freeze(value);
+                    }
+                    return value;
+                };
+                const showError = (error) => {
+                    const output = document.querySelector("[data-custom-code-error]");
+                    if (output) { output.hidden = false; output.textContent = "JavaScript 오류: " + (error?.message || String(error)); }
+                };
+                window.SurveyOne = Object.freeze({
+                    on(type, callback) {
+                        if (!allowed.has(type) || typeof callback !== "function") throw new TypeError("지원하는 설문 이벤트와 함수를 지정해 주세요.");
+                        if (!handlers.has(type)) handlers.set(type, new Set());
+                        handlers.get(type).add(callback);
+                        return () => handlers.get(type)?.delete(callback);
+                    },
+                    off(type, callback) { handlers.get(type)?.delete(callback); },
+                    getContext() { return context; }
+                });
+                addEventListener("message", (event) => {
+                    if (event.source !== parent || event.origin !== ${JSON.stringify(globalThis.origin || location.origin)}) return;
+                    const message = event.data;
+                    if (message?.type !== "surveyone-lifecycle" || !allowed.has(message.event)) return;
+                    const detail = immutable(structuredClone(message.detail || {}));
+                    if (message.event === "load") context = detail;
+                    for (const handler of handlers.get(message.event) || []) {
+                        try { Promise.resolve(handler(detail)).catch(showError); }
+                        catch (error) { showError(error); }
+                    }
+                });
                 const report = () => parent.postMessage({ type: "surveyone-custom-resize", height: Math.ceil(document.documentElement.scrollHeight) }, "*");
                 addEventListener("load", report);
                 new ResizeObserver(report).observe(document.documentElement);
@@ -118,9 +170,10 @@
                 ${allowEnable ? '<label class="setting-row compact"><span><strong>확정 버전에 적용</strong><small>끄면 소스는 보존하지만 공개 설문에는 표시하지 않습니다.</small></span><input type="checkbox" data-code-enabled></label>' : ""}
                 ${allowPlacement ? '<label class="form-field">HTML 배치 위치<select data-code-placement><option value="beforeQuestions">설문 소개 다음</option><option value="afterQuestions">마지막 문항 다음</option></select></label>' : ""}
             </div>
+            ${tabs.includes("javascript") ? `<details class="source-editor-event-help"><summary>설문 이벤트 함수 사용법</summary><p><code>SurveyOne.on("load", handler)</code>로 시작하고 <code>answerChange</code>, <code>pageChange</code>, <code>beforeSubmit</code> 알림을 받을 수 있습니다. HTML과 JavaScript는 격리 영역에서 동작하며 CSS는 설문 폼에도 범위를 제한해 적용됩니다. 문항 분기·필수 응답·선택 제한은 제작기의 문항 설정에서 지정하세요.</p><p><button type="button" class="button button-function" data-code-event-example>이벤트 예제 추가</button> JavaScript 끝에 예제를 추가합니다. HTML에 <code>&lt;output data-survey-event&gt;&lt;/output&gt;</code>을 넣으면 확인할 수 있습니다.</p><p>미리보기 이벤트: ${EVENT_TYPES.map(type => `<button type="button" class="button button-function" data-code-event="${type}">${type}</button>`).join(" ")}</p></details>` : ""}
             <div class="source-editor-layout">
                 <div class="source-editor-workbench"><div class="source-editor-tabs" role="tablist" aria-label="소스 종류">${tabButtons}</div>${panels}<footer><output data-code-metrics></output><output data-code-status role="status"></output></footer></div>
-                <aside class="source-editor-preview"><header><strong>보안 미리보기</strong><small>외부 통신·쿠키·부모 화면 접근 차단</small></header><iframe title="사용자 코드 격리 미리보기" data-code-preview></iframe></aside>
+                <aside class="source-editor-preview"><header><strong>보안 미리보기</strong><small>외부 통신·쿠키·부모 화면 접근 차단</small></header><iframe title="사용자 코드 격리 미리보기" sandbox="allow-scripts" referrerpolicy="no-referrer" data-code-preview></iframe></aside>
             </div>
             <footer class="source-editor-actions"><button class="button button-function" type="button" data-code-cancel>취소</button><button class="button button-function button-important" type="button" data-code-apply>코드 적용</button></footer>
         </section>`;
@@ -145,6 +198,23 @@
         const placement = dialog.querySelector("[data-code-placement]");
         if (enabled) enabled.checked = sources.enabled;
         if (placement) placement.value = sources.placement;
+
+        preview.addEventListener("load", () => sendEvent(preview, "load", { survey: { title: "코드 편집기 미리보기" }, mode: "preview" }));
+        dialog.querySelector("[data-code-event-example]")?.addEventListener("click", () => {
+            const editor = editors.get("javascript");
+            if (!editor) return;
+            editor.setValue([editor.getValue().trim(), EVENT_EXAMPLE].filter(Boolean).join("\n\n"), -1);
+            dialog.querySelector('[data-code-tab="javascript"]')?.click();
+        });
+        dialog.querySelectorAll("[data-code-event]").forEach(button => button.addEventListener("click", () => {
+            const examples = {
+                load: { survey: { title: "예제 설문" }, mode: "preview" },
+                answerChange: { questionId: "sample_question", answer: "sample_option" },
+                pageChange: { sectionId: "sample_section", questionId: "sample_question" },
+                beforeSubmit: { mode: "preview" }
+            };
+            sendEvent(preview, button.dataset.codeEvent, examples[button.dataset.codeEvent]);
+        }));
 
         const currentSources = () => normalize({
             ...sources,
@@ -233,6 +303,8 @@
         normalize,
         validate,
         sandboxDocument,
+        sendEvent,
+        EVENT_TYPES,
         open
     });
 })();

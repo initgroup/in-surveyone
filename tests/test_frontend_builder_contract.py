@@ -281,10 +281,12 @@ def test_editor_preview_is_interactive_and_simulates_fixed_viewports() -> None:
     assert 'min="240" max="5120"' in builder_script
     assert 'min="320" max="2880"' in builder_script
     assert 'code === "custom"' in builder_script
-    assert "data-preview-slider" in builder_script
-    assert "data-preview-repeat-add" in builder_script
-    assert "updatePreviewLogic(dialog)" in builder_script
-    assert "submitPreview(event, dialog)" in builder_script
+    assert 'sandbox="allow-scripts"' in builder_script
+    assert "surveyone-preview-ready" in builder_script
+    assert "surveyone-preview-draft" in builder_script
+    assert "event.source !== frame.contentWindow" in builder_script
+    assert 'event.origin !== "null"' in builder_script
+    assert "/frontend/public.html?preview=1" in builder_script
     assert "applyPreviewDevice(dialog, code)" in builder_script
     assert "previewSimulator: true" in builder_script
     assert 'classList.toggle("modal-preview-simulator", Boolean(options.previewSimulator))' in app_script
@@ -365,9 +367,9 @@ def test_table_axes_are_configurable_and_previewed_by_question_semantics() -> No
     assert 'if (question.type === "table") return this.axisTableMarkup(question, "text")' in script
     assert 'if (choiceMatrixTypes.has(question.type))' in script
     assert 'if (question.type === "repeat_table") return this.repeatTableEditorMarkup(question)' in script
-    assert "const questions = this.survey.questions;" in script
-    assert "previewAxisTableMarkup(question, cellType)" in script
-    assert "previewRepeatTableMarkup(question)" in script
+    assert "/frontend/public.html?preview=1" in script
+    assert "previewAxisTableMarkup" not in script
+    assert "previewRepeatTableMarkup" not in script
     assert 'if (question.type === "table") return fixedTableMarkup(question, name, aria)' in public_script
     assert 'if (question.type === "repeat_table") return repeatTableMarkup(question, name, aria)' in public_script
     assert 'function axisItemId(question, field, index)' in public_script

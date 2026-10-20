@@ -1,0 +1,1079 @@
+{
+  "format": "in-surveyone.draft",
+  "formatVersion": 1,
+  "draft": {
+    "title": "2026년 내부평가제도·보수체계 개선을 위한 설문지",
+    "description": "내부평가제도 및 보수체계의 효율적 운영 방안과 개선사항 발굴을 위한 설문조사입니다.",
+    "category": "조직진단",
+    "sections": [
+      {
+        "id": "evaluation_cover",
+        "title": "조사 안내",
+        "questions": [
+          {
+            "id": "evaluation_cover_text",
+            "type": "notice",
+            "title": "설문 참여 안내",
+            "required": false,
+            "behavior": "fixed_optional",
+            "settings": {
+              "contentHtml": "<p>직원 여러분 안녕하십니까?</p><p>공사의 내부경영평가 및 보수체계와 관련하여 직원 여러분의 의견을 수렴하고, 향후 성과관리제도 및 보수제도의 효율적인 운영과 발전방향을 모색하기 위하여 설문조사를 실시하고자 합니다.</p><p>본 설문에 정답은 없으며, 귀하께서 평소 느끼시는 대로 답변해 주시면 고맙겠습니다.</p><p>본 설문의 응답자는 통계법 제33조에 따라 비밀이 보호될 뿐 아니라, 귀하의 의견은 통계분석 이외의 용도로는 절대 사용하지 않습니다.</p><p>설문결과는 내부경영평가 편람에 반영되며, 보수체계 등 제도 개선에 유용하게 활용되는 만큼, 설문조사가 객관성과 대표성을 가질 수 있도록 적극적인 참여를 부탁드립니다.</p><p>2026년 11월</p><p>성과관리처 ․ 노사협력처</p>"
+            }
+          }
+        ]
+      },
+      {
+        "id": "evaluation_profile",
+        "title": "응답 대상 확인",
+        "questions": [
+          {
+            "id": "profile_grade",
+            "type": "single",
+            "title": "현재 직급 및 직무대행 여부를 선택해 주세요.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {},
+            "description": "직급과 직무대행 여부에 해당하는 문항을 안내하기 위한 항목입니다.",
+            "options": [
+              {
+                "id": "grade_3_plus",
+                "label": "3급 이상"
+              },
+              {
+                "id": "grade_4_below_acting",
+                "label": "4급 이하(직무대행)"
+              },
+              {
+                "id": "grade_4_below",
+                "label": "4급 이하(직무대행 아님)"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "performance_acceptance",
+        "title": "내부평가제도 · 수용성",
+        "questions": [
+          {
+            "id": "performance_01",
+            "type": "scale",
+            "title": "1. 성과관리제도 개선을 위하여 직원들의 의견을 수렴한다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_02",
+            "type": "scale",
+            "title": "2. 성과관리제도는 전년도에 비해선 개선이 되었다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_03",
+            "type": "scale",
+            "title": "3. 성과관리제도는 공정한 평가가 이루어지는 편이다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_04",
+            "type": "scale",
+            "title": "4. 나는 내가 근무하는 부(팀)의 평가내용을 잘 알고 있다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          }
+        ],
+        "description": "다음은 우리 공사 성과관리제도의『수용성』에 관한 질문입니다."
+      },
+      {
+        "id": "performance_validity",
+        "title": "내부평가제도 · 타당성",
+        "questions": [
+          {
+            "id": "performance_05",
+            "type": "scale",
+            "title": "5. 성과관리제도의 운영은 적절한 편이다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_06",
+            "type": "scale",
+            "title": "6. 현재의 조직단위별 평가군 분류는 적절한 편이다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_07",
+            "type": "scale",
+            "title": "7. 성과관리지표는 부(팀)별 핵심업무가 적절히 포함된 편이다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_08",
+            "type": "scale",
+            "title": "8. 현재의 내부평가 운영방법은 적절한 편이다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          }
+        ],
+        "description": "다음은 우리 공사 성과관리제도의『타당성』에 관한 질문입니다."
+      },
+      {
+        "id": "performance_reliability",
+        "title": "내부평가제도 · 신뢰성",
+        "questions": [
+          {
+            "id": "performance_09",
+            "type": "scale",
+            "title": "9. 나는 내부평가단1)의 평가결과를 신뢰하는 편이다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            },
+            "description": "1) 내부평가단 : 경영평가 규정 제21조에 따라 공정하고 합리적인 내부평가를 위하여 공사는 8개 평가군 내 다양한 직급의 내부평가위원을 매년 변경해 구성·운영하고 있으며(1급~5급) 비계량평가반 구성 세분화, 이의신청제도 운영을 위한 평가단 역할 개선 등 내부평가의 전문성과 신뢰성 향상 위한 노력 제고"
+          },
+          {
+            "id": "performance_10",
+            "type": "scale",
+            "title": "10. 평가지표의 구성비율(계량 70%, 비계량 30%)은 적정하다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_11",
+            "type": "scale",
+            "title": "11. 평가지표별 가중치는 업무의 중요도․난이도에 따라 적정하게 구성되어 있다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_12",
+            "type": "scale",
+            "title": "12. 성과지표는 재무, 고객, 프로세스, 학습 및 성장이란 BSC관점2)에서 적정하게 구성되어 있다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            },
+            "description": "2) BSC(Balanced Scored Card)는 ① 재무적인 측면과 더불어 비재무측면에서 ② 고객가치를 창출하고 있는지, ③ 경쟁우위의 내부 프로세스를 운영하고 있는지, ④ 조직의 역량 강화를 위한 학습과 성장 등 기업의 성과를 균형 있게 평가함으로써 조직 전략을 달성하고 관리하는 경영관리 도구"
+          }
+        ],
+        "description": "다음은 우리 공사 성과관리제도의『신뢰성』에 관한 질문입니다."
+      },
+      {
+        "id": "performance_utility",
+        "title": "내부평가제도 · 실용성",
+        "questions": [
+          {
+            "id": "performance_13",
+            "type": "scale",
+            "title": "13. 성과관리제도는 공사의 비전 및 경영목표 달성에 기여하는 측면이 있다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_14",
+            "type": "scale",
+            "title": "14. 성과관리제도는 부(팀)단위 협력적 조직분위기 조성에 기여한다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_15",
+            "type": "scale",
+            "title": "15. 성과관리제도는 직원들의 동기부여에 기여할 수 있다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_16",
+            "type": "scale",
+            "title": "16. 성과평가의 결과에 따른 현재의 인센티브 차등 및 상위부서 포상은 적정하다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          }
+        ],
+        "description": "다음은 우리 공사 성과관리제도의『실용성』에 관한 질문입니다."
+      },
+      {
+        "id": "performance_satisfaction",
+        "title": "내부평가제도 · 만족도",
+        "questions": [
+          {
+            "id": "performance_17",
+            "type": "scale",
+            "title": "17. 위의 사항을 고려할 때, 성과관리제도 운영에 대해 전반적으로 만족한다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_18",
+            "type": "scale",
+            "title": "18. 위의 사항을 고려할 때, 성과 평가 및 결과활용에 대해 전반적으로 만족한다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "performance_19",
+            "type": "long_text",
+            "title": "19. 우리 공사 성과관리제도의 개선 및 만족도를 높이기 위한 소중한 의견이 있으시면 자유롭게 적어 주십시오.",
+            "required": false,
+            "behavior": "fixed_optional",
+            "settings": {}
+          }
+        ],
+        "description": "다음은 우리 공사 성과관리제도의『만족도』에 관한 질문입니다."
+      },
+      {
+        "id": "performance_individual",
+        "title": "내부평가제도 · 개인평가",
+        "questions": [
+          {
+            "id": "performance_20",
+            "type": "scale",
+            "title": "20. 개인평가는 나의 업무능력 향상에 기여한다.",
+            "required": true,
+            "behavior": "dynamic_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            },
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_3_plus",
+                    "grade_4_below_acting"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "performance_21",
+            "type": "scale",
+            "title": "21. 개인평가지표는 개별업무를 잘 반영하고 있다.",
+            "required": true,
+            "behavior": "dynamic_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            },
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_3_plus",
+                    "grade_4_below_acting"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "performance_22",
+            "type": "scale",
+            "title": "22. 개인평가지표는 개별업무 난이도를 잘 반영한다.",
+            "required": true,
+            "behavior": "dynamic_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            },
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_3_plus",
+                    "grade_4_below_acting"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "performance_23",
+            "type": "scale",
+            "title": "23. 개인평가지표 가중치 구성은 적절하다.",
+            "required": true,
+            "behavior": "dynamic_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            },
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_3_plus",
+                    "grade_4_below_acting"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "performance_24",
+            "type": "scale",
+            "title": "24. 개인평가지표의 목표수준은 타부서와 비교시 적정하다.",
+            "required": true,
+            "behavior": "dynamic_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            },
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_3_plus",
+                    "grade_4_below_acting"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "description": "다음은 3급 이상 개인평가에 대한 질문입니다.(3급 이상 및 직무대행만 해당)"
+      },
+      {
+        "id": "pay_overview",
+        "title": "보수체계 · 보수제도 전반",
+        "questions": [
+          {
+            "id": "pay_01",
+            "type": "scale",
+            "title": "1. 평소 일하는 업무의 성격과 나의 능력, 노력, 직무성과 등을 종합적으로 고려할 때 현재의 보수수준에 만족한다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "pay_02",
+            "type": "scale",
+            "title": "2. 나는 현행 보수제도･체계에 만족한다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "pay_03",
+            "type": "scale",
+            "title": "3. 현행 보수제도는 동기부여를 위한 인센티브가 충분하다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "pay_04",
+            "type": "scale",
+            "title": "4. 본인의 임금 중 기준급이 어떻게 산정되는지 잘 알고 있다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          }
+        ],
+        "description": "다음은 보수제도 전반에 관한 조사입니다."
+      },
+      {
+        "id": "pay_fairness",
+        "title": "보수체계 · 공정성",
+        "questions": [
+          {
+            "id": "pay_05",
+            "type": "multiple",
+            "title": "5. 우리 공사의 보수체계 중 가장 불합리한 부분은 무엇이라고 생각하십니까?",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "allowOther": false,
+              "shuffleOptions": false,
+              "minSelections": 1,
+              "maxSelections": 2
+            },
+            "description": "(2개 중복선택 가능)",
+            "options": [
+              {
+                "id": "pay_05_opt_01",
+                "label": "① 개인 노력이나 성과에 따른 보상이 적다"
+              },
+              {
+                "id": "pay_05_opt_02",
+                "label": "② 동일직급 내에서 동일한 직무를 수행해도 근속기간이 많은 사람이 기준급을 더 받는다"
+              },
+              {
+                "id": "pay_05_opt_03",
+                "label": "③ 동일 직급 내에서 개인역량이나 수행직무 간 차이가 나도 같은 임금을 받는다"
+              },
+              {
+                "id": "pay_05_opt_04",
+                "label": "④ 자격에 대한 보상이 적다"
+              },
+              {
+                "id": "pay_05_opt_05",
+                "label": "⑤ 연봉제 직원의 경우 등급별 기준급 차이가 크다"
+              },
+              {
+                "id": "pay_05_opt_06",
+                "label": "⑥ 기타"
+              }
+            ]
+          },
+          {
+            "id": "pay_06",
+            "type": "multiple",
+            "title": "6. 우리 공사 보수항목 중 가장 불공정, 불합리하다고 생각되는 항목은 무엇입니까?",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "allowOther": false,
+              "shuffleOptions": false,
+              "minSelections": 1,
+              "maxSelections": 2
+            },
+            "description": "(2개 중복선택 가능)",
+            "options": [
+              {
+                "id": "pay_06_opt_01",
+                "label": "① 기준급"
+              },
+              {
+                "id": "pay_06_opt_02",
+                "label": "② 직무급"
+              },
+              {
+                "id": "pay_06_opt_03",
+                "label": "③ 경영평가성과급"
+              },
+              {
+                "id": "pay_06_opt_04",
+                "label": "④ 내부평가성과급"
+              },
+              {
+                "id": "pay_06_opt_05",
+                "label": "⑤ 기타성과급"
+              },
+              {
+                "id": "pay_06_opt_06",
+                "label": "⑥ 시간외, 휴일, 야간수당"
+              },
+              {
+                "id": "pay_06_opt_07",
+                "label": "⑦ 업무수당"
+              },
+              {
+                "id": "pay_06_opt_08",
+                "label": "⑧ 기타부가급"
+              },
+              {
+                "id": "pay_06_opt_09",
+                "label": "⑨ 자녀수당"
+              },
+              {
+                "id": "pay_06_opt_10",
+                "label": "⑩ 기타"
+              }
+            ]
+          },
+          {
+            "id": "pay_07",
+            "type": "multiple",
+            "title": "7. 보수 중 많은 부분을 차지하고 있는 기본연봉은 어떤 요인에 따라 결정되어야 공정하다고 생각하십니까?",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "allowOther": false,
+              "shuffleOptions": false,
+              "minSelections": 2,
+              "maxSelections": 2
+            },
+            "description": "(2개 중복선택)",
+            "options": [
+              {
+                "id": "pay_07_opt_01",
+                "label": "① 근속년수"
+              },
+              {
+                "id": "pay_07_opt_02",
+                "label": "② 개인별 담당 직무의 난이도, 책임, 기술, 노력"
+              },
+              {
+                "id": "pay_07_opt_03",
+                "label": "③ 소속 부서별 직무의 난이도, 책임, 경영에 미치는 영향 등"
+              },
+              {
+                "id": "pay_07_opt_04",
+                "label": "④ 개인 업무수행능력(개인 업무성과)"
+              },
+              {
+                "id": "pay_07_opt_05",
+                "label": "⑤ 소속 부서의 업무성과"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pay_job",
+        "title": "보수체계 · 직무와 보수",
+        "questions": [
+          {
+            "id": "pay_08",
+            "type": "scale",
+            "title": "8. 현재 본인이 수행하는 직무의 난이도, 책임에 비추어 받고 있는 보수의 수준은 어떻게 생각하십니까?",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "pay_09",
+            "type": "scale",
+            "title": "9. 현재 본인이 수행하는 직무는 같은 직종 입사동기들과 비교하여 난이도와 책임의 수준이 어떻다고 생각하십니까?",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          },
+          {
+            "id": "pay_10",
+            "type": "scale",
+            "title": "10. 본인이 수행하는 직무는 동일직급의 다른 직무와 비교하여 책임과 난이도 수준이 어떻다고 생각하십니까?",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider"
+            }
+          }
+        ]
+      },
+      {
+        "id": "pay_policy",
+        "title": "보수체계 · 보수차이와 개편",
+        "questions": [
+          {
+            "id": "pay_11",
+            "type": "single",
+            "title": "11. 같은 직급으로 근속년수만 5년 이상 차이나는 두 직원이 동일한 업무를 담당하는 경우, 공정한 보수 차이는 어느 정도입니까?",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [
+              {
+                "id": "pay_11_opt_01",
+                "label": "① 차이가 없어야 한다"
+              },
+              {
+                "id": "pay_11_opt_02",
+                "label": "② 근속년수 높은 직원이 10% 높은 보수를 받아야 한다"
+              },
+              {
+                "id": "pay_11_opt_03",
+                "label": "③ 근속년수 높은 직원이 20% 높은 보수를 받아야 한다"
+              },
+              {
+                "id": "pay_11_opt_04",
+                "label": "④ 근속년수 높은 직원이 30% 높은 보수를 받아야 한다"
+              },
+              {
+                "id": "pay_11_opt_05",
+                "label": "⑤ 기타"
+              }
+            ]
+          },
+          {
+            "id": "pay_12",
+            "type": "single",
+            "title": "12. 업무의 난이도, 책임의 정도에 따른 공정한 보수차이는 어느 정도입니까?",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [
+              {
+                "id": "pay_12_opt_01",
+                "label": "① 차이가 없어야 한다"
+              },
+              {
+                "id": "pay_12_opt_02",
+                "label": "② 높은 난이도와 책임이 요구되는 업무를 수행하는 직원이 10% 높은 보수를 받아야 한다"
+              },
+              {
+                "id": "pay_12_opt_03",
+                "label": "③ 높은 난이도와 책임이 요구되는 업무를 수행하는 직원이 20% 높은 보수를 받아야 한다"
+              },
+              {
+                "id": "pay_12_opt_04",
+                "label": "④ 높은 난이도와 책임이 요구되는 업무를 수행하는 직원이 30% 높은 보수를 받아야 한다"
+              },
+              {
+                "id": "pay_12_opt_05",
+                "label": "⑤ 기타"
+              }
+            ]
+          },
+          {
+            "id": "pay_13",
+            "type": "single",
+            "title": "13. 업무의 난이도, 책임의 정도에 따라 보수가 달라진다면 인사이동(보직변경)을 신청할 용의가 있으십니까?",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [
+              {
+                "id": "pay_13_opt_01",
+                "label": "① 가장 쉬운 업무를 맡아 낮은 보수를 받아도 좋다"
+              },
+              {
+                "id": "pay_13_opt_02",
+                "label": "② 약간 더 쉬운 업무를 맡아 조금 낮은 보수를 받고 싶다"
+              },
+              {
+                "id": "pay_13_opt_03",
+                "label": "③ 현재 직무 유지"
+              },
+              {
+                "id": "pay_13_opt_04",
+                "label": "④ 약간 더 어려운 업무를 맡아 조금 높은 보수를 받고 싶다"
+              },
+              {
+                "id": "pay_13_opt_05",
+                "label": "⑤ 최고로 어려운 업무를 맡아 그에 상응하는 높은 보수를 받고 싶다"
+              }
+            ]
+          },
+          {
+            "id": "pay_14",
+            "type": "single",
+            "title": "14. 정부 및 공공기관의 직무중심의 보수체계 개편에서 가장 우려되는 사항은 무엇입니까?",
+            "required": true,
+            "behavior": "fixed_required",
+            "settings": {
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [
+              {
+                "id": "pay_14_opt_01",
+                "label": "① 임금이 저하되는 건 아닌지에 대한 불안감"
+              },
+              {
+                "id": "pay_14_opt_02",
+                "label": "② 직무평가 결과에 대한 불신"
+              },
+              {
+                "id": "pay_14_opt_03",
+                "label": "③ 보수차등으로 인한 위화감 발생"
+              },
+              {
+                "id": "pay_14_opt_04",
+                "label": "④ 협업에 어려움 발생"
+              },
+              {
+                "id": "pay_14_opt_05",
+                "label": "⑤ 기타"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "pay_grade",
+        "title": "보수체계 · 직무등급",
+        "questions": [
+          {
+            "id": "pay_15",
+            "type": "single",
+            "title": "15. 직무의 책임도‧중요도‧난이도에 따른 직무등급 수는 어느 정도가 적정하다고 생각하십니까?",
+            "required": true,
+            "behavior": "dynamic_required",
+            "settings": {
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "description": "(4급 이하)",
+            "options": [
+              {
+                "id": "pay_15_opt_01",
+                "label": "① 3등급제"
+              },
+              {
+                "id": "pay_15_opt_02",
+                "label": "② 4등급제(현행)"
+              },
+              {
+                "id": "pay_15_opt_03",
+                "label": "③ 5등급제"
+              },
+              {
+                "id": "pay_15_opt_04",
+                "label": "④ 6등급제"
+              },
+              {
+                "id": "pay_15_opt_05",
+                "label": "⑤ 기타"
+              }
+            ],
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_4_below_acting",
+                    "grade_4_below"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "pay_16",
+            "type": "single",
+            "title": "16. 직무의 책임도‧중요도‧난이도에 따른 직무등급 간 차등은 어느 정도가 적정하다고 생각하십니까?",
+            "required": true,
+            "behavior": "dynamic_required",
+            "settings": {
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "description": "(4급 이하)",
+            "options": [
+              {
+                "id": "pay_16_opt_01",
+                "label": "① 월 1만원(현행)"
+              },
+              {
+                "id": "pay_16_opt_02",
+                "label": "② 월 2~3만원"
+              },
+              {
+                "id": "pay_16_opt_03",
+                "label": "③ 월 5~10만원"
+              },
+              {
+                "id": "pay_16_opt_04",
+                "label": "④ 월 10만원 이상"
+              },
+              {
+                "id": "pay_16_opt_05",
+                "label": "⑤ 기타"
+              }
+            ],
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_4_below_acting",
+                    "grade_4_below"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "description": "4급 이하에 해당하는 문항입니다."
+      },
+      {
+        "id": "pay_opinion",
+        "title": "보수체계 · 개선 의견",
+        "questions": [
+          {
+            "id": "pay_17",
+            "type": "long_text",
+            "title": "17. 현행 보수제도에 대한 개선 의견이 있으시면 자유롭게 기술하여 주십시오.",
+            "required": false,
+            "behavior": "fixed_optional",
+            "settings": {}
+          }
+        ]
+      }
+    ],
+    "settings": {
+      "collectEmail": false,
+      "showProgressBar": true,
+      "oneResponsePerRespondent": false,
+      "allowResponseEdit": false,
+      "anonymous": true,
+      "presentationMode": "scroll",
+      "confirmationMessage": "응답이 정상적으로 제출되었습니다. 참여해 주셔서 감사합니다.",
+      "showQuestionNumbers": false
+    },
+    "skin": {
+      "primary": "#3156D3",
+      "accent": "#3156D3",
+      "surface": "#F4F7FB",
+      "card": "#FFFFFF",
+      "radius": "16px"
+    },
+    "defaultLocale": "ko",
+    "supportedLocales": [
+      "ko"
+    ],
+    "translations": {}
+  }
+}

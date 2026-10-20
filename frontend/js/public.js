@@ -87,7 +87,10 @@
 
     const state = {
         survey: null,
+        choiceLayoutCleanup: null,
+        preview: false,
         slug: "",
+        audienceCode: null,
         sections: [],
         questions: [],
         answers: {},
@@ -140,17 +143,17 @@
         state.requestedLocale = preferredLanguage();
         state.locale = uiLocale(state.requestedLocale);
         applyShellTranslations();
+        if (new URLSearchParams(location.search).get("preview") === "1") { bind(); initializePreview(); return; }
         state.slug = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || new URLSearchParams(location.search).get("slug") || "");
         if (!state.slug) return showState("!", text("invalidUrlTitle"), text("invalidUrlMessage"));
         bind();
         try {
-            const languageQuery = state.requestedLocale ? `?lang=${encodeURIComponent(state.requestedLocale)}` : "";
-            let payload = await Common.api.get(`/api/public/surveys/${encodeURIComponent(state.slug)}${languageQuery}`);
+            let payload = await Common.api.get(publicSurveyPath(state.requestedLocale));
             state.survey = payload.survey || payload;
             normalizeSurvey();
             const servedLocale = localeCode(state.survey.requestedLocale || state.survey.requested_locale, null, null);
             if (state.locale && (!servedLocale || servedLocale.toLowerCase() !== state.locale.toLowerCase())) {
-                payload = await Common.api.get(`/api/public/surveys/${encodeURIComponent(state.slug)}?lang=${encodeURIComponent(state.locale)}`);
+                payload = await Common.api.get(publicSurveyPath(state.locale));
                 state.survey = payload.survey || payload;
                 normalizeSurvey();
             }
@@ -159,6 +162,30 @@
         } catch (error) {
             showState("!", text("openFailedTitle"), error.message);
         }
+    }
+
+
+    function initializePreview() {
+        const token = new URLSearchParams(location.search).get("previewToken");
+        if (window.parent === window || !token || !/^[a-f0-9-]{36}$/i.test(token)) return showState("!", "미리보기를 열 수 없습니다.", "제작기의 미리보기 버튼을 사용해 주세요.");
+        state.preview = true;
+        let received = false;
+        window.addEventListener("message", (event) => {
+            if (received || event.source !== window.parent || event.origin !== location.origin || event.data?.type !== "surveyone-preview-draft" || event.data.token !== token) return;
+            if (!event.data.draft || !Array.isArray(event.data.draft.sections)) return;
+            received = true;
+            state.survey = event.data.draft;
+            state.requestedLocale = event.data.locale || "ko";
+            state.answers = {};
+            normalizeSurvey();
+            render();
+        });
+        window.parent.postMessage({ type: "surveyone-preview-ready", token }, location.origin);
+    }
+
+    function emitCustomEvent(type, detail) {
+        const frame = document.querySelector("[data-public-custom-code]");
+        if (frame?.dataset.enabled === "true") window.SurveyCodeEditor.sendEvent?.(frame, type, detail);
     }
 
     function preferredLanguage() {
@@ -189,11 +216,33 @@
         dom.form.addEventListener("input", onInput);
         dom.form.addEventListener("change", onInput);
         dom.form.addEventListener("click", onClick);
+        dom.form.addEventListener("pointerup", (event) => {
+            if (event.target.matches("[data-slider]")) onInput(event);
+        });
         dom.form.addEventListener("submit", submit);
+        dom.form.addEventListener("keyup", (event) => {
+            if (event.target.matches("[data-slider]") && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) onInput(event);
+        });
+        dom.form.addEventListener("keydown", (event) => {
+            if (event.target.matches("[data-slider]") && ["Enter", " "].includes(event.key)) { event.preventDefault(); onInput(event); return; }
+            if (state.preview && event.key === "Enter" && !event.isComposing && event.target.matches("input:not([type=search])")) submit(event);
+        });
         dom.language.addEventListener("change", changeLanguage);
         dom.previous.addEventListener("click", () => moveQuestionPage(-1));
         dom.next.addEventListener("click", () => moveQuestionPage(1));
         window.addEventListener("scroll", updateProgress, { passive: true });
+    }
+
+    function publicSurveyPath(locale) {
+        const params = new URLSearchParams();
+        if (locale) params.set("lang", locale);
+        const audience = new URLSearchParams(location.search).get("audience");
+        if (audience !== null) params.set("audience", audience);
+        return `/api/public/surveys/${encodeURIComponent(state.slug)}?${params}`;
+    }
+
+    function draftStorageKey() {
+        return `surveyone:draft:${state.slug}${state.audienceCode ? `:audience:${state.audienceCode}` : ""}`;
     }
 
     function normalizeSurvey() {
@@ -202,6 +251,13 @@
         state.sections = Array.isArray(state.survey.sections) && state.survey.sections.length
             ? state.survey.sections
             : [{ id: "section-default", title: text("sectionDefault"), description: "", questions: flatQuestions }];
+        const routes = state.survey.settings?.audienceRoutes || [];
+        state.audienceCode = state.survey.audienceCode ?? new URLSearchParams(location.search).get("audience") ?? state.survey.settings?.defaultAudience ?? null;
+        if (state.audienceCode !== null) {
+            const route = routes.find(item => item.code === state.audienceCode);
+            if (!route) throw new Error(uiLocale() === "ko" ? "설문 대상 구분자가 올바르지 않습니다." : "Invalid survey audience.");
+            state.sections = state.sections.filter(section => route.sectionIds.includes(section.id));
+        }
         state.sections = state.sections.map((section, index) => ({
             ...section,
             id: section.id || `section-${index + 1}`,
@@ -391,6 +447,7 @@
         const locale = event.target.value;
         if (!state.languages.enabled.includes(locale) || locale === state.locale) return;
         collectAnswers();
+        if (state.preview) { state.locale = locale; state.requestedLocale = locale; render(); return; }
         const previousState = languageStateSnapshot();
         const previousUrl = `${location.pathname}${location.search}${location.hash}`;
         const url = new URL(location.href);
@@ -398,7 +455,7 @@
         history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
         dom.language.disabled = true;
         try {
-            const payload = await Common.api.get(`/api/public/surveys/${encodeURIComponent(state.slug)}?lang=${encodeURIComponent(locale)}`);
+            const payload = await Common.api.get(publicSurveyPath(locale));
             state.survey = payload.survey || payload;
             normalizeSurvey();
             render();
@@ -473,17 +530,18 @@
         dom.state.hidden = true;
         document.title = `${localizedSurveyField("title")} | IN-SURVEYONE`;
         document.querySelector("[data-public-organization]").textContent = state.survey.organizationName || state.survey.tenantName || text("safeSurvey");
-        if (renderAvailabilityState()) return;
+        if (!state.preview && renderAvailabilityState()) return;
         document.querySelector("[data-public-category]").textContent = (state.survey.category || "ONLINE SURVEY").toUpperCase();
         document.querySelector("[data-public-title]").textContent = localizedSurveyField("title");
         document.querySelector("[data-public-description]").textContent = localizedSurveyField("description") || text("descriptionFallback");
         const guestDemo = Boolean(state.survey.guestDemo ?? state.survey.guest_demo);
         const expiresAt = state.survey.experienceExpiresAt || state.survey.experience_expires_at;
-        dom.demoBanner.hidden = !guestDemo;
+        dom.demoBanner.hidden = !guestDemo && !state.preview;
         if (guestDemo) {
             const expires = formatExperienceExpiry(expiresAt);
             dom.demoBanner.textContent = text("demoBanner", { expiry: expires });
         }
+        if (state.preview) dom.demoBanner.textContent = "미리보기 · 현재 초안입니다. 입력 내용은 저장하거나 제출하지 않습니다.";
         const answerableQuestions = state.questions.filter((item) => item.type !== "notice");
         document.querySelector("[data-public-time]").textContent = text("minutes", { count: Math.max(1, Math.ceil(answerableQuestions.length * .35)) });
         document.querySelector("[data-public-count]").textContent = text("questions", { count: answerableQuestions.length });
@@ -507,8 +565,16 @@
         updatePresentation();
         dom.loading.hidden = true;
         dom.form.hidden = false;
+        state.choiceLayoutCleanup?.();
+        state.choiceLayoutCleanup = window.SurveyChoiceLayout?.mount(dom.list);
         document.querySelector("#surveyMain").focus({ preventScroll: true });
         updateProgress();
+        if (state.preview) {
+            dom.saveState.textContent = "미리보기 응답은 저장되지 않습니다.";
+            const button = dom.form.querySelector(".public-submit");
+            button.type = "button";
+            button.textContent = "입력 동작 확인";
+        }
     }
 
     function applySkin() {
@@ -592,6 +658,7 @@
         frame.dataset.enabled = "true";
         frame.dataset.placement = source.placement;
         if (source.placement === "afterQuestions") dom.list.after(frame); else dom.list.before(frame);
+        frame.onload = () => emitCustomEvent("load", { survey: { title: localizedSurveyField("title"), language: state.locale }, mode: state.preview ? "preview" : "public" });
         frame.srcdoc = window.SurveyCodeEditor.sandboxDocument(source);
         frame.hidden = false;
         if (!state.customMessageHandler) {
@@ -631,7 +698,8 @@
     }
 
     function noticeMarkup(question) {
-        return `<aside class="public-notice" role="note"><h2>${Common.escapeHtml(localizedQuestionField(question, "title"))}</h2><p>${Common.escapeHtml(localizedQuestionField(question, "description"))}</p></aside>`;
+        const content = question.settings?.contentHtml ? window.SurveyContent.render(question.settings.contentHtml) : `<p>${Common.escapeHtml(localizedQuestionField(question, "description"))}</p>`;
+        return `<aside class="public-notice survey-document" role="note"><h2>${Common.escapeHtml(localizedQuestionField(question, "title"))}</h2>${content}</aside>`;
     }
 
     function questionMarkup(question, index) {
@@ -643,7 +711,8 @@
         const help = localizedQuestionField(question, "description");
         const describedBy = `${help ? `${helpId} ` : ""}${errorId}`;
         const behavior = question.behavior || (question.required ? "fixed_required" : "fixed_optional");
-        return `<section id="question-${token}" class="public-question-card" data-question-id="${Common.escapeHtml(question.id)}" data-question-number="${index + 1}" data-question-behavior="${Common.escapeHtml(behavior)}" tabindex="-1" aria-labelledby="${titleId}"><div class="question-number"><span>${Common.escapeHtml(text("questionLabel").toUpperCase())} ${String(index + 1).padStart(2, "0")}</span><span>${Common.escapeHtml(typeLabel(question.type))}</span></div><h2 id="${titleId}">${index + 1}. ${Common.escapeHtml(title)} ${question.required ? `<span class="required-mark" aria-label="${Common.escapeHtml(text("required"))}">*</span>` : ""}</h2>${help ? `<p id="${helpId}" class="question-help">${Common.escapeHtml(help)}</p>` : ""}<div class="public-answer">${answerMarkup(question, { titleId, describedBy })}</div><p id="${errorId}" class="question-error" role="alert" aria-live="polite" hidden></p></section>`;
+        const numbered = state.survey.settings?.showQuestionNumbers !== false;
+        return `<section id="question-${token}" class="public-question-card" data-question-id="${Common.escapeHtml(question.id)}" data-question-number="${index + 1}" data-question-behavior="${Common.escapeHtml(behavior)}" tabindex="-1" aria-labelledby="${titleId}"><div class="question-number"><span>${Common.escapeHtml(text("questionLabel").toUpperCase())}${numbered ? ` ${String(index + 1).padStart(2, "0")}` : ""}</span><span>${Common.escapeHtml(typeLabel(question.type))}</span></div><h2 id="${titleId}">${numbered ? `${index + 1}. ` : ""}${Common.escapeHtml(title)} ${question.required ? `<span class="required-mark" aria-label="${Common.escapeHtml(text("required"))}">*</span>` : ""}</h2>${help ? `<p id="${helpId}" class="question-help">${Common.escapeHtml(help)}</p>` : ""}<div class="public-answer">${answerMarkup(question, { titleId, describedBy })}</div><p id="${errorId}" class="question-error" role="alert" aria-live="polite" hidden></p></section>`;
     }
 
     function typeLabel(type) {
@@ -656,35 +725,211 @@
     function answerMarkup(question, ids) {
         const name = `q_${question.id}`;
         const aria = `aria-labelledby="${ids.titleId}" aria-describedby="${ids.describedBy}"`;
+        if (question.type === "multiple" && question.settings?.choiceInput === "codes") return codedChoiceMarkup(question, aria);
         if (question.type === "single" || question.type === "multiple") {
             const inputType = question.type === "multiple" ? "checkbox" : "radio";
-            const choices = (question.options || []).map((option) => `<label class="public-choice"><input type="${inputType}" name="${Common.escapeHtml(name)}" value="${Common.escapeHtml(option.id)}" ${aria}><span>${Common.escapeHtml(localizedOptionLabel(question, option))}</span></label>`).join("");
-            return `<fieldset class="public-answer-group" ${aria}><legend class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</legend>${choices}</fieldset>`;
+            const layout = window.SurveyChoiceLayout?.normalize(question.settings?.choiceLayout) || "vertical";
+            const choices = (question.options || []).map((option) => `<label class="public-choice" data-choice-item><input type="${inputType}" name="${Common.escapeHtml(name)}" value="${Common.escapeHtml(option.id)}" ${aria}><span data-choice-label>${Common.escapeHtml(localizedOptionLabel(question, option))}</span></label>`).join("");
+            return `${choiceSearchMarkup(question)}<fieldset class="public-answer-group public-choice-options" data-choice-layout="${layout}" ${aria}><legend class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</legend>${choices}</fieldset>`;
         }
-        if (question.type === "dropdown") return `<select name="${Common.escapeHtml(name)}" ${aria}><option value="">${Common.escapeHtml(text("selectPlaceholder"))}</option>${(question.options || []).map((option) => `<option value="${Common.escapeHtml(option.id)}">${Common.escapeHtml(localizedOptionLabel(question, option))}</option>`).join("")}</select>`;
+        if (question.type === "dropdown") return `${choiceSearchMarkup(question)}<select name="${Common.escapeHtml(name)}" ${aria}><option value="">${Common.escapeHtml(text("selectPlaceholder"))}</option>${(question.options || []).map((option) => `<option value="${Common.escapeHtml(option.id)}">${Common.escapeHtml(localizedOptionLabel(question, option))}</option>`).join("")}</select>`;
         if (question.type === "short_text") return `<input type="text" name="${Common.escapeHtml(name)}" placeholder="${Common.escapeHtml(text("shortPlaceholder"))}" ${aria}>`;
         if (question.type === "long_text") return `<textarea name="${Common.escapeHtml(name)}" placeholder="${Common.escapeHtml(text("longPlaceholder"))}" ${aria}></textarea>`;
         if (question.type === "number") return `<label class="input-with-unit"><input type="number" name="${Common.escapeHtml(name)}" min="${question.min ?? ""}" max="${question.max ?? ""}" placeholder="${Common.escapeHtml(text("numberPlaceholder"))}" ${aria}><span>${Common.escapeHtml(localizedQuestionField(question, "unit"))}</span></label>`;
         if (question.type === "date") return `<input type="date" name="${Common.escapeHtml(name)}" ${aria}>`;
+        if (question.type === "scale" && question.settings?.scaleDisplay === "slider") return ratingMarkup(question, name, aria);
         if (question.type === "scale") {
             const minimum = Number(question.min ?? 1);
             const maximum = Number(question.max ?? 5);
             const count = Math.min(11, Math.max(2, maximum - minimum + 1));
-            const choices = Array.from({ length: count }, (_, index) => `<label><input type="radio" name="${Common.escapeHtml(name)}" value="${minimum + index}" ${aria}><span>${minimum + index}</span></label>`).join("");
-            return `<fieldset class="public-answer-group" ${aria}><legend class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</legend><div class="public-scale" style="--scale-count:${count}">${choices}</div><div class="scale-labels"><span>${Common.escapeHtml(localizedQuestionField(question, "minLabel"))}</span><span>${Common.escapeHtml(localizedQuestionField(question, "maxLabel"))}</span></div></fieldset>`;
+            const descending = question.settings?.scaleOrder === "descending";
+            const values = Array.from({ length: count }, (_, index) => minimum + index);
+            if (descending) values.reverse();
+            const choices = values.map((value) => `<label><input type="radio" name="${Common.escapeHtml(name)}" value="${value}" ${aria}><span>${value}</span></label>`).join("");
+            return `<fieldset class="public-answer-group" ${aria}><legend class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</legend><div class="public-scale" style="--scale-count:${count}">${choices}</div><div class="scale-labels"><span>${Common.escapeHtml(localizedQuestionField(question, descending ? "maxLabel" : "minLabel"))}</span><span>${Common.escapeHtml(localizedQuestionField(question, descending ? "minLabel" : "maxLabel"))}</span></div></fieldset>`;
         }
-        if (question.type === "slider") return `<div class="slider-answer"><output class="slider-value" data-slider-value>${question.min ?? 0}${Common.escapeHtml(localizedQuestionField(question, "unit"))}</output><input type="range" name="${Common.escapeHtml(name)}" min="${question.min ?? 0}" max="${question.max ?? 100}" value="${question.min ?? 0}" data-slider ${aria}></div>`;
+        if (question.type === "slider") return ratingMarkup(question, name, aria);
         if (["matrix_single", "matrix_multiple"].includes(question.type)) return matrixMarkup(question, name, aria);
         if (question.type === "table") return fixedTableMarkup(question, name, aria);
         if (question.type === "repeat_table") return repeatTableMarkup(question, name, aria);
         return `<input type="text" name="${Common.escapeHtml(name)}" placeholder="${Common.escapeHtml(text("shortPlaceholder"))}" ${aria}>`;
     }
 
+
+    const RATING_COPY = {
+        ko: { empty: "미응답", direct: "점수 직접 선택", clear: "선택 지우기", hint: "슬라이더를 움직이거나 점수를 직접 선택해 주세요." },
+        en: { empty: "Not answered", direct: "Choose a score", clear: "Clear selection", hint: "Move the slider or choose a score directly." },
+        ja: { empty: "未回答", direct: "点数を選択", clear: "選択をクリア", hint: "スライダーを動かすか、点数を直接選んでください。" },
+        zh: { empty: "未作答", direct: "直接选择分数", clear: "清除选择", hint: "拖动滑块或直接选择分数。" },
+        vi: { empty: "Chưa trả lời", direct: "Chọn điểm", clear: "Xóa lựa chọn", hint: "Di chuyển thanh trượt hoặc chọn điểm trực tiếp." },
+        fil: { empty: "Walang sagot", direct: "Pumili ng puntos", clear: "Alisin ang pinili", hint: "Igalaw ang slider o direktang pumili ng puntos." }
+    };
+
+    function ratingCopy() { return RATING_COPY[uiLocale()] || RATING_COPY.ko; }
+
+    function ratingMarkup(question, name, aria) {
+        const discrete = question.type === "scale";
+        const minimum = Number(question.min ?? (discrete ? 1 : 0));
+        const maximum = Number(question.max ?? (discrete ? 5 : 100));
+        const step = discrete ? 1 : Number(question.settings?.step || 1);
+        const descending = question.settings?.scaleOrder === "descending";
+        const values = discrete ? Array.from({length: maximum - minimum + 1}, (_, i) => minimum + i) : [minimum, maximum];
+        if (descending) values.reverse();
+        const copy = ratingCopy(), token = `rating-${domToken(question.id, 0)}`;
+        const escape = Common.escapeHtml;
+        const directAria = aria.replace(/aria-labelledby="([^"]*)"/, (_, ids) => `aria-labelledby="${ids} ${token}-label"`);
+        const rangeAria = aria.replace(/aria-describedby="([^"]*)"/, (_, ids) => `aria-describedby="${ids} ${token}-start ${token}-end ${token}-hint"`);
+        const control = discrete
+            ? `<select name="${escape(name)}" data-rating-input ${directAria}><option value="">${escape(copy.empty)}</option>${values.map(value => `<option value="${value}">${value}${value === minimum && question.minLabel ? ` · ${escape(localizedQuestionField(question, "minLabel"))}` : value === maximum && question.maxLabel ? ` · ${escape(localizedQuestionField(question, "maxLabel"))}` : ""}</option>`).join("")}</select>`
+            : `<input type="number" name="${escape(name)}" min="${minimum}" max="${maximum}" step="${step}" inputmode="decimal" placeholder="${minimum}–${maximum}" data-rating-input ${directAria}>`;
+        return `<div class="slider-answer is-unanswered" data-rating><div class="scale-labels"><span id="${token}-start">${escape(localizedQuestionField(question, descending ? "maxLabel" : "minLabel"))}</span><span id="${token}-end">${escape(localizedQuestionField(question, descending ? "minLabel" : "maxLabel"))}</span></div><output class="slider-value" data-slider-value aria-live="polite">${escape(copy.empty)}</output><div class="rating-track"><input type="range" min="${minimum}" max="${maximum}" step="${step}" value="${minimum}" dir="${descending ? "rtl" : "ltr"}" data-slider ${rangeAria} aria-valuetext="${escape(copy.empty)}"><div class="rating-ticks" aria-hidden="true">${values.map(value => `<span>${value}</span>`).join("")}</div></div><div class="rating-controls"><label><span id="${token}-label">${escape(copy.direct)}</span>${control}</label><button type="button" data-rating-clear disabled>${escape(copy.clear)}</button></div><p id="${token}-hint" class="rating-hint">${escape(copy.hint)}</p></div>`;
+    }
+
+    function updateRating(card) {
+        const group = card?.querySelector("[data-rating]");
+        if (!group) return;
+        const input = group.querySelector("[data-rating-input]"), range = group.querySelector("[data-slider]");
+        const answered = input.value !== "" && Number.isFinite(Number(input.value));
+        const current = question(card.dataset.questionId);
+        const endpoint = Number(input.value) === Number(range.min) ? localizedQuestionField(current, "minLabel") : Number(input.value) === Number(range.max) ? localizedQuestionField(current, "maxLabel") : "";
+        const valueText = answered ? `${input.value}${localizedQuestionField(current, "unit")}${endpoint ? ` · ${endpoint}` : ""}` : ratingCopy().empty;
+        if (answered) range.value = input.value;
+        else range.value = range.min;
+        range.setAttribute("aria-valuetext", valueText);
+        const output = group.querySelector("[data-slider-value]");
+        if (output.textContent !== valueText) output.textContent = valueText;
+        group.querySelector("[data-rating-clear]").disabled = !answered;
+        group.classList.toggle("is-unanswered", !answered);
+        group.querySelectorAll(".rating-ticks span").forEach(tick => tick.classList.toggle("is-selected", answered && tick.textContent === input.value));
+    }
+
+    function choiceSearchMarkup(question) {
+        if (!question.settings?.searchable) return "";
+        const searchLabel = uiLocale() === "ko" ? "보기 검색" : "Search options";
+        return `<label class="public-choice-search">${searchLabel}<input type="search" data-choice-search placeholder="${searchLabel}" autocomplete="off"></label><output class="public-choice-search-status" data-choice-search-status aria-live="polite"></output>`;
+    }
+
+    function filterChoiceOptions(card) {
+        if (!card) return;
+        const input = card.querySelector("[data-choice-search]");
+        if (!input) return;
+        const term = input.value.trim().toLocaleLowerCase();
+        let visible = 0;
+        const select = card.querySelector("select");
+        if (select) {
+            const item = question(card.dataset.questionId);
+            const selected = select.value;
+            const sourceValue = item.settings?.excludeSelectedFrom ? state.answers[item.settings.excludeSelectedFrom] : [];
+            const excluded = new Set((Array.isArray(sourceValue) ? sourceValue : [sourceValue]).map(String));
+            const options = (item.options || []).filter((option) => String(option.id) === selected || localizedOptionLabel(item, option).toLocaleLowerCase().includes(term));
+            select.replaceChildren(new Option(text("selectPlaceholder"), ""));
+            for (const option of options) {
+                const node = new Option(localizedOptionLabel(item, option), option.id);
+                node.disabled = excluded.has(String(option.id));
+                select.append(node);
+                if (!node.disabled) visible += 1;
+            }
+            select.value = selected;
+        }
+        card.querySelectorAll(".public-choice").forEach((element) => {
+            const control = element.matches("option") ? element : element.querySelector("input");
+            const selected = control.checked || control.selected;
+            element.hidden = !selected && !element.textContent.toLocaleLowerCase().includes(term);
+            if (!element.hidden && !control.disabled) visible += 1;
+        });
+        card.querySelector("[data-choice-search-status]").textContent = uiLocale() === "ko" ? `선택 가능한 보기 ${visible}개 · 선택한 보기는 검색 중에도 표시됩니다.` : `${visible} available options. Selected options stay visible.`;
+    }
+
+    function codeText(key) {
+        const labels = {
+            ko: { jump: "번호 입력칸으로 이동 ↓", legend: "보기 · 번호 범례", help: "아래 보기에서 번호를 확인한 뒤 입력하세요. 같은 번호는 한 번만 입력할 수 있습니다.", slot: "번호", empty: "선택할 번호 입력", invalid: "보기에 있는 번호를 입력해 주세요.", duplicate: "같은 번호를 중복 입력할 수 없습니다.", excluded: "선행 문항에서 선택한 항목은 입력할 수 없습니다.", blocked: "선택 제외" },
+            en: { jump: "Go to number entry ↓", legend: "Reference · option numbers", help: "Find an option number below and enter it. Each number can be used only once.", slot: "Number", empty: "Enter an option number", invalid: "Enter a number from the reference.", duplicate: "Each number can be entered only once.", excluded: "This option was selected in the preceding question and is excluded.", blocked: "Excluded" }
+        };
+        return (labels[uiLocale()] || labels.en)[key];
+    }
+
+    function codedChoiceMarkup(question, aria) {
+        const escapedId = Common.escapeHtml(question.id);
+        const count = Math.min(20, Math.max(1, Number(question.settings.maxSelections || 5)));
+        return `<fieldset class="coded-choice" ${aria}><legend class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</legend><p class="coded-choice-help">${codeText("help")}</p><a class="choice-code-jump" href="#code-${escapedId}-0">${codeText("jump")}</a><div class="choice-code-legend" role="group" aria-label="${codeText("legend")}"><strong>${codeText("legend")}</strong><ul>${(question.options || []).map(option => `<li data-code-option="${Common.escapeHtml(option.id)}"><b>(${Common.escapeHtml(option.code)})</b> <span>${Common.escapeHtml(localizedOptionLabel(question, option).replace(new RegExp(`^\\(${option.code}\\)\\s*`), ""))}</span><small data-code-excluded hidden>${codeText("blocked")}</small></li>`).join("")}</ul></div><div class="choice-code-inputs">${Array.from({length: count}, (_, index) => `<div class="choice-code-slot"><label for="code-${escapedId}-${index}">${codeText("slot")} ${index + 1}</label><input id="code-${escapedId}-${index}" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" data-choice-code-input aria-describedby="code-status-${escapedId}-${index} ${aria.match(/aria-describedby="([^"]*)"/)?.[1] || ""}"><output id="code-status-${escapedId}-${index}" data-code-status aria-live="polite">${codeText("empty")}</output></div>`).join("")}</div></fieldset>`;
+    }
+
+    function codeEntries(card, item) {
+        return [...card.querySelectorAll("[data-choice-code-input]")].map(input => {
+            const raw = input.value.trim();
+            const code = /^[0-9]{1,6}$/.test(raw) ? String(Number(raw)) : null;
+            return { input, raw, option: (item.options || []).find(option => option.code === code) };
+        });
+    }
+
+    function codeEntryError(entry, entries, item) {
+        if (!entry.raw) return "";
+        if (!entry.option) return codeText("invalid");
+        const value = state.answers[item.settings?.excludeSelectedFrom];
+        if ((Array.isArray(value) ? value : [value]).includes(entry.option.id)) return codeText("excluded");
+        if (entries.filter(other => other.option?.id === entry.option.id).length > 1) return codeText("duplicate");
+        return "";
+    }
+
+    function updateCodeInputs(card, item) {
+        if (!card || item?.settings?.choiceInput !== "codes") return;
+        const entries = codeEntries(card, item);
+        entries.forEach(entry => {
+            const error = codeEntryError(entry, entries, item);
+            const status = entry.input.parentElement.querySelector("[data-code-status]");
+            status.textContent = error || (entry.option ? localizedOptionLabel(item, entry.option) : codeText("empty"));
+            status.classList.toggle("is-error", Boolean(error));
+        });
+    }
+
+    function applyChoiceExclusions() {
+        let cleared = false;
+        state.questions.forEach((item) => {
+            if (!["single", "multiple", "dropdown"].includes(item.type)) return;
+            const card = dom.list.querySelector(`[data-question-id="${CSS.escape(String(item.id))}"]`);
+            if (!isCardActive(card)) return;
+            const source = item.settings?.excludeSelectedFrom;
+            const value = source ? state.answers[source] : [];
+            const excluded = new Set((Array.isArray(value) ? value : [value]).map(String));
+            if (item.settings?.choiceInput === "codes") {
+                const fingerprint = JSON.stringify([...excluded].sort());
+                if (card.dataset.codeExclusions !== undefined && card.dataset.codeExclusions !== fingerprint) {
+                    codeEntries(card, item).forEach(entry => {
+                        if (entry.option && excluded.has(entry.option.id)) { entry.input.value = ""; cleared = true; }
+                    });
+                    state.answers[item.id] = codeEntries(card, item).filter(entry => entry.raw).map(entry => entry.option?.id || entry.raw);
+                }
+                card.dataset.codeExclusions = fingerprint;
+                card.querySelectorAll("[data-code-option]").forEach(entry => {
+                    const blocked = excluded.has(entry.dataset.codeOption);
+                    entry.classList.toggle("is-excluded", blocked);
+                    entry.querySelector("[data-code-excluded]").hidden = !blocked;
+                });
+                updateCodeInputs(card, item);
+                return;
+            }
+            card.querySelectorAll('input[type="radio"],input[type="checkbox"],select option[value]:not([value=""])').forEach((control) => {
+                const blocked = excluded.has(control.value);
+                control.disabled = blocked;
+                control.closest(".public-choice")?.classList.toggle("is-excluded", blocked);
+                if (blocked && (control.checked || control.selected)) {
+                    if (control.matches("option")) control.closest("select").value = "";
+                    else control.checked = false;
+                    const current = state.answers[item.id];
+                    state.answers[item.id] = Array.isArray(current) ? current.filter((entry) => !excluded.has(String(entry))) : "";
+                    cleared = true;
+                }
+            });
+            filterChoiceOptions(card);
+        });
+        return cleared;
+    }
+
     function matrixMarkup(question, name, aria) {
         const multiple = question.type === "matrix_multiple";
         const columns = (question.columns || []).map((column, index) => localizedIndexedLabel(question, "columns", index));
         const rows = (question.rows || []).map((row, index) => localizedIndexedLabel(question, "rows", index));
-        return `<div class="public-matrix" role="group" ${aria}><table><caption class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</caption><thead><tr><th scope="col">${Common.escapeHtml(text("item"))}</th>${columns.map((column) => `<th scope="col">${Common.escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row, rowIndex) => `<tr data-matrix-row-id="${Common.escapeHtml(axisItemId(question, "rows", rowIndex))}"><th scope="row">${Common.escapeHtml(row)}</th>${columns.map((column, columnIndex) => `<td><input type="${multiple ? "checkbox" : "radio"}" name="${Common.escapeHtml(name)}_${rowIndex}${multiple ? `_${columnIndex}` : ""}" value="${Common.escapeHtml(axisItemId(question, "columns", columnIndex))}" aria-label="${Common.escapeHtml(row)} - ${Common.escapeHtml(column)}" aria-describedby="${aria.match(/aria-describedby="([^"]*)"/)?.[1] || ""}"></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+        return `<div class="public-matrix${columns.length > 7 ? " is-wide" : ""}${columns.length > 12 ? " is-stacked" : ""}" role="group" ${aria}><table role="table"><caption class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</caption><thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">${Common.escapeHtml(text("item"))}</th>${columns.map((column) => `<th role="columnheader" scope="col">${Common.escapeHtml(column)}</th>`).join("")}</tr></thead><tbody role="rowgroup">${rows.map((row, rowIndex) => `<tr role="row" data-matrix-row-id="${Common.escapeHtml(axisItemId(question, "rows", rowIndex))}"><th role="rowheader" scope="row">${Common.escapeHtml(row)}</th>${columns.map((column, columnIndex) => `<td role="cell"><label class="public-matrix-choice"><input type="${multiple ? "checkbox" : "radio"}" name="${Common.escapeHtml(name)}_${rowIndex}${multiple ? `_${columnIndex}` : ""}" value="${Common.escapeHtml(axisItemId(question, "columns", columnIndex))}" aria-label="${Common.escapeHtml(row)} - ${Common.escapeHtml(column)}" aria-describedby="${aria.match(/aria-describedby="([^"]*)"/)?.[1] || ""}"><span>${Common.escapeHtml(column)}</span></label></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
     }
 
     function repeatTableMarkup(question, name, aria) {
@@ -699,14 +944,23 @@
         const columns = sourceColumns.map((column, index) => localizedIndexedLabel(question, "columns", index));
         const rows = sourceRows.map((row, index) => localizedIndexedLabel(question, "rows", index));
         const describedBy = aria.match(/aria-describedby="([^"]*)"/)?.[1] || "";
-        return `<div class="public-fixed-table" role="group" ${aria}><table><caption class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</caption><thead><tr><th scope="col">${Common.escapeHtml(text("item"))}</th>${columns.map((column) => `<th scope="col">${Common.escapeHtml(column)}</th>`).join("")}</tr></thead><tbody data-repeat-rows>${rows.map((row, rowIndex) => `<tr data-repeat-row><th scope="row">${Common.escapeHtml(row)}</th>${columns.map((column, columnIndex) => `<td><input type="text" name="${Common.escapeHtml(name)}_${rowIndex}_${columnIndex}" aria-label="${Common.escapeHtml(row)} - ${Common.escapeHtml(column)}" aria-describedby="${Common.escapeHtml(describedBy)}"></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+        return `<div class="public-fixed-table" role="group" ${aria}><table><caption class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</caption><thead><tr><th scope="col">${Common.escapeHtml(text("item"))}</th>${columns.map((column) => `<th scope="col">${Common.escapeHtml(column)}</th>`).join("")}</tr></thead><tbody data-repeat-rows>${rows.map((row, rowIndex) => `<tr data-repeat-row><th scope="row">${Common.escapeHtml(row)}</th>${columns.map((column, columnIndex) => `<td><label class="public-table-cell"><span>${Common.escapeHtml(column)}</span><input type="text" name="${Common.escapeHtml(name)}_${rowIndex}_${columnIndex}" aria-label="${Common.escapeHtml(row)} - ${Common.escapeHtml(column)}" aria-describedby="${Common.escapeHtml(describedBy)}"></label></td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
     }
 
     function repeatRow(columns, name, index, aria = "") {
-        return `<div class="repeat-table-row" style="--columns:${columns.length}" data-repeat-row>${columns.map((column, columnIndex) => `<input type="text" name="${Common.escapeHtml(name)}_${index}_${columnIndex}" placeholder="${Common.escapeHtml(column)}" aria-label="${Common.escapeHtml(text("rowInputAria", { number: index + 1, column }))}" ${aria}>`).join("")}<button type="button" data-repeat-remove aria-label="${Common.escapeHtml(text("rowDeleteAria", { number: index + 1 }))}">×</button></div>`;
+        return `<div class="repeat-table-row" style="--columns:${columns.length}" data-repeat-row>${columns.map((column, columnIndex) => `<label class="public-repeat-cell"><span>${Common.escapeHtml(column)}</span><input type="text" name="${Common.escapeHtml(name)}_${index}_${columnIndex}" placeholder="${Common.escapeHtml(column)}" aria-label="${Common.escapeHtml(text("rowInputAria", { number: index + 1, column }))}" ${aria}></label>`).join("")}<button type="button" data-repeat-remove aria-label="${Common.escapeHtml(text("rowDeleteAria", { number: index + 1 }))}">×</button></div>`;
     }
 
     function onClick(event) {
+        // An opaque preview has no allow-forms permission: validate through an
+        // explicit button action without triggering the browser form algorithm.
+        if (state.preview && event.target.closest(".public-submit")) return submit(event);
+        if (event.target.matches?.("[data-slider]")) { onInput(event); return; }
+        const clearRating = event.target.closest("[data-rating-clear]");
+        if (clearRating) {
+            const input = clearRating.closest("[data-rating]").querySelector("[data-rating-input]");
+            input.value = ""; onInput({ target: input }); input.focus(); return;
+        }
         const add = event.target.closest("[data-repeat-add]");
         const remove = event.target.closest("[data-repeat-remove]");
         if (add || remove) state.idempotencyKey = null;
@@ -736,11 +990,12 @@
     }
 
     function onInput(event) {
+        if (event.target.matches("[data-choice-search]")) { filterChoiceOptions(event.target.closest("[data-question-id]")); return; }
         state.idempotencyKey = null;
         if (event.target.matches("[data-slider]")) {
-            const currentQuestion = question(event.target.closest("[data-question-id]").dataset.questionId);
-            event.target.closest(".slider-answer").querySelector("[data-slider-value]").textContent = `${event.target.value}${localizedQuestionField(currentQuestion, "unit")}`;
+            event.target.closest("[data-rating]").querySelector("[data-rating-input]").value = event.target.value;
         }
+        updateRating(event.target.closest("[data-question-id]"));
         collectAnswers();
         applyLogic();
         updatePresentation();
@@ -748,6 +1003,8 @@
         renderValidationSummary();
         scheduleDraft();
         updateProgress();
+        const changedId = event.target.closest("[data-question-id]")?.dataset.questionId;
+        if (changedId) emitCustomEvent("answerChange", { questionId: changedId, answer: state.answers[changedId] });
     }
 
     function question(id) {
@@ -761,7 +1018,12 @@
             const currentQuestion = question(id);
             const name = `q_${id}`;
             let value = "";
-            if (currentQuestion.type === "multiple") {
+            const rating = card.querySelector("[data-rating-input]");
+            if (rating) {
+                value = rating.value;
+            } else if (currentQuestion.type === "multiple" && currentQuestion.settings?.choiceInput === "codes") {
+                value = codeEntries(card, currentQuestion).filter(entry => entry.raw).map(entry => entry.option?.id || entry.raw);
+            } else if (currentQuestion.type === "multiple") {
                 value = [...card.querySelectorAll(`input[name="${CSS.escape(name)}"]:checked`)].map((input) => input.value);
             } else if (["single", "scale"].includes(currentQuestion.type)) {
                 value = card.querySelector(`input[type="radio"][name="${CSS.escape(name)}"]:checked`)?.value ?? "";
@@ -788,12 +1050,13 @@
     }
 
     function scheduleDraft() {
+        if (state.preview) return;
         clearTimeout(state.saveTimer);
         state.draftRestored = false;
         dom.saveState.textContent = text("draftSaving");
         state.saveTimer = setTimeout(() => {
             try {
-                sessionStorage.setItem(`surveyone:draft:${state.slug}`, JSON.stringify(state.answers));
+                sessionStorage.setItem(draftStorageKey(), JSON.stringify(state.answers));
                 dom.saveState.textContent = text("draftSaved");
             } catch {
                 dom.saveState.textContent = text("draftUnavailable");
@@ -802,8 +1065,9 @@
     }
 
     function restoreDraft() {
+        if (state.preview) return;
         try {
-            state.answers = JSON.parse(sessionStorage.getItem(`surveyone:draft:${state.slug}`) || "{}");
+            state.answers = JSON.parse(sessionStorage.getItem(draftStorageKey()) || "{}");
             state.draftRestored = Boolean(state.answers && Object.keys(state.answers).some((key) => hasValue(state.answers[key])));
         } catch {
             state.answers = {};
@@ -817,7 +1081,16 @@
             const currentQuestion = question(id);
             if (!card || value == null || !currentQuestion) return;
             const name = `q_${id}`;
-            if (Array.isArray(value) && currentQuestion.type === "multiple") {
+            const rating = card.querySelector("[data-rating-input]");
+            if (rating) {
+                rating.value = typeof value === "object" ? "" : String(value);
+                updateRating(card);
+            } else if (Array.isArray(value) && currentQuestion.type === "multiple" && currentQuestion.settings?.choiceInput === "codes") {
+                card.querySelectorAll("[data-choice-code-input]").forEach((input, index) => {
+                    input.value = (currentQuestion.options || []).find(option => option.id === value[index])?.code || value[index] || "";
+                });
+                updateCodeInputs(card, currentQuestion);
+            } else if (Array.isArray(value) && currentQuestion.type === "multiple") {
                 value.forEach((item) => {
                     const input = card.querySelector(`input[name="${CSS.escape(name)}"][value="${CSS.escape(String(item))}"]`);
                     if (input) input.checked = true;
@@ -892,6 +1165,19 @@
             let message = "";
             if (visible && currentQuestion.required && !hasValue(state.answers[currentQuestion.id])) message = text("requiredError");
             if (visible && !message && currentQuestion.validation?.type === "email" && hasValue(state.answers[currentQuestion.id]) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.answers[currentQuestion.id])) message = text("emailError");
+            const answer = state.answers[currentQuestion.id];
+            const settings = currentQuestion.settings || {};
+            if (visible && !message && settings.choiceInput === "codes") {
+                const entries = codeEntries(card, currentQuestion);
+                message = entries.map(entry => codeEntryError(entry, entries, currentQuestion)).find(Boolean) || "";
+            }
+            const rating = card.querySelector("[data-rating-input]");
+            if (visible && !message && rating && !rating.validity.valid) message = rating.validationMessage;
+            if (visible && !message && currentQuestion.type === "multiple" && hasValue(answer)) {
+                if (settings.minSelections != null && answer.length < settings.minSelections) message = `최소 ${settings.minSelections}개를 선택해 주세요.`;
+                if (settings.maxSelections != null && answer.length > settings.maxSelections) message = `최대 ${settings.maxSelections}개까지 선택할 수 있습니다.`;
+            }
+            if (visible && !message && currentQuestion.required && currentQuestion.type.startsWith("matrix_") && (currentQuestion.rows || []).some((row, index) => !hasValue(answer?.[axisItemId(currentQuestion, "rows", index)]))) message = "모든 항목에 응답해 주세요.";
             setQuestionError(card, message);
             if (message) errors.push({ number: card.dataset.questionNumber, title: localizedQuestionField(currentQuestion, "title"), message, card });
             if (!visible) errorElement.hidden = true;
@@ -952,6 +1238,19 @@
         return Boolean(card && !card.closest("[data-section-id]")?.hidden && !card.hidden);
     }
 
+
+    function noticePageVisible(sectionId, currentSectionId, activeSectionIds, pageIndex) {
+        if (String(sectionId) === String(currentSectionId)) return true;
+        const order = state.sections.map((section) => String(section.id));
+        const noticeIndex = order.indexOf(String(sectionId));
+        const activeOrder = activeSectionIds.map(String);
+        const preceding = order.slice(0, noticeIndex).some((id) => activeOrder.includes(id));
+        if (!preceding) return pageIndex === 0;
+        const next = order.slice(noticeIndex + 1).find((id) => activeOrder.includes(id));
+        if (!next) return pageIndex === activeOrder.length - 1;
+        return String(currentSectionId) === next && pageIndex === activeOrder.indexOf(next);
+    }
+
     function updatePresentation() {
         const paged = presentationMode() === "one_at_a_time";
         dom.form.classList.toggle("is-one-at-a-time", paged);
@@ -965,6 +1264,7 @@
         };
         if (!paged) {
             cards.forEach((card) => card.classList.remove("is-current-question"));
+            dom.list.querySelectorAll(".public-notice").forEach((notice) => { notice.hidden = false; });
             updateCustomFrame();
             return;
         }
@@ -974,6 +1274,12 @@
         dom.next.hidden = state.activeQuestionIndex >= cards.length - 1;
         dom.pageStatus.textContent = text("pageStatus", { current: cards.length ? state.activeQuestionIndex + 1 : 0, total: cards.length });
         updateCustomFrame();
+        const current = cards[state.activeQuestionIndex];
+        emitCustomEvent("pageChange", { questionId: current?.dataset.questionId || null, sectionId: current?.closest("[data-section-id]")?.dataset.sectionId || null });
+        const activeSectionIds = cards.map((card) => card.closest("[data-section-id]")?.dataset.sectionId);
+        dom.list.querySelectorAll(".public-notice").forEach((notice) => {
+            notice.hidden = Boolean(current) && !noticePageVisible(notice.closest("[data-section-id]")?.dataset.sectionId, current.closest("[data-section-id]")?.dataset.sectionId, activeSectionIds, state.activeQuestionIndex);
+        });
     }
 
     function moveQuestionPage(delta) {
@@ -1068,6 +1374,7 @@
                     else control.value = control.matches('[type="range"]') ? control.defaultValue : "";
                 });
                 card.querySelectorAll("input,select,textarea,button").forEach((control) => { control.disabled = true; });
+                updateRating(card);
                 setQuestionError(card, "");
             });
         });
@@ -1089,7 +1396,9 @@
                 });
                 setQuestionError(card, "");
             }
+            updateRating(card);
         });
+        clearedAnswer = applyChoiceExclusions() || clearedAnswer;
         // A hidden source answer can affect another dynamic question or section.
         // Re-evaluate once after clearing it so the visible path converges during
         // the same input/change event on mouse, touch, and keyboard devices.
@@ -1134,7 +1443,14 @@
 
     async function submit(event) {
         event.preventDefault();
+        emitCustomEvent("beforeSubmit", {});
         if (!validate()) return;
+        if (state.preview) {
+            dom.saveState.textContent = "입력 동작 확인을 완료했습니다. 미리보기 응답은 저장되지 않습니다.";
+            dom.demoBanner.textContent = "입력 검증 통과 · 미리보기 응답은 서버에 제출되지 않았습니다.";
+            dom.demoBanner.scrollIntoView({ block: "center" });
+            return;
+        }
         const button = dom.form.querySelector('button[type="submit"]');
         button.disabled = true;
         button.textContent = text("submitting");
@@ -1151,10 +1467,11 @@
             const recipientToken = new URLSearchParams(location.search).get("r");
             await Common.api.post(`/api/public/surveys/${encodeURIComponent(state.slug)}/responses`, {
                 answers: visibleAnswers,
+                audienceCode: state.audienceCode,
                 respondentKey: recipientToken || (oneResponse ? respondentKey() : undefined),
                 client: { language: state.locale, viewport: `${innerWidth}x${innerHeight}` }
             }, { headers: { "Idempotency-Key": state.idempotencyKey } });
-            sessionStorage.removeItem(`surveyone:draft:${state.slug}`);
+            sessionStorage.removeItem(draftStorageKey());
             dom.form.hidden = true;
             showState("✓", text("submitted"), localizedSurveyField("confirmationMessage") || text("thanks"));
         } catch (error) {

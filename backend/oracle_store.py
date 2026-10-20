@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.survey_audience import audience_submission, validate_audiences
+
 import hashlib
 import json
 import logging
@@ -1303,6 +1305,7 @@ class OracleStore(MemoryStore):
             request.settings or (template.settings if template else SurveySettings()),
             project_profile,
         )
+        validate_audiences(sections, settings)
         theme = request.theme or (template.theme if template else SurveyTheme())
         skin = dict(request.skin) if request.skin is not None else _skin_from_theme(theme)
         survey_id = new_id("survey")
@@ -1694,6 +1697,7 @@ class OracleStore(MemoryStore):
                 "DB guest question limit has been exceeded."
             )
         settings = request.settings if "settings" in fields and request.settings else detail.settings
+        validate_audiences(sections, settings)
         project_profile = (
             request.project_profile
             if "project_profile" in fields and request.project_profile is not None
@@ -2044,7 +2048,8 @@ class OracleStore(MemoryStore):
             raise DomainValidationError(
                 "This survey requires a stable respondentKey to enforce one response."
             )
-        answers = self._validate_answers(public, request.answers)
+        selected_survey, request = audience_submission(public, request)
+        answers = self._validate_answers(selected_survey, request.answers)
         try:
             validated_key = validate_idempotency_key(idempotency_key)
         except ValueError as exc:

@@ -1,0 +1,3616 @@
+{
+  "format": "in-surveyone.draft",
+  "formatVersion": 1,
+  "draft": {
+    "title": "2026년 내부평가제도·보수체계 개선을 위한 설문지",
+    "description": "내부평가제도 및 보수체계의 효율적 운영 방안과 개선사항 발굴을 위한 설문조사입니다.",
+    "category": "조직진단",
+    "sections": [
+      {
+        "id": "evaluation_cover",
+        "title": "조사 안내",
+        "description": "",
+        "questions": [
+          {
+            "id": "evaluation_cover_text",
+            "type": "notice",
+            "title": "설문 참여 안내",
+            "description": null,
+            "required": false,
+            "behavior": "fixed_optional",
+            "activationCondition": null,
+            "validation": {},
+            "options": [],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "<p>직원 여러분 안녕하십니까?</p><p>공사의 내부경영평가 및 보수체계와 관련하여 직원 여러분의 의견을 수렴하고, 향후 성과관리제도 및 보수제도의 효율적인 운영과 발전방향을 모색하기 위하여 설문조사를 실시하고자 합니다.</p><p>본 설문에 정답은 없으며, 귀하께서 평소 느끼시는 대로 답변해 주시면 고맙겠습니다.</p><p>본 설문의 응답자는 통계법 제33조에 따라 비밀이 보호될 뿐 아니라, 귀하의 의견은 통계분석 이외의 용도로는 절대 사용하지 않습니다.</p><p>설문결과는 내부경영평가 편람에 반영되며, 보수체계 등 제도 개선에 유용하게 활용되는 만큼, 설문조사가 객관성과 대표성을 가질 수 있도록 적극적인 참여를 부탁드립니다.</p><p>2026년 11월</p><p>성과관리처 ․ 노사협력처</p>",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "evaluation_profile",
+        "title": "응답 대상 확인",
+        "description": "",
+        "questions": [
+          {
+            "id": "profile_grade",
+            "type": "single",
+            "title": "현재 직급 및 직무대행 여부를 선택해 주세요.",
+            "description": "직급과 직무대행 여부에 해당하는 문항을 안내하기 위한 항목입니다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "grade_3_plus",
+                "label": "3급 이상"
+              },
+              {
+                "code": null,
+                "id": "grade_4_below_acting",
+                "label": "4급 이하(직무대행)"
+              },
+              {
+                "code": null,
+                "id": "grade_4_below",
+                "label": "4급 이하(직무대행 아님)"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "performance_acceptance",
+        "title": "내부평가제도 · 수용성",
+        "description": "다음은 우리 공사 성과관리제도의『수용성』에 관한 질문입니다.",
+        "questions": [
+          {
+            "id": "performance_01",
+            "type": "scale",
+            "title": "1. 성과관리제도 개선을 위하여 직원들의 의견을 수렴한다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_02",
+            "type": "scale",
+            "title": "2. 성과관리제도는 전년도에 비해선 개선이 되었다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_03",
+            "type": "scale",
+            "title": "3. 성과관리제도는 공정한 평가가 이루어지는 편이다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_04",
+            "type": "scale",
+            "title": "4. 나는 내가 근무하는 부(팀)의 평가내용을 잘 알고 있다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "performance_validity",
+        "title": "내부평가제도 · 타당성",
+        "description": "다음은 우리 공사 성과관리제도의『타당성』에 관한 질문입니다.",
+        "questions": [
+          {
+            "id": "performance_05",
+            "type": "scale",
+            "title": "5. 성과관리제도의 운영은 적절한 편이다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_06",
+            "type": "scale",
+            "title": "6. 현재의 조직단위별 평가군 분류는 적절한 편이다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_07",
+            "type": "scale",
+            "title": "7. 성과관리지표는 부(팀)별 핵심업무가 적절히 포함된 편이다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_08",
+            "type": "scale",
+            "title": "8. 현재의 내부평가 운영방법은 적절한 편이다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "performance_reliability",
+        "title": "내부평가제도 · 신뢰성",
+        "description": "다음은 우리 공사 성과관리제도의『신뢰성』에 관한 질문입니다.",
+        "questions": [
+          {
+            "id": "performance_09",
+            "type": "scale",
+            "title": "9. 나는 내부평가단1)의 평가결과를 신뢰하는 편이다.",
+            "description": "1) 내부평가단 : 경영평가 규정 제21조에 따라 공정하고 합리적인 내부평가를 위하여 공사는 8개 평가군 내 다양한 직급의 내부평가위원을 매년 변경해 구성·운영하고 있으며(1급~5급) 비계량평가반 구성 세분화, 이의신청제도 운영을 위한 평가단 역할 개선 등 내부평가의 전문성과 신뢰성 향상 위한 노력 제고",
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_10",
+            "type": "scale",
+            "title": "10. 평가지표의 구성비율(계량 70%, 비계량 30%)은 적정하다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_11",
+            "type": "scale",
+            "title": "11. 평가지표별 가중치는 업무의 중요도․난이도에 따라 적정하게 구성되어 있다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_12",
+            "type": "scale",
+            "title": "12. 성과지표는 재무, 고객, 프로세스, 학습 및 성장이란 BSC관점2)에서 적정하게 구성되어 있다.",
+            "description": "2) BSC(Balanced Scored Card)는 ① 재무적인 측면과 더불어 비재무측면에서 ② 고객가치를 창출하고 있는지, ③ 경쟁우위의 내부 프로세스를 운영하고 있는지, ④ 조직의 역량 강화를 위한 학습과 성장 등 기업의 성과를 균형 있게 평가함으로써 조직 전략을 달성하고 관리하는 경영관리 도구",
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "performance_utility",
+        "title": "내부평가제도 · 실용성",
+        "description": "다음은 우리 공사 성과관리제도의『실용성』에 관한 질문입니다.",
+        "questions": [
+          {
+            "id": "performance_13",
+            "type": "scale",
+            "title": "13. 성과관리제도는 공사의 비전 및 경영목표 달성에 기여하는 측면이 있다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_14",
+            "type": "scale",
+            "title": "14. 성과관리제도는 부(팀)단위 협력적 조직분위기 조성에 기여한다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_15",
+            "type": "scale",
+            "title": "15. 성과관리제도는 직원들의 동기부여에 기여할 수 있다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_16",
+            "type": "scale",
+            "title": "16. 성과평가의 결과에 따른 현재의 인센티브 차등 및 상위부서 포상은 적정하다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "performance_satisfaction",
+        "title": "내부평가제도 · 만족도",
+        "description": "다음은 우리 공사 성과관리제도의『만족도』에 관한 질문입니다.",
+        "questions": [
+          {
+            "id": "performance_17",
+            "type": "scale",
+            "title": "17. 위의 사항을 고려할 때, 성과관리제도 운영에 대해 전반적으로 만족한다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_18",
+            "type": "scale",
+            "title": "18. 위의 사항을 고려할 때, 성과 평가 및 결과활용에 대해 전반적으로 만족한다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_19",
+            "type": "long_text",
+            "title": "19. 우리 공사 성과관리제도의 개선 및 만족도를 높이기 위한 소중한 의견이 있으시면 자유롭게 적어 주십시오.",
+            "description": null,
+            "required": false,
+            "behavior": "fixed_optional",
+            "activationCondition": null,
+            "validation": {},
+            "options": [],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "performance_individual",
+        "title": "내부평가제도 · 개인평가",
+        "description": "다음은 3급 이상 개인평가에 대한 질문입니다.(3급 이상 및 직무대행만 해당)",
+        "questions": [
+          {
+            "id": "performance_20",
+            "type": "scale",
+            "title": "20. 개인평가는 나의 업무능력 향상에 기여한다.",
+            "description": null,
+            "required": true,
+            "behavior": "dynamic_required",
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_3_plus",
+                    "grade_4_below_acting"
+                  ]
+                }
+              ]
+            },
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_21",
+            "type": "scale",
+            "title": "21. 개인평가지표는 개별업무를 잘 반영하고 있다.",
+            "description": null,
+            "required": true,
+            "behavior": "dynamic_required",
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_3_plus",
+                    "grade_4_below_acting"
+                  ]
+                }
+              ]
+            },
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_22",
+            "type": "scale",
+            "title": "22. 개인평가지표는 개별업무 난이도를 잘 반영한다.",
+            "description": null,
+            "required": true,
+            "behavior": "dynamic_required",
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_3_plus",
+                    "grade_4_below_acting"
+                  ]
+                }
+              ]
+            },
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_23",
+            "type": "scale",
+            "title": "23. 개인평가지표 가중치 구성은 적절하다.",
+            "description": null,
+            "required": true,
+            "behavior": "dynamic_required",
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_3_plus",
+                    "grade_4_below_acting"
+                  ]
+                }
+              ]
+            },
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "performance_24",
+            "type": "scale",
+            "title": "24. 개인평가지표의 목표수준은 타부서와 비교시 적정하다.",
+            "description": null,
+            "required": true,
+            "behavior": "dynamic_required",
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_3_plus",
+                    "grade_4_below_acting"
+                  ]
+                }
+              ]
+            },
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "pay_overview",
+        "title": "보수체계 · 보수제도 전반",
+        "description": "다음은 보수제도 전반에 관한 조사입니다.",
+        "questions": [
+          {
+            "id": "pay_01",
+            "type": "scale",
+            "title": "1. 평소 일하는 업무의 성격과 나의 능력, 노력, 직무성과 등을 종합적으로 고려할 때 현재의 보수수준에 만족한다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "pay_02",
+            "type": "scale",
+            "title": "2. 나는 현행 보수제도･체계에 만족한다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "pay_03",
+            "type": "scale",
+            "title": "3. 현행 보수제도는 동기부여를 위한 인센티브가 충분하다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "pay_04",
+            "type": "scale",
+            "title": "4. 본인의 임금 중 기준급이 어떻게 산정되는지 잘 알고 있다.",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "pay_fairness",
+        "title": "보수체계 · 공정성",
+        "description": "",
+        "questions": [
+          {
+            "id": "pay_05",
+            "type": "multiple",
+            "title": "5. 우리 공사의 보수체계 중 가장 불합리한 부분은 무엇이라고 생각하십니까?",
+            "description": "(2개 중복선택 가능)",
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "pay_05_opt_01",
+                "label": "① 개인 노력이나 성과에 따른 보상이 적다"
+              },
+              {
+                "code": null,
+                "id": "pay_05_opt_02",
+                "label": "② 동일직급 내에서 동일한 직무를 수행해도 근속기간이 많은 사람이 기준급을 더 받는다"
+              },
+              {
+                "code": null,
+                "id": "pay_05_opt_03",
+                "label": "③ 동일 직급 내에서 개인역량이나 수행직무 간 차이가 나도 같은 임금을 받는다"
+              },
+              {
+                "code": null,
+                "id": "pay_05_opt_04",
+                "label": "④ 자격에 대한 보상이 적다"
+              },
+              {
+                "code": null,
+                "id": "pay_05_opt_05",
+                "label": "⑤ 연봉제 직원의 경우 등급별 기준급 차이가 크다"
+              },
+              {
+                "code": null,
+                "id": "pay_05_opt_06",
+                "label": "⑥ 기타"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": 1,
+              "maxSelections": 2,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "pay_06",
+            "type": "multiple",
+            "title": "6. 우리 공사 보수항목 중 가장 불공정, 불합리하다고 생각되는 항목은 무엇입니까?",
+            "description": "(2개 중복선택 가능)",
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "pay_06_opt_01",
+                "label": "① 기준급"
+              },
+              {
+                "code": null,
+                "id": "pay_06_opt_02",
+                "label": "② 직무급"
+              },
+              {
+                "code": null,
+                "id": "pay_06_opt_03",
+                "label": "③ 경영평가성과급"
+              },
+              {
+                "code": null,
+                "id": "pay_06_opt_04",
+                "label": "④ 내부평가성과급"
+              },
+              {
+                "code": null,
+                "id": "pay_06_opt_05",
+                "label": "⑤ 기타성과급"
+              },
+              {
+                "code": null,
+                "id": "pay_06_opt_06",
+                "label": "⑥ 시간외, 휴일, 야간수당"
+              },
+              {
+                "code": null,
+                "id": "pay_06_opt_07",
+                "label": "⑦ 업무수당"
+              },
+              {
+                "code": null,
+                "id": "pay_06_opt_08",
+                "label": "⑧ 기타부가급"
+              },
+              {
+                "code": null,
+                "id": "pay_06_opt_09",
+                "label": "⑨ 자녀수당"
+              },
+              {
+                "code": null,
+                "id": "pay_06_opt_10",
+                "label": "⑩ 기타"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": 1,
+              "maxSelections": 2,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "pay_07",
+            "type": "multiple",
+            "title": "7. 보수 중 많은 부분을 차지하고 있는 기본연봉은 어떤 요인에 따라 결정되어야 공정하다고 생각하십니까?",
+            "description": "(2개 중복선택)",
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "pay_07_opt_01",
+                "label": "① 근속년수"
+              },
+              {
+                "code": null,
+                "id": "pay_07_opt_02",
+                "label": "② 개인별 담당 직무의 난이도, 책임, 기술, 노력"
+              },
+              {
+                "code": null,
+                "id": "pay_07_opt_03",
+                "label": "③ 소속 부서별 직무의 난이도, 책임, 경영에 미치는 영향 등"
+              },
+              {
+                "code": null,
+                "id": "pay_07_opt_04",
+                "label": "④ 개인 업무수행능력(개인 업무성과)"
+              },
+              {
+                "code": null,
+                "id": "pay_07_opt_05",
+                "label": "⑤ 소속 부서의 업무성과"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": 2,
+              "maxSelections": 2,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "pay_job",
+        "title": "보수체계 · 직무와 보수",
+        "description": "",
+        "questions": [
+          {
+            "id": "pay_08",
+            "type": "scale",
+            "title": "8. 현재 본인이 수행하는 직무의 난이도, 책임에 비추어 받고 있는 보수의 수준은 어떻게 생각하십니까?",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "pay_09",
+            "type": "scale",
+            "title": "9. 현재 본인이 수행하는 직무는 같은 직종 입사동기들과 비교하여 난이도와 책임의 수준이 어떻다고 생각하십니까?",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "pay_10",
+            "type": "scale",
+            "title": "10. 본인이 수행하는 직무는 동일직급의 다른 직무와 비교하여 책임과 난이도 수준이 어떻다고 생각하십니까?",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "min": 1,
+            "max": 10,
+            "minLabel": "전혀 그렇지 않다",
+            "maxLabel": "매우 그렇다",
+            "settings": {
+              "minValue": 1,
+              "maxValue": 10,
+              "step": 1,
+              "minLabel": "전혀 그렇지 않다",
+              "maxLabel": "매우 그렇다",
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "descending",
+              "scaleDisplay": "slider",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "options": [],
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "pay_policy",
+        "title": "보수체계 · 보수차이와 개편",
+        "description": "",
+        "questions": [
+          {
+            "id": "pay_11",
+            "type": "single",
+            "title": "11. 같은 직급으로 근속년수만 5년 이상 차이나는 두 직원이 동일한 업무를 담당하는 경우, 공정한 보수 차이는 어느 정도입니까?",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "pay_11_opt_01",
+                "label": "① 차이가 없어야 한다"
+              },
+              {
+                "code": null,
+                "id": "pay_11_opt_02",
+                "label": "② 근속년수 높은 직원이 10% 높은 보수를 받아야 한다"
+              },
+              {
+                "code": null,
+                "id": "pay_11_opt_03",
+                "label": "③ 근속년수 높은 직원이 20% 높은 보수를 받아야 한다"
+              },
+              {
+                "code": null,
+                "id": "pay_11_opt_04",
+                "label": "④ 근속년수 높은 직원이 30% 높은 보수를 받아야 한다"
+              },
+              {
+                "code": null,
+                "id": "pay_11_opt_05",
+                "label": "⑤ 기타"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "pay_12",
+            "type": "single",
+            "title": "12. 업무의 난이도, 책임의 정도에 따른 공정한 보수차이는 어느 정도입니까?",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "pay_12_opt_01",
+                "label": "① 차이가 없어야 한다"
+              },
+              {
+                "code": null,
+                "id": "pay_12_opt_02",
+                "label": "② 높은 난이도와 책임이 요구되는 업무를 수행하는 직원이 10% 높은 보수를 받아야 한다"
+              },
+              {
+                "code": null,
+                "id": "pay_12_opt_03",
+                "label": "③ 높은 난이도와 책임이 요구되는 업무를 수행하는 직원이 20% 높은 보수를 받아야 한다"
+              },
+              {
+                "code": null,
+                "id": "pay_12_opt_04",
+                "label": "④ 높은 난이도와 책임이 요구되는 업무를 수행하는 직원이 30% 높은 보수를 받아야 한다"
+              },
+              {
+                "code": null,
+                "id": "pay_12_opt_05",
+                "label": "⑤ 기타"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "pay_13",
+            "type": "single",
+            "title": "13. 업무의 난이도, 책임의 정도에 따라 보수가 달라진다면 인사이동(보직변경)을 신청할 용의가 있으십니까?",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "pay_13_opt_01",
+                "label": "① 가장 쉬운 업무를 맡아 낮은 보수를 받아도 좋다"
+              },
+              {
+                "code": null,
+                "id": "pay_13_opt_02",
+                "label": "② 약간 더 쉬운 업무를 맡아 조금 낮은 보수를 받고 싶다"
+              },
+              {
+                "code": null,
+                "id": "pay_13_opt_03",
+                "label": "③ 현재 직무 유지"
+              },
+              {
+                "code": null,
+                "id": "pay_13_opt_04",
+                "label": "④ 약간 더 어려운 업무를 맡아 조금 높은 보수를 받고 싶다"
+              },
+              {
+                "code": null,
+                "id": "pay_13_opt_05",
+                "label": "⑤ 최고로 어려운 업무를 맡아 그에 상응하는 높은 보수를 받고 싶다"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "pay_14",
+            "type": "single",
+            "title": "14. 정부 및 공공기관의 직무중심의 보수체계 개편에서 가장 우려되는 사항은 무엇입니까?",
+            "description": null,
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "pay_14_opt_01",
+                "label": "① 임금이 저하되는 건 아닌지에 대한 불안감"
+              },
+              {
+                "code": null,
+                "id": "pay_14_opt_02",
+                "label": "② 직무평가 결과에 대한 불신"
+              },
+              {
+                "code": null,
+                "id": "pay_14_opt_03",
+                "label": "③ 보수차등으로 인한 위화감 발생"
+              },
+              {
+                "code": null,
+                "id": "pay_14_opt_04",
+                "label": "④ 협업에 어려움 발생"
+              },
+              {
+                "code": null,
+                "id": "pay_14_opt_05",
+                "label": "⑤ 기타"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "pay_grade",
+        "title": "보수체계 · 직무등급",
+        "description": "4급 이하에 해당하는 문항입니다.",
+        "questions": [
+          {
+            "id": "pay_15",
+            "type": "single",
+            "title": "15. 직무의 책임도‧중요도‧난이도에 따른 직무등급 수는 어느 정도가 적정하다고 생각하십니까?",
+            "description": "(4급 이하)",
+            "required": true,
+            "behavior": "dynamic_required",
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_4_below_acting",
+                    "grade_4_below"
+                  ]
+                }
+              ]
+            },
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "pay_15_opt_01",
+                "label": "① 3등급제"
+              },
+              {
+                "code": null,
+                "id": "pay_15_opt_02",
+                "label": "② 4등급제(현행)"
+              },
+              {
+                "code": null,
+                "id": "pay_15_opt_03",
+                "label": "③ 5등급제"
+              },
+              {
+                "code": null,
+                "id": "pay_15_opt_04",
+                "label": "④ 6등급제"
+              },
+              {
+                "code": null,
+                "id": "pay_15_opt_05",
+                "label": "⑤ 기타"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "pay_16",
+            "type": "single",
+            "title": "16. 직무의 책임도‧중요도‧난이도에 따른 직무등급 간 차등은 어느 정도가 적정하다고 생각하십니까?",
+            "description": "(4급 이하)",
+            "required": true,
+            "behavior": "dynamic_required",
+            "activationCondition": {
+              "combinator": "all",
+              "conditions": [
+                {
+                  "sourceQuestionId": "profile_grade",
+                  "operator": "in",
+                  "value": [
+                    "grade_4_below_acting",
+                    "grade_4_below"
+                  ]
+                }
+              ]
+            },
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "pay_16_opt_01",
+                "label": "① 월 1만원(현행)"
+              },
+              {
+                "code": null,
+                "id": "pay_16_opt_02",
+                "label": "② 월 2~3만원"
+              },
+              {
+                "code": null,
+                "id": "pay_16_opt_03",
+                "label": "③ 월 5~10만원"
+              },
+              {
+                "code": null,
+                "id": "pay_16_opt_04",
+                "label": "④ 월 10만원 이상"
+              },
+              {
+                "code": null,
+                "id": "pay_16_opt_05",
+                "label": "⑤ 기타"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "pay_opinion",
+        "title": "보수체계 · 개선 의견",
+        "description": "",
+        "questions": [
+          {
+            "id": "pay_17",
+            "type": "long_text",
+            "title": "17. 현행 보수제도에 대한 개선 의견이 있으시면 자유롭게 기술하여 주십시오.",
+            "description": null,
+            "required": false,
+            "behavior": "fixed_optional",
+            "activationCondition": null,
+            "validation": {},
+            "options": [],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "cooperation_cover",
+        "title": "조사 안내",
+        "description": "",
+        "questions": [
+          {
+            "id": "cooperation_cover_text",
+            "type": "notice",
+            "title": "설문 참여 안내",
+            "description": null,
+            "required": false,
+            "behavior": "fixed_optional",
+            "activationCondition": null,
+            "validation": {},
+            "options": [],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "<p>직원 여러분 안녕하십니까?</p><p>직원들이 직접 참여하는 객관적인 부(팀) 협력도 조사를 실시하고자 합니다.</p><p>본 설문에 정답은 없으며, 귀하께서 평소 느끼시는 대로 답변해 주시면 고맙겠습니다.</p><p>본 설문의 응답자는 통계법 제33조에 따라 비밀이 보호될 뿐 아니라, 귀하의 의견은 통계분석 이외의 용도로는 절대 사용하지 않습니다.</p><p>설문조사가 객관성과 대표성을 가질 수 있도록 적극적인 참여를 부탁드립니다.</p><p>2026년 11월</p><p>성과관리처 ․ 노사협력처</p>",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "cooperation_profile",
+        "title": "소속 부(팀) 확인",
+        "description": "",
+        "questions": [
+          {
+            "id": "profile_department",
+            "type": "dropdown",
+            "title": "현재 소속 부(팀)을 선택해 주세요.",
+            "description": "자신이 속한 부(팀)을 협력도 평가 대상에서 제외하기 위한 항목입니다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "dept_001",
+                "label": "(1) 전략기획부"
+              },
+              {
+                "code": null,
+                "id": "dept_002",
+                "label": "(2) 경영관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_003",
+                "label": "(3) 조직법규부"
+              },
+              {
+                "code": null,
+                "id": "dept_004",
+                "label": "(4) 성과관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_005",
+                "label": "(5) 재무부"
+              },
+              {
+                "code": null,
+                "id": "dept_006",
+                "label": "(6) ESG경영부"
+              },
+              {
+                "code": null,
+                "id": "dept_007",
+                "label": "(7) 출자관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_008",
+                "label": "(8) 안전관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_009",
+                "label": "(9) 재난비상부"
+              },
+              {
+                "code": null,
+                "id": "dept_010",
+                "label": "(10) 사업총괄부"
+              },
+              {
+                "code": null,
+                "id": "dept_011",
+                "label": "(11) 화폐사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_012",
+                "label": "(12) 공공사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_013",
+                "label": "(13) 예술형주화사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_014",
+                "label": "(14) 기술관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_015",
+                "label": "(15) 품질경영부"
+              },
+              {
+                "code": null,
+                "id": "dept_016",
+                "label": "(16) 기술지원부"
+              },
+              {
+                "code": null,
+                "id": "dept_017",
+                "label": "(17) 영업부"
+              },
+              {
+                "code": null,
+                "id": "dept_018",
+                "label": "(18) 귀금속사업·인증부"
+              },
+              {
+                "code": null,
+                "id": "dept_019",
+                "label": "(19) 문화콘텐츠사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_020",
+                "label": "(20) 신사업기획부"
+              },
+              {
+                "code": null,
+                "id": "dept_021",
+                "label": "(21) 신사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_022",
+                "label": "(22) 해외사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_023",
+                "label": "(23) ICT기획부"
+              },
+              {
+                "code": null,
+                "id": "dept_024",
+                "label": "(24) AI추진기획부"
+              },
+              {
+                "code": null,
+                "id": "dept_025",
+                "label": "(25) 지급결제사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_026",
+                "label": "(26) 결제플랫폼사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_027",
+                "label": "(27) 결제플랫폼운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_028",
+                "label": "(28) 추경사업지원팀"
+              },
+              {
+                "code": null,
+                "id": "dept_029",
+                "label": "(29) 디지털신분증사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_030",
+                "label": "(30) 디지털신분증운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_031",
+                "label": "(31) 디지털신분증개발부"
+              },
+              {
+                "code": null,
+                "id": "dept_032",
+                "label": "(32) 디지털인프라부"
+              },
+              {
+                "code": null,
+                "id": "dept_033",
+                "label": "(33) 지급결제운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_034",
+                "label": "(34) ICT개발부"
+              },
+              {
+                "code": null,
+                "id": "dept_035",
+                "label": "(35) 경영정보부"
+              },
+              {
+                "code": null,
+                "id": "dept_036",
+                "label": "(36) 정보보안센터"
+              },
+              {
+                "code": null,
+                "id": "dept_037",
+                "label": "(37) 인사부"
+              },
+              {
+                "code": null,
+                "id": "dept_038",
+                "label": "(38) 채용육성부"
+              },
+              {
+                "code": null,
+                "id": "dept_039",
+                "label": "(39) 노사협력부"
+              },
+              {
+                "code": null,
+                "id": "dept_040",
+                "label": "(40) 급여복지부"
+              },
+              {
+                "code": null,
+                "id": "dept_041",
+                "label": "(41) 총무부"
+              },
+              {
+                "code": null,
+                "id": "dept_042",
+                "label": "(42) 조달관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_043",
+                "label": "(43) 물자조달부"
+              },
+              {
+                "code": null,
+                "id": "dept_044",
+                "label": "(44) 홍보부"
+              },
+              {
+                "code": null,
+                "id": "dept_045",
+                "label": "(45) 화폐본부 관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_046",
+                "label": "(46) 화폐본부 노사협력부"
+              },
+              {
+                "code": null,
+                "id": "dept_047",
+                "label": "(47) 화폐본부 안전운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_048",
+                "label": "(48) 화폐본부 생산1처 생산관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_049",
+                "label": "(49) 화폐본부 생산1처 품질관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_050",
+                "label": "(50) 화폐본부 공무부"
+              },
+              {
+                "code": null,
+                "id": "dept_051",
+                "label": "(51) 화폐본부 동력부"
+              },
+              {
+                "code": null,
+                "id": "dept_052",
+                "label": "(52) 화폐본부 인쇄1부"
+              },
+              {
+                "code": null,
+                "id": "dept_053",
+                "label": "(53) 화폐본부 인쇄2부"
+              },
+              {
+                "code": null,
+                "id": "dept_054",
+                "label": "(54) 화폐본부 인쇄3부"
+              },
+              {
+                "code": null,
+                "id": "dept_055",
+                "label": "(55) 화폐본부 제판부"
+              },
+              {
+                "code": null,
+                "id": "dept_056",
+                "label": "(56) 화폐본부 잉크부"
+              },
+              {
+                "code": null,
+                "id": "dept_057",
+                "label": "(57) 화폐본부 검사부"
+              },
+              {
+                "code": null,
+                "id": "dept_058",
+                "label": "(58) 화폐본부 활판부"
+              },
+              {
+                "code": null,
+                "id": "dept_059",
+                "label": "(59) 화폐본부 완공부"
+              },
+              {
+                "code": null,
+                "id": "dept_060",
+                "label": "(60) 화폐본부 생산2처 생산관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_061",
+                "label": "(61) 화폐본부 압인제품부"
+              },
+              {
+                "code": null,
+                "id": "dept_062",
+                "label": "(62) 화폐본부 금형훈장부"
+              },
+              {
+                "code": null,
+                "id": "dept_063",
+                "label": "(63) 제지본부 관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_064",
+                "label": "(64) 제지본부 안전운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_065",
+                "label": "(65) 제지본부 생산관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_066",
+                "label": "(66) 제지본부 품질관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_067",
+                "label": "(67) 제지본부 공무동력부"
+              },
+              {
+                "code": null,
+                "id": "dept_068",
+                "label": "(68) 제지본부 지료부"
+              },
+              {
+                "code": null,
+                "id": "dept_069",
+                "label": "(69) 제지본부 제지부"
+              },
+              {
+                "code": null,
+                "id": "dept_070",
+                "label": "(70) 제지본부 검사부"
+              },
+              {
+                "code": null,
+                "id": "dept_071",
+                "label": "(71) ID본부 관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_072",
+                "label": "(72) ID본부 안전운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_073",
+                "label": "(73) ID본부 생산관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_074",
+                "label": "(74) ID본부 품질관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_075",
+                "label": "(75) ID본부 카드제조부"
+              },
+              {
+                "code": null,
+                "id": "dept_076",
+                "label": "(76) ID본부 여권제조부"
+              },
+              {
+                "code": null,
+                "id": "dept_077",
+                "label": "(77) ID본부 발급부"
+              },
+              {
+                "code": null,
+                "id": "dept_078",
+                "label": "(78) ID본부 검사부"
+              },
+              {
+                "code": null,
+                "id": "dept_079",
+                "label": "(79) 연구관리실"
+              },
+              {
+                "code": null,
+                "id": "dept_080",
+                "label": "(80) 위조방지기반기술팀"
+              },
+              {
+                "code": null,
+                "id": "dept_081",
+                "label": "(81) 융복합보안기술팀"
+              },
+              {
+                "code": null,
+                "id": "dept_082",
+                "label": "(82) ICT보안기술팀"
+              },
+              {
+                "code": null,
+                "id": "dept_083",
+                "label": "(83) ICT솔루션팀"
+              },
+              {
+                "code": null,
+                "id": "dept_084",
+                "label": "(84) 보안디자인팀"
+              },
+              {
+                "code": null,
+                "id": "dept_085",
+                "label": "(85) 디자인책임"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": null,
+              "maxSelections": null,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": null,
+              "allowOther": false,
+              "shuffleOptions": false,
+              "searchable": true
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      },
+      {
+        "id": "cooperation_selection",
+        "title": "부(팀) 협력도",
+        "description": "다음은 부(팀) 협력도에 관한 조사입니다.",
+        "questions": [
+          {
+            "id": "cooperation_01",
+            "type": "multiple",
+            "title": "1. 업무협조가 우수한 부(팀) 선정",
+            "description": "최소 1개 ~ 최대 5개까지 선택할 수 있고, 1, 2번 문항은 자기 자신이 속한 부(팀)은 선택할 수 없습니다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "options": [
+              {
+                "code": "1",
+                "id": "dept_001",
+                "label": "(1) 전략기획부"
+              },
+              {
+                "code": "2",
+                "id": "dept_002",
+                "label": "(2) 경영관리부"
+              },
+              {
+                "code": "3",
+                "id": "dept_003",
+                "label": "(3) 조직법규부"
+              },
+              {
+                "code": "4",
+                "id": "dept_004",
+                "label": "(4) 성과관리부"
+              },
+              {
+                "code": "5",
+                "id": "dept_005",
+                "label": "(5) 재무부"
+              },
+              {
+                "code": "6",
+                "id": "dept_006",
+                "label": "(6) ESG경영부"
+              },
+              {
+                "code": "7",
+                "id": "dept_007",
+                "label": "(7) 출자관리부"
+              },
+              {
+                "code": "8",
+                "id": "dept_008",
+                "label": "(8) 안전관리부"
+              },
+              {
+                "code": "9",
+                "id": "dept_009",
+                "label": "(9) 재난비상부"
+              },
+              {
+                "code": "10",
+                "id": "dept_010",
+                "label": "(10) 사업총괄부"
+              },
+              {
+                "code": "11",
+                "id": "dept_011",
+                "label": "(11) 화폐사업부"
+              },
+              {
+                "code": "12",
+                "id": "dept_012",
+                "label": "(12) 공공사업부"
+              },
+              {
+                "code": "13",
+                "id": "dept_013",
+                "label": "(13) 예술형주화사업부"
+              },
+              {
+                "code": "14",
+                "id": "dept_014",
+                "label": "(14) 기술관리부"
+              },
+              {
+                "code": "15",
+                "id": "dept_015",
+                "label": "(15) 품질경영부"
+              },
+              {
+                "code": "16",
+                "id": "dept_016",
+                "label": "(16) 기술지원부"
+              },
+              {
+                "code": "17",
+                "id": "dept_017",
+                "label": "(17) 영업부"
+              },
+              {
+                "code": "18",
+                "id": "dept_018",
+                "label": "(18) 귀금속사업·인증부"
+              },
+              {
+                "code": "19",
+                "id": "dept_019",
+                "label": "(19) 문화콘텐츠사업부"
+              },
+              {
+                "code": "20",
+                "id": "dept_020",
+                "label": "(20) 신사업기획부"
+              },
+              {
+                "code": "21",
+                "id": "dept_021",
+                "label": "(21) 신사업부"
+              },
+              {
+                "code": "22",
+                "id": "dept_022",
+                "label": "(22) 해외사업부"
+              },
+              {
+                "code": "23",
+                "id": "dept_023",
+                "label": "(23) ICT기획부"
+              },
+              {
+                "code": "24",
+                "id": "dept_024",
+                "label": "(24) AI추진기획부"
+              },
+              {
+                "code": "25",
+                "id": "dept_025",
+                "label": "(25) 지급결제사업부"
+              },
+              {
+                "code": "26",
+                "id": "dept_026",
+                "label": "(26) 결제플랫폼사업부"
+              },
+              {
+                "code": "27",
+                "id": "dept_027",
+                "label": "(27) 결제플랫폼운영부"
+              },
+              {
+                "code": "28",
+                "id": "dept_028",
+                "label": "(28) 추경사업지원팀"
+              },
+              {
+                "code": "29",
+                "id": "dept_029",
+                "label": "(29) 디지털신분증사업부"
+              },
+              {
+                "code": "30",
+                "id": "dept_030",
+                "label": "(30) 디지털신분증운영부"
+              },
+              {
+                "code": "31",
+                "id": "dept_031",
+                "label": "(31) 디지털신분증개발부"
+              },
+              {
+                "code": "32",
+                "id": "dept_032",
+                "label": "(32) 디지털인프라부"
+              },
+              {
+                "code": "33",
+                "id": "dept_033",
+                "label": "(33) 지급결제운영부"
+              },
+              {
+                "code": "34",
+                "id": "dept_034",
+                "label": "(34) ICT개발부"
+              },
+              {
+                "code": "35",
+                "id": "dept_035",
+                "label": "(35) 경영정보부"
+              },
+              {
+                "code": "36",
+                "id": "dept_036",
+                "label": "(36) 정보보안센터"
+              },
+              {
+                "code": "37",
+                "id": "dept_037",
+                "label": "(37) 인사부"
+              },
+              {
+                "code": "38",
+                "id": "dept_038",
+                "label": "(38) 채용육성부"
+              },
+              {
+                "code": "39",
+                "id": "dept_039",
+                "label": "(39) 노사협력부"
+              },
+              {
+                "code": "40",
+                "id": "dept_040",
+                "label": "(40) 급여복지부"
+              },
+              {
+                "code": "41",
+                "id": "dept_041",
+                "label": "(41) 총무부"
+              },
+              {
+                "code": "42",
+                "id": "dept_042",
+                "label": "(42) 조달관리부"
+              },
+              {
+                "code": "43",
+                "id": "dept_043",
+                "label": "(43) 물자조달부"
+              },
+              {
+                "code": "44",
+                "id": "dept_044",
+                "label": "(44) 홍보부"
+              },
+              {
+                "code": "45",
+                "id": "dept_045",
+                "label": "(45) 화폐본부 관리부"
+              },
+              {
+                "code": "46",
+                "id": "dept_046",
+                "label": "(46) 화폐본부 노사협력부"
+              },
+              {
+                "code": "47",
+                "id": "dept_047",
+                "label": "(47) 화폐본부 안전운영부"
+              },
+              {
+                "code": "48",
+                "id": "dept_048",
+                "label": "(48) 화폐본부 생산1처 생산관리부"
+              },
+              {
+                "code": "49",
+                "id": "dept_049",
+                "label": "(49) 화폐본부 생산1처 품질관리부"
+              },
+              {
+                "code": "50",
+                "id": "dept_050",
+                "label": "(50) 화폐본부 공무부"
+              },
+              {
+                "code": "51",
+                "id": "dept_051",
+                "label": "(51) 화폐본부 동력부"
+              },
+              {
+                "code": "52",
+                "id": "dept_052",
+                "label": "(52) 화폐본부 인쇄1부"
+              },
+              {
+                "code": "53",
+                "id": "dept_053",
+                "label": "(53) 화폐본부 인쇄2부"
+              },
+              {
+                "code": "54",
+                "id": "dept_054",
+                "label": "(54) 화폐본부 인쇄3부"
+              },
+              {
+                "code": "55",
+                "id": "dept_055",
+                "label": "(55) 화폐본부 제판부"
+              },
+              {
+                "code": "56",
+                "id": "dept_056",
+                "label": "(56) 화폐본부 잉크부"
+              },
+              {
+                "code": "57",
+                "id": "dept_057",
+                "label": "(57) 화폐본부 검사부"
+              },
+              {
+                "code": "58",
+                "id": "dept_058",
+                "label": "(58) 화폐본부 활판부"
+              },
+              {
+                "code": "59",
+                "id": "dept_059",
+                "label": "(59) 화폐본부 완공부"
+              },
+              {
+                "code": "60",
+                "id": "dept_060",
+                "label": "(60) 화폐본부 생산2처 생산관리부"
+              },
+              {
+                "code": "61",
+                "id": "dept_061",
+                "label": "(61) 화폐본부 압인제품부"
+              },
+              {
+                "code": "62",
+                "id": "dept_062",
+                "label": "(62) 화폐본부 금형훈장부"
+              },
+              {
+                "code": "63",
+                "id": "dept_063",
+                "label": "(63) 제지본부 관리부"
+              },
+              {
+                "code": "64",
+                "id": "dept_064",
+                "label": "(64) 제지본부 안전운영부"
+              },
+              {
+                "code": "65",
+                "id": "dept_065",
+                "label": "(65) 제지본부 생산관리부"
+              },
+              {
+                "code": "66",
+                "id": "dept_066",
+                "label": "(66) 제지본부 품질관리부"
+              },
+              {
+                "code": "67",
+                "id": "dept_067",
+                "label": "(67) 제지본부 공무동력부"
+              },
+              {
+                "code": "68",
+                "id": "dept_068",
+                "label": "(68) 제지본부 지료부"
+              },
+              {
+                "code": "69",
+                "id": "dept_069",
+                "label": "(69) 제지본부 제지부"
+              },
+              {
+                "code": "70",
+                "id": "dept_070",
+                "label": "(70) 제지본부 검사부"
+              },
+              {
+                "code": "71",
+                "id": "dept_071",
+                "label": "(71) ID본부 관리부"
+              },
+              {
+                "code": "72",
+                "id": "dept_072",
+                "label": "(72) ID본부 안전운영부"
+              },
+              {
+                "code": "73",
+                "id": "dept_073",
+                "label": "(73) ID본부 생산관리부"
+              },
+              {
+                "code": "74",
+                "id": "dept_074",
+                "label": "(74) ID본부 품질관리부"
+              },
+              {
+                "code": "75",
+                "id": "dept_075",
+                "label": "(75) ID본부 카드제조부"
+              },
+              {
+                "code": "76",
+                "id": "dept_076",
+                "label": "(76) ID본부 여권제조부"
+              },
+              {
+                "code": "77",
+                "id": "dept_077",
+                "label": "(77) ID본부 발급부"
+              },
+              {
+                "code": "78",
+                "id": "dept_078",
+                "label": "(78) ID본부 검사부"
+              },
+              {
+                "code": "79",
+                "id": "dept_079",
+                "label": "(79) 연구관리실"
+              },
+              {
+                "code": "80",
+                "id": "dept_080",
+                "label": "(80) 위조방지기반기술팀"
+              },
+              {
+                "code": "81",
+                "id": "dept_081",
+                "label": "(81) 융복합보안기술팀"
+              },
+              {
+                "code": "82",
+                "id": "dept_082",
+                "label": "(82) ICT보안기술팀"
+              },
+              {
+                "code": "83",
+                "id": "dept_083",
+                "label": "(83) ICT솔루션팀"
+              },
+              {
+                "code": "84",
+                "id": "dept_084",
+                "label": "(84) 보안디자인팀"
+              },
+              {
+                "code": "85",
+                "id": "dept_085",
+                "label": "(85) 디자인책임"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": 1,
+              "maxSelections": 5,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "codes",
+              "contentHtml": "",
+              "excludeSelectedFrom": "profile_department",
+              "allowOther": false,
+              "shuffleOptions": false,
+              "searchable": true
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          },
+          {
+            "id": "cooperation_02",
+            "type": "multiple",
+            "title": "2. 업무협조가 미흡한 부(부) 선정",
+            "description": "최소 1개 ~ 최대 5개까지 선택할 수 있고, 1, 2번 문항은 자기 자신이 속한 부(팀)은 선택할 수 없습니다.",
+            "required": true,
+            "behavior": "fixed_required",
+            "activationCondition": null,
+            "validation": {},
+            "options": [
+              {
+                "code": null,
+                "id": "dept_001",
+                "label": "(1) 전략기획부"
+              },
+              {
+                "code": null,
+                "id": "dept_002",
+                "label": "(2) 경영관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_003",
+                "label": "(3) 조직법규부"
+              },
+              {
+                "code": null,
+                "id": "dept_004",
+                "label": "(4) 성과관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_005",
+                "label": "(5) 재무부"
+              },
+              {
+                "code": null,
+                "id": "dept_006",
+                "label": "(6) ESG경영부"
+              },
+              {
+                "code": null,
+                "id": "dept_007",
+                "label": "(7) 출자관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_008",
+                "label": "(8) 안전관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_009",
+                "label": "(9) 재난비상부"
+              },
+              {
+                "code": null,
+                "id": "dept_010",
+                "label": "(10) 사업총괄부"
+              },
+              {
+                "code": null,
+                "id": "dept_011",
+                "label": "(11) 화폐사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_012",
+                "label": "(12) 공공사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_013",
+                "label": "(13) 예술형주화사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_014",
+                "label": "(14) 기술관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_015",
+                "label": "(15) 품질경영부"
+              },
+              {
+                "code": null,
+                "id": "dept_016",
+                "label": "(16) 기술지원부"
+              },
+              {
+                "code": null,
+                "id": "dept_017",
+                "label": "(17) 영업부"
+              },
+              {
+                "code": null,
+                "id": "dept_018",
+                "label": "(18) 귀금속사업·인증부"
+              },
+              {
+                "code": null,
+                "id": "dept_019",
+                "label": "(19) 문화콘텐츠사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_020",
+                "label": "(20) 신사업기획부"
+              },
+              {
+                "code": null,
+                "id": "dept_021",
+                "label": "(21) 신사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_022",
+                "label": "(22) 해외사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_023",
+                "label": "(23) ICT기획부"
+              },
+              {
+                "code": null,
+                "id": "dept_024",
+                "label": "(24) AI추진기획부"
+              },
+              {
+                "code": null,
+                "id": "dept_025",
+                "label": "(25) 지급결제사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_026",
+                "label": "(26) 결제플랫폼사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_027",
+                "label": "(27) 결제플랫폼운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_028",
+                "label": "(28) 추경사업지원팀"
+              },
+              {
+                "code": null,
+                "id": "dept_029",
+                "label": "(29) 디지털신분증사업부"
+              },
+              {
+                "code": null,
+                "id": "dept_030",
+                "label": "(30) 디지털신분증운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_031",
+                "label": "(31) 디지털신분증개발부"
+              },
+              {
+                "code": null,
+                "id": "dept_032",
+                "label": "(32) 디지털인프라부"
+              },
+              {
+                "code": null,
+                "id": "dept_033",
+                "label": "(33) 지급결제운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_034",
+                "label": "(34) ICT개발부"
+              },
+              {
+                "code": null,
+                "id": "dept_035",
+                "label": "(35) 경영정보부"
+              },
+              {
+                "code": null,
+                "id": "dept_036",
+                "label": "(36) 정보보안센터"
+              },
+              {
+                "code": null,
+                "id": "dept_037",
+                "label": "(37) 인사부"
+              },
+              {
+                "code": null,
+                "id": "dept_038",
+                "label": "(38) 채용육성부"
+              },
+              {
+                "code": null,
+                "id": "dept_039",
+                "label": "(39) 노사협력부"
+              },
+              {
+                "code": null,
+                "id": "dept_040",
+                "label": "(40) 급여복지부"
+              },
+              {
+                "code": null,
+                "id": "dept_041",
+                "label": "(41) 총무부"
+              },
+              {
+                "code": null,
+                "id": "dept_042",
+                "label": "(42) 조달관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_043",
+                "label": "(43) 물자조달부"
+              },
+              {
+                "code": null,
+                "id": "dept_044",
+                "label": "(44) 홍보부"
+              },
+              {
+                "code": null,
+                "id": "dept_045",
+                "label": "(45) 화폐본부 관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_046",
+                "label": "(46) 화폐본부 노사협력부"
+              },
+              {
+                "code": null,
+                "id": "dept_047",
+                "label": "(47) 화폐본부 안전운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_048",
+                "label": "(48) 화폐본부 생산1처 생산관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_049",
+                "label": "(49) 화폐본부 생산1처 품질관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_050",
+                "label": "(50) 화폐본부 공무부"
+              },
+              {
+                "code": null,
+                "id": "dept_051",
+                "label": "(51) 화폐본부 동력부"
+              },
+              {
+                "code": null,
+                "id": "dept_052",
+                "label": "(52) 화폐본부 인쇄1부"
+              },
+              {
+                "code": null,
+                "id": "dept_053",
+                "label": "(53) 화폐본부 인쇄2부"
+              },
+              {
+                "code": null,
+                "id": "dept_054",
+                "label": "(54) 화폐본부 인쇄3부"
+              },
+              {
+                "code": null,
+                "id": "dept_055",
+                "label": "(55) 화폐본부 제판부"
+              },
+              {
+                "code": null,
+                "id": "dept_056",
+                "label": "(56) 화폐본부 잉크부"
+              },
+              {
+                "code": null,
+                "id": "dept_057",
+                "label": "(57) 화폐본부 검사부"
+              },
+              {
+                "code": null,
+                "id": "dept_058",
+                "label": "(58) 화폐본부 활판부"
+              },
+              {
+                "code": null,
+                "id": "dept_059",
+                "label": "(59) 화폐본부 완공부"
+              },
+              {
+                "code": null,
+                "id": "dept_060",
+                "label": "(60) 화폐본부 생산2처 생산관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_061",
+                "label": "(61) 화폐본부 압인제품부"
+              },
+              {
+                "code": null,
+                "id": "dept_062",
+                "label": "(62) 화폐본부 금형훈장부"
+              },
+              {
+                "code": null,
+                "id": "dept_063",
+                "label": "(63) 제지본부 관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_064",
+                "label": "(64) 제지본부 안전운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_065",
+                "label": "(65) 제지본부 생산관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_066",
+                "label": "(66) 제지본부 품질관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_067",
+                "label": "(67) 제지본부 공무동력부"
+              },
+              {
+                "code": null,
+                "id": "dept_068",
+                "label": "(68) 제지본부 지료부"
+              },
+              {
+                "code": null,
+                "id": "dept_069",
+                "label": "(69) 제지본부 제지부"
+              },
+              {
+                "code": null,
+                "id": "dept_070",
+                "label": "(70) 제지본부 검사부"
+              },
+              {
+                "code": null,
+                "id": "dept_071",
+                "label": "(71) ID본부 관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_072",
+                "label": "(72) ID본부 안전운영부"
+              },
+              {
+                "code": null,
+                "id": "dept_073",
+                "label": "(73) ID본부 생산관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_074",
+                "label": "(74) ID본부 품질관리부"
+              },
+              {
+                "code": null,
+                "id": "dept_075",
+                "label": "(75) ID본부 카드제조부"
+              },
+              {
+                "code": null,
+                "id": "dept_076",
+                "label": "(76) ID본부 여권제조부"
+              },
+              {
+                "code": null,
+                "id": "dept_077",
+                "label": "(77) ID본부 발급부"
+              },
+              {
+                "code": null,
+                "id": "dept_078",
+                "label": "(78) ID본부 검사부"
+              },
+              {
+                "code": null,
+                "id": "dept_079",
+                "label": "(79) 연구관리실"
+              },
+              {
+                "code": null,
+                "id": "dept_080",
+                "label": "(80) 위조방지기반기술팀"
+              },
+              {
+                "code": null,
+                "id": "dept_081",
+                "label": "(81) 융복합보안기술팀"
+              },
+              {
+                "code": null,
+                "id": "dept_082",
+                "label": "(82) ICT보안기술팀"
+              },
+              {
+                "code": null,
+                "id": "dept_083",
+                "label": "(83) ICT솔루션팀"
+              },
+              {
+                "code": null,
+                "id": "dept_084",
+                "label": "(84) 보안디자인팀"
+              },
+              {
+                "code": null,
+                "id": "dept_085",
+                "label": "(85) 디자인책임"
+              }
+            ],
+            "settings": {
+              "minValue": null,
+              "maxValue": null,
+              "step": null,
+              "minLabel": null,
+              "maxLabel": null,
+              "unit": null,
+              "rows": [],
+              "columns": [],
+              "minSelections": 1,
+              "maxSelections": 5,
+              "scaleOrder": "ascending",
+              "scaleDisplay": "buttons",
+              "choiceInput": "options",
+              "contentHtml": "",
+              "excludeSelectedFrom": "profile_department",
+              "allowOther": false,
+              "shuffleOptions": false,
+              "searchable": true,
+              "choiceLayout": "columns_3"
+            },
+            "min": null,
+            "max": null,
+            "minLabel": null,
+            "maxLabel": null,
+            "unit": null,
+            "rows": [],
+            "columns": []
+          }
+        ]
+      }
+    ],
+    "settings": {
+      "anonymous": true,
+      "showProgressBar": true,
+      "showQuestionNumbers": false,
+      "oneResponsePerRespondent": false,
+      "allowResponseEdit": false,
+      "presentationMode": "scroll",
+      "confirmationMessage": "응답이 정상적으로 제출되었습니다. 참여해 주셔서 감사합니다.",
+      "audienceRoutes": [
+        {
+          "code": "evaluation",
+          "label": "내부평가제도·보수체계",
+          "sectionIds": [
+            "evaluation_cover",
+            "evaluation_profile",
+            "performance_acceptance",
+            "performance_validity",
+            "performance_reliability",
+            "performance_utility",
+            "performance_satisfaction",
+            "performance_individual",
+            "pay_overview",
+            "pay_fairness",
+            "pay_job",
+            "pay_policy",
+            "pay_grade",
+            "pay_opinion"
+          ]
+        },
+        {
+          "code": "cooperation",
+          "label": "부(팀) 협력도",
+          "sectionIds": [
+            "cooperation_cover",
+            "cooperation_profile",
+            "cooperation_selection"
+          ]
+        },
+        {
+          "code": "all",
+          "label": "전체 설문 · 협력도 포함",
+          "sectionIds": [
+            "evaluation_cover",
+            "evaluation_profile",
+            "performance_acceptance",
+            "performance_validity",
+            "performance_reliability",
+            "performance_utility",
+            "performance_satisfaction",
+            "performance_individual",
+            "pay_overview",
+            "pay_fairness",
+            "pay_job",
+            "pay_policy",
+            "pay_grade",
+            "pay_opinion",
+            "cooperation_cover",
+            "cooperation_profile",
+            "cooperation_selection"
+          ]
+        }
+      ],
+      "defaultAudience": "evaluation",
+      "collectEmail": false,
+      "startsAt": null,
+      "closesAt": null
+    },
+    "theme": {
+      "code": "clean-blue",
+      "primaryColor": "#3156D3",
+      "backgroundColor": "#F4F7FB",
+      "cardColor": "#FFFFFF",
+      "fontFamily": "Pretendard",
+      "logoUrl": null
+    },
+    "skin": {
+      "primary": "#3156D3",
+      "accent": "#3156D3",
+      "surface": "#F4F7FB",
+      "card": "#FFFFFF",
+      "radius": "16px",
+      "i18n": {
+        "languages": {
+          "sourceLocale": "ko",
+          "defaultLocale": "ko",
+          "enabled": [
+            "ko"
+          ]
+        },
+        "translations": {}
+      }
+    },
+    "logicRules": [],
+    "languages": {
+      "sourceLocale": "ko",
+      "defaultLocale": "ko",
+      "enabled": [
+        "ko"
+      ]
+    },
+    "translations": {}
+  }
+}

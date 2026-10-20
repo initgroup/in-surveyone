@@ -1233,3 +1233,27 @@ SMS 발신번호 정책 미확인
 8. 실제 아우토반 연동에 필요한 미확정 정보를 최종적으로 명확하게 보고한다.
 
 **기존 기능을 최대한 보존하고, 최소 변경으로 확장 가능하고 안전한 공통 알림 구조를 구현하라.**
+
+
+
+* 관리자로그인
+
+iniadmin / init2026!
+
+* 메일, 카톡, 문자 발송
+NHN Cloud Notification Hub
+
+SOLAPI (솔라피) — 간편 연동형 : 카톡, 문자 발송
+
+
+# 서버 실행
+.\scripts\run-server.ps1
+
+# GIT 배포
+.\scripts\validate-source.ps1
+.\scripts\git-publish-main.ps1
+
+# 소스 백업
+.\scripts\validate-source.ps1
+.\scripts\backup-source.ps1 -Mode Working
+.\scripts\backup-source.ps1 -Mode Git

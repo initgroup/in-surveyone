@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.survey_audience import audience_submission, validate_audiences
+
 import hashlib
 import hmac
 import json
@@ -161,6 +163,7 @@ def submission_payload_hash(
             "surveyId": survey.survey_id,
             "surveyVersion": survey.version,
             "respondentKey": request.respondent_key,
+            "audienceCode": request.audience_code,
             "answers": [
                 answer.model_dump(by_alias=True, mode="json") for answer in answers
             ],
@@ -1256,6 +1259,7 @@ class MemoryStore:
                 survey.settings, survey.project_profile
             )
             self._validate_translation_targets(survey.sections, survey.translations)
+            validate_audiences(survey.sections, survey.settings)
             self._surveys[survey.id] = survey
             self._responses[survey.id] = []
             if template is not None:
@@ -1867,6 +1871,7 @@ class MemoryStore:
                 if "sections" in updates and request.sections is not None
                 else survey.sections
             )
+            validate_audiences(proposed_sections, request.settings or survey.settings)
             proposed_translations = (
                 request.translations
                 if "translations" in updates and request.translations is not None
@@ -2123,7 +2128,8 @@ class MemoryStore:
                     "This survey requires a stable respondentKey to enforce one response."
                 )
 
-            normalized_answers = self._validate_answers(public_survey, request.answers)
+            selected_survey, request = audience_submission(public_survey, request)
+            normalized_answers = self._validate_answers(selected_survey, request.answers)
             try:
                 validated_key = validate_idempotency_key(idempotency_key)
             except ValueError as exc:
@@ -2648,7 +2654,14 @@ class MemoryStore:
             for question in section.questions
             if question.type != QuestionType.TEXT
         }
-        answer_map = {answer.question_id: answer for answer in answers}
+        answer_map = {
+            answer.question_id: AnswerItem(
+                question_id=answer.question_id,
+                value=self._normalize_answer_value(questions[answer.question_id], answer.value)
+                if answer.question_id in questions and questions[answer.question_id].settings.choice_input == "codes"
+                else answer.value,
+            ) for answer in answers
+        }
         unknown = sorted(set(answer_map) - set(questions))
         if unknown:
             raise DomainValidationError(
@@ -2690,11 +2703,29 @@ class MemoryStore:
                     continue
                 value = self._normalize_answer_value(question, value)
                 self._validate_answer_value(question, value)
+                excluded_source = question.settings.exclude_selected_from
+                if excluded_source and excluded_source in effective_answers:
+                    excluded_value = effective_answers[excluded_source].value
+                    excluded = excluded_value if isinstance(excluded_value, list) else [excluded_value]
+                    selected = value if isinstance(value, list) else [value]
+                    if any(item in excluded for item in selected):
+                        raise DomainValidationError(
+                            f"A preceding answer excludes a selected option: {question.title}"
+                        )
                 normalized.append(AnswerItem(question_id=question.id, value=value))
         return normalized
 
     @staticmethod
     def _normalize_answer_value(question: Question, value: Any) -> Any:
+        if question.settings.choice_input == "codes" and isinstance(value, list):
+            codes = {option.code: option.id for option in question.options}
+            option_ids = {option.id for option in question.options}
+            return [
+                item if isinstance(item, str) and item in option_ids else codes.get(str(int(str(item))), item)
+                if isinstance(item, (str, int)) and not isinstance(item, bool)
+                and re.fullmatch(r"[0-9]{1,6}", str(item)) else item
+                for item in value
+            ]
         if question.type in {QuestionType.NUMBER, QuestionType.SCALE, QuestionType.SLIDER}:
             if isinstance(value, str):
                 try:
@@ -2740,6 +2771,11 @@ class MemoryStore:
                 or len(value) != len(set(value))
             ):
                 raise DomainValidationError(f"복수 선택값이 올바르지 않습니다: {question.title}")
+            minimum = question.settings.min_selections
+            if minimum is not None and len(value) < minimum:
+                raise DomainValidationError(
+                    f"Select at least {minimum} options: {question.title}"
+                )
             maximum = question.settings.max_selections
             if maximum is not None and len(value) > maximum:
                 raise DomainValidationError(
@@ -2782,11 +2818,15 @@ class MemoryStore:
                         break
                     selected = column if isinstance(column, list) else [column]
                     if (
-                        any(item not in columns for item in selected)
-                        or (selection_mode != "multiple" and len(selected) > 1)
+                        not selected
+                        or any(not isinstance(item, str) or item not in columns for item in selected)
+                        or len(selected) != len(set(selected))
+                        or (selection_mode != "multiple" and len(selected) != 1)
                     ):
                         valid = False
                         break
+            if valid and question.required and set(value) != rows:
+                valid = False
             if not valid:
                 raise DomainValidationError(f"매트릭스 응답이 올바르지 않습니다: {question.title}")
             return
@@ -2841,6 +2881,9 @@ class MemoryStore:
         option_counts: Counter[str] = Counter()
         numeric_values: list[float] = []
         text_samples: list[str] = []
+        row_counts: dict[str, dict[str, int]] = {}
+        row_labels: dict[str, str] = {}
+        column_labels: dict[str, str] = {}
         if question.type in {QuestionType.SINGLE_CHOICE, QuestionType.DROPDOWN}:
             option_counts.update(str(value) for value in values)
         elif question.type == QuestionType.MULTIPLE_CHOICE:
@@ -2859,6 +2902,23 @@ class MemoryStore:
             ]
         elif question.type in {QuestionType.SHORT_TEXT, QuestionType.LONG_TEXT}:
             text_samples = [str(value)[:500] for value in values if isinstance(value, str)][-20:]
+        elif question.type == QuestionType.MATRIX:
+            row_labels = {item.id: item.label for item in question.settings.rows}
+            column_labels = {item.id: item.label for item in question.settings.columns}
+            row_counts = {
+                row_id: {column_id: 0 for column_id in column_labels}
+                for row_id in row_labels
+            }
+            for value in values:
+                if not isinstance(value, dict):
+                    continue
+                for row_id, selection in value.items():
+                    if row_id not in row_counts:
+                        continue
+                    selected = selection if isinstance(selection, list) else [selection]
+                    for column_id in set(item for item in selected if isinstance(item, str)):
+                        if column_id in column_labels:
+                            row_counts[row_id][column_id] += 1
 
         labels = {option.id: option.label for option in question.options}
         labeled_counts = {
@@ -2873,6 +2933,9 @@ class MemoryStore:
             option_counts=labeled_counts,
             average=(sum(numeric_values) / len(numeric_values) if numeric_values else None),
             text_samples=text_samples,
+            row_counts=row_counts,
+            row_labels=row_labels,
+            column_labels=column_labels,
         )
 
 

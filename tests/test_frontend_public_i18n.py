@@ -61,7 +61,7 @@ def test_public_shell_markup_and_locale_resolution_are_accessible() -> None:
     assert 'timeZoneName: "short"' in PUBLIC_SCRIPT
     assert "function renderAvailabilityState()" in PUBLIC_SCRIPT
     assert 'state.survey.availabilityStatus || state.survey.availability_status || "OPEN"' in PUBLIC_SCRIPT
-    assert "if (renderAvailabilityState()) return;" in PUBLIC_SCRIPT
+    assert "if (!state.preview && renderAvailabilityState()) return;" in PUBLIC_SCRIPT
     assert 'document.querySelector(".public-progress").hidden = true;' in PUBLIC_SCRIPT
 
 

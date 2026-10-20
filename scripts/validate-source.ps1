@@ -17,11 +17,33 @@ $mainFile = Join-Path $repoRoot "main.py"
 $isApplicationScaffolded = Test-Path -LiteralPath $mainFile -PathType Leaf
 
 function Get-ProjectFiles {
-    $excludedDirectoryPattern = '[\\/](\.git|venv|\.venv|node_modules|__pycache__|\.pytest_cache|\.mypy_cache|\.ruff_cache|\.uv-cache|runtime|uploads|exports|artifacts|htmlcov|dist|build|\.render-static|\.tmp|tmp)[\\/]'
-    return @(
-        Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Force |
-            Where-Object { $_.FullName -notmatch $excludedDirectoryPattern }
+    $excludedDirectories = @(
+        ".git", "venv", ".venv", "node_modules", "__pycache__", ".pytest_cache",
+        ".mypy_cache", ".ruff_cache", ".uv-cache", "runtime", "uploads", "exports",
+        "artifacts", "htmlcov", "dist", "build", ".render-static", ".tmp", "tmp"
     )
+    $pendingDirectories = New-Object 'System.Collections.Generic.Stack[string]'
+    $sourceFiles = New-Object 'System.Collections.Generic.List[object]'
+    $pendingDirectories.Push($repoRoot)
+    while ($pendingDirectories.Count -gt 0) {
+        $currentDirectory = $pendingDirectories.Pop()
+        # Prune excluded folders before entering them. Post-filtering a recursive
+        # listing still tries to read inaccessible caches, venvs and runtime data.
+        foreach ($item in Get-ChildItem -LiteralPath $currentDirectory -Force -ErrorAction Stop) {
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                continue
+            }
+            if ($item.PSIsContainer) {
+                if ($excludedDirectories -notcontains $item.Name) {
+                    $pendingDirectories.Push($item.FullName)
+                }
+            }
+            else {
+                $sourceFiles.Add($item)
+            }
+        }
+    }
+    return @($sourceFiles.ToArray())
 }
 
 function Resolve-Python312 {
@@ -87,18 +109,19 @@ Resolve-Python312
 
 $pythonFiles = @($projectFiles | Where-Object { $_.Extension -eq ".py" })
 if ($pythonFiles.Count -gt 0) {
+    $pythonFilePathsJson = ConvertTo-Json -InputObject @($pythonFiles | ForEach-Object { $_.FullName }) -Compress
     $pythonCompileCode = @"
+import json
+import sys
 from pathlib import Path
 
-root = Path(r'''$repoRoot''')
-excluded = {'.git', 'venv', '.venv', 'node_modules', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache'}
-files = sorted(path for path in root.rglob('*.py') if not excluded.intersection(path.relative_to(root).parts))
+files = [Path(name) for name in json.load(sys.stdin)]
 for path in files:
     source = path.read_text(encoding='utf-8')
     compile(source, str(path), 'exec')
 print(f'Python syntax OK: {len(files)} files')
 "@
-    & $pythonExecutable @pythonPrefixArguments -c $pythonCompileCode
+    $pythonFilePathsJson | & $pythonExecutable @pythonPrefixArguments -X utf8 -c $pythonCompileCode
     if ($LASTEXITCODE -ne 0) {
         throw "Python syntax validation failed."
     }
@@ -236,7 +259,10 @@ $requiredMenuFiles = @(
     "M06001.html"
 )
 if (Test-Path -LiteralPath $frontendRoot -PathType Container) {
-    $htmlFiles = @(Get-ChildItem -LiteralPath $frontendRoot -Recurse -Filter "*.html" -File)
+    $frontendPrefix = $frontendRoot + [System.IO.Path]::DirectorySeparatorChar
+    $htmlFiles = @($projectFiles | Where-Object {
+        $_.Extension -eq ".html" -and $_.FullName.StartsWith($frontendPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+    })
     $htmlNames = @($htmlFiles | ForEach-Object { $_.Name })
     $missingMenuFiles = @($requiredMenuFiles | Where-Object { $htmlNames -notcontains $_ })
     if ($isApplicationScaffolded -and $missingMenuFiles.Count -gt 0) {
@@ -396,7 +422,10 @@ foreach ($secretKey in $secretKeys) {
 Write-Host "Environment template secret check OK" -ForegroundColor Green
 
 if (-not $SkipTests -and (Test-Path -LiteralPath $testsRoot -PathType Container)) {
-    $testFiles = @(Get-ChildItem -LiteralPath $testsRoot -Recurse -Filter "test_*.py" -File)
+    $testsPrefix = $testsRoot + [System.IO.Path]::DirectorySeparatorChar
+    $testFiles = @($projectFiles | Where-Object {
+        $_.Name -like "test_*.py" -and $_.FullName.StartsWith($testsPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+    })
     if ($testFiles.Count -gt 0) {
         & $pythonExecutable @pythonPrefixArguments -c "import pytest"
         if ($LASTEXITCODE -ne 0) {
@@ -411,7 +440,7 @@ if (-not $SkipTests -and (Test-Path -LiteralPath $testsRoot -PathType Container)
             $env:SURVEYONE_DB_MODE = "memory"
             $env:DB_MODE = "memory"
             $env:SURVEYONE_ENV = "development"
-            & $pythonExecutable @pythonPrefixArguments -m pytest -q
+            & $pythonExecutable @pythonPrefixArguments -m pytest -q -p no:cacheprovider
             if ($LASTEXITCODE -ne 0) {
                 throw "Test suite failed."
             }

@@ -5,6 +5,7 @@ import math
 import re
 from datetime import date, datetime, timezone
 from enum import Enum
+from html.parser import HTMLParser
 from typing import Annotated, Any, Generic, Literal, TypeVar
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SecretStr,
+    StringConstraints,
     computed_field,
     field_serializer,
     field_validator,
@@ -28,6 +30,7 @@ PUBLIC_JSON_MAX_STRING_BYTES = 32_768
 PUBLIC_JSON_MAX_CONTAINER_ITEMS = 1_000
 CUSTOM_SOURCE_MAX_BYTES = 512 * 1024
 CUSTOM_SOURCE_TOTAL_MAX_BYTES = 1024 * 1024
+CONTENT_HTML_MAX_BYTES = 64 * 1024
 SAFE_ASSET_PREFIXES = ("/frontend/assets/", "/uploads/")
 HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 RADIUS_PATTERN = re.compile(r"^(?:0|[1-9][0-9]?)px$")
@@ -36,6 +39,65 @@ StableId = Annotated[
     str,
     Field(min_length=1, max_length=80, pattern=STABLE_ID_PATTERN),
 ]
+
+
+class _SurveyContentParser(HTMLParser):
+    """Accept presentation-only HTML without executable content or external assets."""
+
+    tags = {
+        "p", "br", "strong", "em", "u", "h2", "h3", "h4", "ul", "ol", "li",
+        "blockquote", "table", "caption", "thead", "tbody", "tfoot", "tr", "th",
+        "td", "div", "span",
+    }
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag not in self.tags:
+            raise ValueError(f"contentHtml does not allow the {tag} element.")
+        seen: set[str] = set()
+        for name, value in attrs:
+            if name in seen:
+                raise ValueError("contentHtml cannot contain duplicate attributes.")
+            seen.add(name)
+            if name in {"colspan", "rowspan"} and tag in {"th", "td"}:
+                if value is None or not re.fullmatch(r"(?:[1-9]|1[0-9]|20)", value):
+                    raise ValueError("contentHtml table spans must be between 1 and 20.")
+            elif name == "scope" and tag == "th":
+                if value not in {"row", "col", "rowgroup", "colgroup"}:
+                    raise ValueError("contentHtml table scope is invalid.")
+            else:
+                raise ValueError(f"contentHtml does not allow the {name} attribute.")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag not in self.tags:
+            raise ValueError(f"contentHtml does not allow the {tag} element.")
+
+    def handle_data(self, data: str) -> None:
+        if "<" in data:
+            raise ValueError("contentHtml must escape literal less-than characters.")
+
+    def handle_comment(self, data: str) -> None:
+        raise ValueError("contentHtml cannot contain comments.")
+
+    def handle_decl(self, decl: str) -> None:
+        raise ValueError("contentHtml cannot contain document declarations.")
+
+    def unknown_decl(self, data: str) -> None:
+        raise ValueError("contentHtml cannot contain document declarations.")
+
+    def handle_pi(self, data: str) -> None:
+        raise ValueError("contentHtml cannot contain processing instructions.")
+
+
+def _validate_content_html(value: str) -> str:
+    if len(value.encode("utf-8")) > CONTENT_HTML_MAX_BYTES:
+        raise ValueError("contentHtml must not exceed 64KB.")
+    parser = _SurveyContentParser(convert_charrefs=False)
+    try:
+        parser.feed(value)
+        parser.close()
+    except (AssertionError, ValueError) as exc:
+        raise ValueError(f"Invalid contentHtml: {exc}") from exc
+    return value
 
 
 def _validate_asset_url(value: str | None) -> str | None:
@@ -348,6 +410,7 @@ class QuestionType(str, Enum):
 
 
 class QuestionOption(ApiModel):
+    code: str | None = Field(default=None, pattern=r"^[1-9][0-9]{0,5}$")
     id: StableId = Field(default_factory=lambda: uuid4().hex[:12])
     label: str = Field(default="", max_length=500)
 
@@ -410,9 +473,21 @@ class QuestionSettings(ApiModel):
     unit: str | None = Field(default=None, max_length=30)
     rows: list[QuestionOption] = Field(default_factory=list, max_length=200)
     columns: list[QuestionOption] = Field(default_factory=list, max_length=200)
+    min_selections: int | None = Field(default=None, ge=1, le=200)
     max_selections: int | None = Field(default=None, ge=1)
+    scale_order: Literal["ascending", "descending"] = "ascending"
+    scale_display: Literal["buttons", "slider"] = "buttons"
+    choice_input: Literal["options", "codes"] = "options"
+    choice_layout: Literal["vertical", "horizontal", "columns_2", "columns_3", "columns_4"] = "vertical"
+    content_html: Annotated[str, StringConstraints(strip_whitespace=False)] = ""
+    exclude_selected_from: StableId | None = None
     allow_other: bool = False
     shuffle_options: bool = False
+
+    @field_validator("content_html")
+    @classmethod
+    def validate_content_html(cls, value: str) -> str:
+        return _validate_content_html(value)
 
     @model_validator(mode="after")
     def validate_range(self) -> "QuestionSettings":
@@ -429,6 +504,12 @@ class QuestionSettings(ApiModel):
             raise ValueError("minValue cannot be greater than maxValue.")
         if self.step is not None and self.step <= 0:
             raise ValueError("step must be greater than zero.")
+        if (
+            self.min_selections is not None
+            and self.max_selections is not None
+            and self.min_selections > self.max_selections
+        ):
+            raise ValueError("minSelections cannot be greater than maxSelections.")
         for field_name in ("rows", "columns"):
             identifiers = [item.id for item in getattr(self, field_name)]
             if len(identifiers) != len(set(identifiers)):
@@ -560,6 +641,20 @@ class Question(ApiModel):
             self.required or dynamic
         ):
             raise ValueError("안내 텍스트는 고정선택문항으로만 사용할 수 있습니다.")
+        if self.settings.content_html and self.type != QuestionType.TEXT:
+            raise ValueError("contentHtml can only be used by an informational notice.")
+        if self.settings.exclude_selected_from and self.type not in {
+            QuestionType.SINGLE_CHOICE, QuestionType.MULTIPLE_CHOICE, QuestionType.DROPDOWN,
+        }:
+            raise ValueError("excludeSelectedFrom can only be used by choice questions.")
+        if self.settings.choice_input == "codes":
+            codes = [option.code for option in self.options]
+            if self.type != QuestionType.MULTIPLE_CHOICE:
+                raise ValueError("choiceInput codes requires a multiple choice question.")
+            if not codes or None in codes or len(codes) != len(set(codes)):
+                raise ValueError("Number entry requires a unique code for every option.")
+            if not self.settings.max_selections or self.settings.max_selections > 20:
+                raise ValueError("Number entry requires maxSelections between 1 and 20.")
         identifiers = [option.id for option in self.options]
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("Question option IDs must be unique.")
@@ -623,6 +718,22 @@ def validate_question_activation_references(sections: list[SurveySection]) -> No
     ]
     index_by_id = {question.id: index for index, question in enumerate(ordered)}
     for target_index, question in enumerate(ordered):
+        excluded_source = question.settings.exclude_selected_from
+        if excluded_source:
+            source_index = index_by_id.get(excluded_source)
+            if source_index is None:
+                raise ValueError("excludeSelectedFrom references an unknown question ID.")
+            if source_index >= target_index:
+                raise ValueError("excludeSelectedFrom must reference a preceding question.")
+            source = ordered[source_index]
+            if source.type not in {
+                QuestionType.SINGLE_CHOICE, QuestionType.MULTIPLE_CHOICE, QuestionType.DROPDOWN,
+            }:
+                raise ValueError("excludeSelectedFrom must reference a choice question.")
+            if not {option.id for option in source.options}.intersection(
+                option.id for option in question.options
+            ):
+                raise ValueError("excludeSelectedFrom requires shared stable option IDs.")
         group = question.activation_condition
         if group is None:
             continue
@@ -712,9 +823,25 @@ class SurveyPresentationMode(str, Enum):
     ONE_AT_A_TIME = "one_at_a_time"
 
 
+class SurveyAudienceRoute(ApiModel):
+    code: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,39}$")
+    label: str = Field(min_length=1, max_length=100)
+    section_ids: list[StableId] = Field(min_length=1, max_length=100)
+
+    @field_validator("section_ids")
+    @classmethod
+    def unique_sections(cls, values: list[str]) -> list[str]:
+        if len(values) != len(set(values)):
+            raise ValueError("audience sectionIds must be unique.")
+        return values
+
+
 class SurveySettings(ApiModel):
+    audience_routes: list[SurveyAudienceRoute] = Field(default_factory=list, max_length=20)
+    default_audience: str | None = Field(default=None, max_length=40)
     collect_email: bool = False
     show_progress_bar: bool = True
+    show_question_numbers: bool = True
     one_response_per_respondent: bool = False
     allow_response_edit: bool = False
     confirmation_message: str = Field(
@@ -748,6 +875,11 @@ class SurveySettings(ApiModel):
 
     @model_validator(mode="after")
     def validate_period(self) -> "SurveySettings":
+        codes = [route.code for route in self.audience_routes]
+        if len(codes) != len(set(codes)):
+            raise ValueError("audience route codes must be unique.")
+        if (codes and self.default_audience not in codes) or (not codes and self.default_audience):
+            raise ValueError("defaultAudience must reference an audience route.")
         if self.starts_at and self.closes_at and self.starts_at >= self.closes_at:
             raise ValueError("startsAt must be earlier than closesAt.")
         if self.show_progress is None:
@@ -766,6 +898,17 @@ class SurveySettings(ApiModel):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Survey response dates must include a timezone offset.")
         return value.astimezone(timezone.utc)
+
+
+def validate_audience_references(sections: list[SurveySection], settings: SurveySettings | None) -> None:
+    if settings is None or not settings.audience_routes:
+        return
+    known = {section.id for section in sections}
+    for route in settings.audience_routes:
+        if not set(route.section_ids) <= known:
+            raise ValueError("audience route references an unknown section ID.")
+        selected = [section for section in sections if section.id in route.section_ids]
+        validate_question_activation_references(selected)
 
 
 class SurveyQuestionTranslation(ApiModel):
@@ -968,6 +1111,7 @@ class SurveyLocaleMixin(ApiModel):
         sections = getattr(self, "sections", None)
         if sections is not None:
             validate_translation_references(self.translations, sections)
+            validate_audience_references(sections, getattr(self, "settings", None))
         return self
 
 
@@ -1418,6 +1562,7 @@ class SurveyCreateRequest(SurveyLocaleMixin):
     def validate_activation_conditions(self) -> "SurveyCreateRequest":
         if self.sections is not None:
             validate_question_activation_references(self.sections)
+            validate_audience_references(self.sections, self.settings)
         elif self.questions is not None:
             validate_question_activation_references(
                 [SurveySection(title="설문 문항", questions=self.questions)]
@@ -1487,6 +1632,7 @@ class SurveyUpdateRequest(ApiModel):
             validate_translation_references(self.translations, self.sections)
         if self.sections is not None:
             validate_question_activation_references(self.sections)
+            validate_audience_references(self.sections, self.settings)
         elif self.questions is not None:
             validate_question_activation_references(
                 [SurveySection(title="설문 문항", questions=self.questions)]
@@ -1545,6 +1691,7 @@ class SurveyDetail(SurveySummary):
     @model_validator(mode="after")
     def validate_translation_targets(self) -> "SurveyDetail":
         validate_translation_references(self.translations, self.sections)
+        validate_audience_references(self.sections, self.settings)
         validate_question_activation_references(self.sections)
         return self
 
@@ -1593,6 +1740,7 @@ class PublicUrlRegenerationResult(ApiModel):
 
 
 class PublicSurvey(SurveyLocaleMixin):
+    audience_code: str | None = None
     survey_id: str
     slug: str
     version: int
@@ -1638,6 +1786,7 @@ class AnswerItem(ApiModel):
 
 
 class SubmitResponseRequest(ApiModel):
+    audience_code: str | None = Field(default=None, max_length=40)
     answers: list[AnswerItem] = Field(default_factory=list, max_length=1000)
     respondent_key: str | None = Field(default=None, max_length=200)
     metadata: dict[str, str] = Field(default_factory=dict)
@@ -1705,6 +1854,9 @@ class QuestionReport(ApiModel):
     type: QuestionType
     response_count: int
     option_counts: dict[str, int] = Field(default_factory=dict)
+    row_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
+    row_labels: dict[str, str] = Field(default_factory=dict)
+    column_labels: dict[str, str] = Field(default_factory=dict)
     average: float | None = None
     text_samples: list[str] = Field(default_factory=list)
 

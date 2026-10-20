@@ -9,6 +9,7 @@ from backend.models import (
     SubmitResponseRequest,
 )
 from backend.stores import public_store
+from backend.survey_audience import resolve_audience
 
 
 router = APIRouter()
@@ -18,9 +19,11 @@ router = APIRouter()
 def public_survey(
     slug: str,
     language: str | None = Query(default=None, alias="lang", max_length=20),
+    audience: str | None = Query(default=None, max_length=40),
 ) -> ApiResponse[PublicSurvey]:
     store = public_store(slug)
-    return ApiResponse(data=store.public_survey(slug, language))
+    survey = store.public_survey(slug, language)
+    return ApiResponse(data=survey.model_copy(update={"audience_code": resolve_audience(survey, audience)}))
 
 
 @router.post(

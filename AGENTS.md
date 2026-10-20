@@ -76,7 +76,14 @@
 - 기본 문항 유형은 객관식, 주관식, 복수응답, 드롭다운, 척도, 메트릭스, 텍스트, 숫자, 슬라이더, 표, 반복표입니다.
 - 각 유형은 schema, editor, public renderer, validator, response serializer와 report adapter의 계약을 함께 구현합니다.
 - 조건 분기와 validation은 안정적인 section/question/option ID를 참조하고 화면 순번을 식별자로 쓰지 않습니다.
-- rich text와 이미지 URL은 allowlist로 검증하며 사용자 실행 스크립트와 임의 CSS를 허용하지 않습니다.
+- 일반 rich text·안내 표와 이미지 URL은 allowlist로 검증합니다. `settings.contentHtml`은 실행 태그·이벤트·임의 CSS를 허용하지 않는 64KB 이하의 의미 있는 HTML입니다.
+- 사용자가 명시적으로 요청한 HTML·CSS·JavaScript 확장은 `skin.customCode`로만 저장하고 확정 버전 snapshot에 포함합니다. JavaScript와 코드 미리보기는 `allow-scripts`만 허용하는 opaque iframe에서 실행하고 부모 DOM·쿠키 접근을 허용하지 않습니다. CSS는 검증 후 공개 폼 범위로 제한합니다.
+- 사용자 함수에는 출처를 검증한 `load`, `answerChange`, `pageChange`, `beforeSubmit` 알림만 전달합니다. 이 함수가 tenant 권한, 문항 분기, 선택 제한이나 서버 제출 검증을 변경하지 않습니다.
+- 제작기 미리보기는 공개 renderer를 공유하고 초안 메시지의 부모·토큰을 검증하며 응답을 저장·제출하지 않습니다. 설계 JSON 가져오기는 현재 tenant의 일반 초안 API와 revision 검증을 사용하고 프로젝트 식별자·배포 상태·조사 기간을 보존합니다.
+- URL별 대상은 `settings.audienceRoutes/defaultAudience`와 안정적인 섹션 ID로 저장합니다. `audience` 구분자는 표시·필수 응답 범위만 결정하며 인증 근거가 아닙니다. 서버와 renderer가 같은 범위를 적용하고 임시 응답을 대상별로 분리하며 확정 버전의 대상 설정을 수정하지 않습니다.
+- 복수응답의 `settings.choiceInput=options|codes`는 같은 보기 ID·응답·보고서 계약을 사용합니다. `options[].code`는 고유한 양의 정수 표시 번호이며 ID와 구분합니다. 번호 입력은 빈값·미등록·중복·선행 응답 제외 및 선택 수를 검증하고 원자료에는 안정적인 보기 ID를 저장합니다.
+
+- 선행 문항 선택 제외와 복수응답 최소·최대 개수는 화면과 서버에서 함께 검증합니다. 원문 번호를 제목에 보존한 설문은 자동 번호 표시를 끌 수 있어야 합니다.
 - 기본 언어와 활성 언어 목록, 설문·섹션·문항·선택지 번역은 안정적인 ID를 기준으로 저장합니다. 번역 문구를 ID나 분기 기준으로 사용하지 않습니다.
 - 공개 화면 언어는 명시적 `lang`, 브라우저 언어, 설문 기본 언어 순으로 해석하고 누락 문구는 기본 언어로 fallback합니다.
 - 확정 버전에는 언어 설정과 번역 snapshot을 함께 고정하며 배포된 번역을 제자리 수정하지 않습니다.
@@ -86,6 +93,9 @@
 
 - 공개 응답 화면은 360px 모바일 우선, 한 열, 최소 44px 터치 영역과 safe-area 하단 액션을 기본으로 합니다.
 - keyboard, focus-visible, label, fieldset/legend, 오류 연결, reduced-motion과 색상 외 상태 표현을 유지합니다.
+- 객관식·복수응답의 `settings.choiceLayout`은 세로·가로·2/3/4단 표시만 결정합니다. 편집기와 공개 화면은 공통 `choice-layout.js`로 실제 가용 폭·글꼴·전체 라벨 길이를 측정하고 공간이 부족하면 세로로 전환합니다. 화면 회전·검색으로 보기 순서, 입력 DOM, 안정적인 ID나 응답값을 변경하지 않습니다.
+- 매트릭스 반응형 전환은 같은 행·열 ID와 입력 요소를 유지하며 가용 폭에 맞춰 표/카드로 표시합니다.
+- 척도 표시 방식은 `settings.scaleDisplay=buttons|slider`로 초안과 확정 버전에 저장합니다. 슬라이더 위치와 응답 값을 분리해 미조작은 미응답, 0은 유효한 숫자로 보존하고 키보드·숫자 직접 선택 수단을 제공합니다.
 - 오류 제출 후 첫 오류에 포커스를 이동하고 오류 요약과 해당 문항을 연결합니다.
 - 프로젝트 스킨은 semantic token과 검증된 로고/배경 자산만 덮고 관리자 UI와 분리합니다.
 - 저장 시 WCAG AA 대비, 허용 글꼴, 파일 유형·크기, responsive 안정성을 검증합니다.
@@ -155,6 +165,7 @@
 ```
 
 - Python 문법과 FastAPI import, API/domain 테스트를 확인합니다.
+- 검증 파일 탐색은 캐시·venv·runtime·생성물과 reparse point를 진입 전에 제외합니다. 제외한 경로를 별도 재귀 탐색하지 않으며 실제 소스 접근 오류를 숨기지 않습니다.
 - memory와 Oracle repository는 같은 contract test를 공유합니다.
 - DDL fresh install과 ALT upgrade를 함께 검증합니다.
 - JavaScript는 Node가 있을 때 `node --check`를 사용하지만 Node는 runtime 필수 조건이 아닙니다.
