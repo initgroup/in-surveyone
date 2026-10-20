@@ -53,9 +53,11 @@
             <p><span data-workspace-project-status>상태 확인 중</span><span aria-hidden="true"> · </span>프로젝트 ID <code data-workspace-project-id>-</code></p>
         </div>
         <div class="response-workspace-actions">
+            <button class="button button-small button-function" type="button" data-column-preset="all" disabled>전체 열</button>
             <button class="button button-small button-function" type="button" data-column-preset="essential" disabled>핵심 열</button>
             <button class="button button-small button-layer" type="button" data-toggle-columns disabled>열 설정</button>
-            <button class="button button-small button-batch button-important" type="button" data-export-responses disabled>CSV 내보내기</button>
+            <button class="button button-small button-batch button-important" type="button" data-export-xlsx disabled>엑셀 다운로드</button>
+            <button class="button button-small button-batch" type="button" data-export-responses disabled>CSV 내보내기</button>
             <button class="button workspace-list-button" type="button" data-response-project-back><span class="workspace-list-button-icon" aria-hidden="true">←</span><span>프로젝트 목록</span></button>
         </div>
     </section>

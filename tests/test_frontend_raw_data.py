@@ -68,8 +68,8 @@ def test_frontend_assets_are_versioned_and_not_cached_in_local_or_test_mode() ->
         encoding="utf-8"
     )
 
-    assert 'assetVersion: "20261020.5"' in config
-    assert index.count("?v=20261020.5") >= 7
+    assert 'assetVersion: "20261020.11"' in config
+    assert index.count("?v=20261020.11") >= 7
     assert "function versionedAsset(src)" in app_script
     assert 'url.searchParams.set("v", runtimeAssetVersion)' in app_script
     assert "link.href = absoluteHref" in app_script
@@ -185,4 +185,87 @@ assert.deepEqual(descriptors.map((item) => item.value(response)), [1, 1, 1, 1]);
         capture_output=True,
         check=False,
     )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_default_columns_refresh_and_xlsx_export_include_all_filtered_pages() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is not installed.")
+    script_path = str(PROJECT_ROOT / "frontend" / "js" / "M04001.js")
+    harness = r'''
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
+const context = { console, AbortController, setTimeout, CustomEvent: class { constructor(name, init) { this.type = name; this.detail = init.detail; } },
+    Common: { questionsOf: (survey) => survey.questions || [], formatNumber: String }, SURVEYONE_CONFIG: { apiBaseUrl: "" } };
+context.window = context;
+vm.runInNewContext(fs.readFileSync(process.argv[2], "utf8"), context);
+(async () => {
+    const page = Object.create(context.Pages.M04001);
+    const values = { "[data-response-search]": "", "[data-response-state]": "all", "[data-response-from]": "", "[data-response-to]": "" };
+    const button = { disabled: false, setAttribute() {}, removeAttribute() {} };
+    page.root = { querySelector: (selector) => selector === "[data-export-xlsx]" ? button : ({ value: values[selector] || "", textContent: "" }) };
+    const questions = Array.from({ length: 45 }, (_, index) => ({ id: `q-${index}`, type: "number", title: `Question ${index}` }));
+    const survey = { title: "Synthetic", sections: [{ id: "section", title: "Section", questions }] };
+    const records = Array.from({ length: 250 }, (_, index) => ({ id: `response-${index}`, submittedAt: "2026-10-20T00:00:00Z", answers: [{ questionId: "q-0", value: index }] }));
+    const offsets = [];
+    page.context = { toast() {}, api: { get: async (url) => {
+        if (!url.includes("/responses?")) return survey;
+        const offset = Number(new URL(url, "http://fixture.test").searchParams.get("offset"));
+        offsets.push(offset);
+        return records.slice(offset, offset + 200);
+    } } };
+    page.selectedSurveyId = "synthetic";
+    page.responseLoadToken = 0;
+    page.questionEntries = [];
+    page.visibleColumns = new Set();
+    for (const method of ["renderLoading", "setEnabled", "renderMetrics", "renderTable"]) page[method] = () => {};
+    assert.equal(await page.loadResponses("synthetic"), true);
+    assert.equal(page.visibleEntries().length, 45);
+    assert.deepEqual(offsets, [0, 200]);
+    questions.push({ id: "q-45", type: "number", title: "New question" });
+    await page.loadResponses("synthetic", { preserveView: true });
+    assert.equal(page.visibleColumns.size, 46);
+    page.visibleColumns = new Set(["q-44"]);
+    await page.loadResponses("synthetic", { preserveView: true });
+    assert.equal(page.visibleEntries().map((entry) => entry.id).join(), "q-44");
+    page.visibleColumns = new Set();
+    await page.loadResponses("synthetic", { preserveView: true });
+    assert.equal(page.visibleColumns.size, 0);
+    await page.loadResponses("synthetic");
+    assert.equal(page.visibleColumns.size, 46);
+    page.page = 3;
+    page.pageSize = 50;
+    page.exportController = new AbortController();
+    let request, clicks = 0, revoked = 0;
+    context.fetch = async (url, options) => {
+        request = { url, ...options, body: JSON.parse(options.body) };
+        return { ok: true, headers: { get: () => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }, blob: async () => ({ size: 123 }) };
+    };
+    context.URL = { createObjectURL: () => "blob:synthetic", revokeObjectURL: () => revoked++ };
+    context.document = { createElement: () => ({ click() { clicks++; }, remove() {} }), body: { append() {} } };
+    await page.exportXlsx("visible");
+    assert.equal(request.method, "POST");
+    assert.equal(request.credentials, "same-origin");
+    assert.equal(request.body.responseIds.length, 250); // All pages, even while page 3 is open.
+    assert.equal(request.body.questionIds.length, 46);
+    assert.equal(request.signal, page.exportController.signal);
+    assert.equal(clicks, 1);
+    values["[data-response-search]"] = "response-249";
+    page.visibleColumns = new Set(["q-44"]);
+    await page.exportXlsx("visible");
+    assert.deepEqual(request.body.responseIds, ["response-249"]);
+    assert.deepEqual(request.body.questionIds, ["q-44"]);
+    let sessionInvalid = false;
+    context.dispatchEvent = (event) => { sessionInvalid = event.type === "surveyone:session-invalid"; };
+    context.fetch = async () => ({ ok: false, status: 401, json: async () => ({ detail: "Session expired" }) });
+    await page.exportXlsx("raw");
+    assert.equal(sessionInvalid, true);
+    assert.equal(button.disabled, false);
+    assert.equal(clicks, 2);
+    setTimeout(() => assert.equal(revoked, 2), 0);
+})().catch((error) => { console.error(error); process.exitCode = 1; });
+'''
+    completed = subprocess.run([node, "-", script_path], input=harness, text=True, encoding="utf-8", capture_output=True, check=False)
     assert completed.returncode == 0, completed.stderr or completed.stdout

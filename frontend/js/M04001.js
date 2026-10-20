@@ -34,6 +34,8 @@
             this.visibleColumns = new Set();
             this.selectedSurveyId = "";
             this.responseLoadToken = 0;
+            this.exporting = false;
+            this.exportController = new AbortController();
             this.page = 1;
             this.pageSize = 50;
             this.projectFilter = "all";
@@ -82,6 +84,7 @@
                 const preset = event.target.closest("[data-column-preset]");
                 if (preset) this.applyColumnPreset(preset.dataset.columnPreset);
                 if (event.target.closest("[data-export-responses]")) this.showExportOptions();
+                if (event.target.closest("[data-export-xlsx]")) this.showExportOptions("xlsx");
                 if (event.target.closest("[data-response-query]")) this.applyResponseFilters();
                 const refresh = event.target.closest("[data-response-refresh]");
                 if (refresh) void this.refreshResponses(refresh);
@@ -222,6 +225,8 @@
             if (!id) { this.responses = []; this.questionEntries = []; this.questions = []; this.setEnabled(false); this.renderEmpty(); return false; }
             const requestToken = ++this.responseLoadToken;
             const previousColumns = preserveView ? new Set(this.visibleColumns) : new Set();
+            const previouslyAll = preserveView && this.questionEntries.length > 0
+                && this.questionEntries.every((entry) => previousColumns.has(entry.id));
             this.renderLoading();
             try {
                 const [surveyPayload, responsePayload] = await Promise.all([
@@ -237,7 +242,7 @@
                 if (!Array.isArray(this.responses)) throw new Error("응답 목록 형식이 올바르지 않습니다.");
                 const availableIds = new Set(this.questionEntries.map((entry) => entry.id));
                 const retainedColumns = [...previousColumns].filter((id) => availableIds.has(id));
-                this.visibleColumns = new Set(retainedColumns.length ? retainedColumns : this.essentialEntries().map((entry) => entry.id));
+                this.visibleColumns = new Set(!preserveView || previouslyAll ? availableIds : retainedColumns);
                 if (!preserveView) this.page = 1;
                 this.root.querySelector("[data-response-title]").textContent = survey.title || "제목 없는 설문";
                 this.setEnabled(true);
@@ -266,7 +271,7 @@
             return responses;
         },
         setEnabled(enabled) {
-            this.root.querySelectorAll("[data-response-search], [data-response-state], [data-response-from], [data-response-to], [data-response-query], [data-response-reset], [data-export-responses], [data-toggle-columns], [data-column-preset]").forEach((element) => { element.disabled = !enabled; });
+            this.root.querySelectorAll("[data-response-search], [data-response-state], [data-response-from], [data-response-to], [data-response-query], [data-response-reset], [data-export-responses], [data-export-xlsx], [data-toggle-columns], [data-column-preset]").forEach((element) => { element.disabled = !enabled || (element.matches("[data-export-xlsx]") && this.exporting); });
         },
         renderMetrics(summary = {}) {
             const total = summary.total ?? this.responses.length;
@@ -590,20 +595,69 @@
             Common.downloadCsv(`${safeFilename(this.currentSurvey?.title)}_responses_${suffix}.csv`, rows);
             this.context.toast(`${Common.formatNumber(items.length)}건의 CSV를 만들었습니다.`, "success");
         },
-        showExportOptions() {
-            const dialog = this.context.openModal(`<div class="export-dialog"><p class="eyebrow">CSV EXPORT</p><h2>내보내기 형식 선택</h2><p>현재 검색·상태·기간 필터가 세 형식에 동일하게 적용됩니다.</p><div class="export-options"><button type="button" data-export-mode="visible"><strong>현재 보기형</strong><span>화면에서 선택한 문항만 내보냅니다. 복수응답은 보기명으로 한 셀에 정리합니다.</span></button><button type="button" data-export-mode="analysis"><strong>분석형 · 권장</strong><span>전체 문항을 내보내고 복수응답과 복수 매트릭스를 보기별 1/0 열로 분리합니다.</span></button><button type="button" data-export-mode="raw"><strong>원본형</strong><span>전체 문항의 제출값을 보존합니다. 표·매트릭스 값은 JSON으로 제공합니다.</span></button></div><p class="export-count">대상 응답 ${Common.formatNumber(this.filtered().length)}건 · 전체 문항 ${Common.formatNumber(this.questionEntries.length)}개</p></div>`, { label: "CSV 내보내기 형식 선택" });
+        async exportXlsx(mode) {
+            if (!this.selectedSurveyId || this.exporting) return;
+            const surveyId = this.selectedSurveyId;
+            const items = this.filtered();
+            const entries = mode === "visible" ? this.visibleEntries() : this.questionEntries;
+            const filename = `${safeFilename(this.currentSurvey?.title)}_responses_${mode}.xlsx`;
+            const button = this.root.querySelector("[data-export-xlsx]");
+            this.exporting = true;
+            button.disabled = true;
+            button.setAttribute("aria-busy", "true");
+            try {
+                const response = await fetch(`${window.SURVEYONE_CONFIG.apiBaseUrl}/api/surveys/${encodeURIComponent(surveyId)}/responses/export`, {
+                    method: "POST", credentials: "same-origin",
+                    headers: { "Content-Type": "application/json", Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+                    body: JSON.stringify({ mode, questionIds: entries.map((entry) => entry.id), responseIds: items.map((item) => String(item.id || item.responseId)) }),
+                    signal: this.exportController.signal
+                });
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => null);
+                    const detail = payload?.detail ?? payload?.message;
+                    const message = typeof detail === "string" ? detail : `엑셀 파일을 만들지 못했습니다. (${response.status})`;
+                    if (response.status === 401) window.dispatchEvent(new CustomEvent("surveyone:session-invalid", { detail: { endpoint: "/api/surveys/:id/responses/export", message } }));
+                    throw new Error(message);
+                }
+                const blob = await response.blob();
+                if (!blob.size || !(response.headers.get("content-type") || "").includes("spreadsheetml")) throw new Error("엑셀 파일 형식을 확인할 수 없습니다.");
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement("a");
+                anchor.href = url;
+                anchor.download = filename;
+                anchor.hidden = true;
+                document.body.append(anchor);
+                anchor.click();
+                anchor.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 0);
+                this.context.toast(`${Common.formatNumber(items.length)}건의 엑셀 다운로드를 시작했습니다.`, "success");
+            } catch (error) {
+                if (error.name !== "AbortError") this.context.toast(error.message, "error");
+            } finally {
+                this.exporting = false;
+                if (this.root) {
+                    button.removeAttribute("aria-busy");
+                    button.disabled = !this.currentSurvey;
+                }
+            }
+        },
+        showExportOptions(format = "csv") {
+            const label = format === "xlsx" ? "엑셀 (.xlsx)" : "CSV";
+            const dialog = this.context.openModal(`<div class="export-dialog"><p class="eyebrow">${label} EXPORT</p><h2>내보내기 형식 선택</h2><p>현재 검색·상태·기간 필터에 해당하는 전체 페이지의 응답을 내려받습니다. 세 형식에 동일하게 적용됩니다.</p><div class="export-options"><button type="button" data-export-mode="visible"><strong>현재 보기형</strong><span>화면에서 선택한 문항만 내보냅니다. 복수응답은 보기명으로 한 셀에 정리합니다.</span></button><button type="button" data-export-mode="analysis"><strong>분석형 · 권장</strong><span>전체 문항을 내보내고 복수응답과 복수 매트릭스를 보기별 1/0 열로 분리합니다.</span></button><button type="button" data-export-mode="raw"><strong>원본형</strong><span>전체 문항의 제출값을 보존합니다. 표·매트릭스 값은 JSON으로 제공합니다.</span></button></div><p class="export-count">대상 응답 ${Common.formatNumber(this.filtered().length)}건 · 전체 문항 ${Common.formatNumber(this.questionEntries.length)}개</p></div>`, { label: `${label} 내보내기 형식 선택` });
             dialog.querySelector(".export-options").addEventListener("click", (event) => {
                 const button = event.target.closest("[data-export-mode]");
                 if (!button) return;
                 const mode = button.dataset.exportMode;
                 dialog.close();
-                this.exportCsv(mode);
+                if (format === "xlsx") void this.exportXlsx(mode);
+                else this.exportCsv(mode);
             });
         },
         showPrivacyGuide() {
             this.context.openModal(`<p class="eyebrow">DATA GOVERNANCE</p><h2>응답 데이터 처리 원칙</h2><ol class="help-steps"><li><strong>최소 권한</strong><span>회원사와 프로젝트 권한을 서버에서 매 요청마다 확인합니다.</span></li><li><strong>최소 표시</strong><span>화면에는 업무에 필요한 문항만 선택해 표시합니다.</span></li><li><strong>분석 목적 구분</strong><span>분석형은 복수응답을 1/0 열로 변환하고 원본형은 제출 구조를 보존합니다.</span></li><li><strong>보유기간</strong><span>만료 정책에 따라 익명화하거나 안전하게 파기합니다.</span></li></ol>`);
         },
         destroy() {
+            this.exportController?.abort();
             this.onInput?.cancel?.();
             this.root?.removeEventListener("change", this.onChange);
             this.root?.removeEventListener("input", this.onInput);

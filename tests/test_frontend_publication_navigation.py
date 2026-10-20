@@ -65,11 +65,19 @@ assert.deepEqual(calls,[["publish","/api/surveys/survey-a/publish",{}],["load",2
 def test_project_url_deep_link_does_not_require_item_on_current_list_page() -> None:
     run_node(r"""
 const page=Object.create(Pages.M02001),calls=[];
-window.SurveyOneApp={queryParams:()=>new URLSearchParams("urlId=survey-off-page")};
+location.href="https://survey.example/app?theme=light#/M02001?urlId=survey-off-page&selectFor=skin";
+const entryState={entry:"preserve"};let replacements=0;
+global.history={state:entryState,replaceState(state,title,url){assert.equal(state,entryState);location.href=url;replacements++;}};
+window.SurveyOneApp={queryParams:()=>new URLSearchParams(new URL(location.href).hash.split("?")[1]||"")};
 page.bind=()=>{}; page.load=async()=>calls.push("load");
 page.openPublicLinks=async id=>calls.push(id);
 await page.init({root:{},user:{role:"member"}});
 assert.deepEqual(calls,["load","survey-off-page"]);
+assert.equal(location.href,"https://survey.example/app?theme=light#/M02001?selectFor=skin");
+assert.equal(replacements,1);
+await page.init({root:{},user:{role:"member"}});
+assert.deepEqual(calls,["load","survey-off-page","load"]);
+assert.equal(replacements,1);
 """)
 
 
@@ -89,4 +97,16 @@ page.context.confirmMessage=async()=>{confirmed++;return true;};
 await page.openProjectUrls("survey-a");
 assert.equal(calls.length,2);assert.equal(confirmed,2);assert.equal(draft.messagesByLanguage.ko.emailBody,"Keep draft");
 assert(!fs.readFileSync("frontend/js/M03001.js","utf8").includes("/public-url/regenerate"));
+""")
+
+
+def test_cancelled_project_route_does_not_consume_a_new_route_open_request() -> None:
+    run_node(r"""
+const page=Object.create(Pages.M02001);
+location.href="https://survey.example/#/M02001?urlId=other";
+global.history={replaceState(){throw new Error("A cancelled route must not change the URL");}};
+window.SurveyOneApp={queryParams:()=>new URLSearchParams("urlId=other")};
+page.bind=()=>{};page.load=async()=>{};page.openPublicLinks=async()=>{throw new Error("Cancelled route must not open a dialog");};
+await page.init({root:{},user:{role:"member"},isCurrentRoute:()=>false});
+assert.equal(location.href,"https://survey.example/#/M02001?urlId=other");
 """)

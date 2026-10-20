@@ -170,9 +170,9 @@
     .response-project-grid.is-list .response-project-stats { margin: 0 17px 15px; }
     .response-project-grid.is-list .response-project-card-footer { display: flex; border-top: 1px solid #e7ebf1; border-left: 0; }
     .response-workspace-header { grid-template-columns: 1fr; padding: 19px; }
-    .response-workspace-actions { grid-column: auto; justify-content: stretch; }
-    .response-workspace-actions .button:not(.workspace-list-button) { flex: 1; }
-    .response-workspace-actions .workspace-list-button { flex: 0 0 auto; margin-left: auto; }
+    .response-workspace-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-column: auto; justify-content: stretch; }
+    .response-workspace-actions .button { min-height: 44px; width: 100%; white-space: nowrap; }
+    .response-workspace-actions .workspace-list-button { margin-left: 0; }
     .response-filter-bar { display: flex; align-items: stretch; flex-direction: column; }
     .response-filter-bar .search-field { grid-column: auto; }
     .response-filter-actions { justify-content: flex-end; }

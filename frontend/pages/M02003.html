@@ -86,7 +86,7 @@
                         <label class="setting-row"><span><strong>익명 응답</strong><small>이름과 로그인 정보를 자동 수집하지 않습니다.</small></span><input type="checkbox" data-setting="anonymous" checked></label>
                         <label class="setting-row"><span><strong>한 사람당 1회 응답</strong><small>대상자 토큰 또는 인증 기준으로 중복 제출을 제한합니다.</small></span><input type="checkbox" data-setting="oneResponse"></label>
                         <label class="setting-row"><span><strong>진행률 표시</strong><small>모바일 응답 화면 상단에 완료 정도를 표시합니다.</small></span><input type="checkbox" data-setting="showProgress" checked></label>
-                        <label class="setting-row"><span><strong>자동 문항 번호 표시</strong><small>원문 제목에 번호가 있으면 끄고 원문 번호를 그대로 사용하세요.</small></span><input type="checkbox" data-setting="showQuestionNumbers" checked></label>
+                        <label class="setting-row"><span><strong>자동 문항 번호 표시</strong><small>켜면 섹션을 넘어 연속 번호를 표시하고 제목의 원문 번호는 중복 표시하지 않습니다. 끄면 원문 번호를 그대로 사용합니다.</small></span><input type="checkbox" data-setting="showQuestionNumbers" checked></label>
                         <label class="form-field">응답 UI 방식<select data-setting="presentationMode"><option value="scroll">전체 문항 스크롤</option><option value="one_at_a_time">한 화면에 한 문항</option></select><small>편집 중 언제든 바꿀 수 있으며 다음 저장·확정 버전에 반영됩니다.</small></label>
                         <label class="setting-row"><span><strong>응답 수정 허용</strong><small>제출 후 수정 기능은 후속 API 연동 예정입니다.</small></span><input type="checkbox" data-setting="allowEdit" disabled></label>
                         <label class="form-field">완료 메시지<textarea data-setting="confirmationMessage">응답해 주셔서 감사합니다. 소중한 의견은 더 나은 서비스를 만드는 데 활용하겠습니다.</textarea></label>
@@ -126,6 +126,7 @@
                         <div data-condition-list></div>
                         <button class="button button-small button-function" type="button" data-add-condition>조건 추가</button>
                     </section>
+                    <label class="setting-row compact"><span><strong>자동 번호에서 제외</strong><small>직급·소속 확인처럼 번호를 붙이지 않을 문항에 사용합니다. 안내문은 항상 제외합니다.</small></span><input type="checkbox" data-prop-exclude-numbering></label>
                     <label class="setting-row compact"><span><strong>문항 설명 표시</strong></span><input type="checkbox" data-prop-description-enabled></label>
                     <label class="form-field" data-prop-description-field hidden>문항 설명<textarea rows="3" data-prop-description placeholder="응답 기준이나 도움말"></textarea></label>
                     <label class="form-field" data-prop-number-field hidden>단위<input type="text" data-prop-unit placeholder="예: 원, 회, 명"></label>

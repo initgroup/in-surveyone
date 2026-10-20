@@ -23,6 +23,7 @@ from backend.models import (
     SurveyPage,
     SurveyReport,
     SurveyResponseView,
+    ResponseWorkbookRequest,
     SurveyStatus,
     SurveySummary,
     SurveyTemplateApplyRequest,
@@ -32,6 +33,7 @@ from backend.models import (
 from backend.stores import SurveyStore
 from backend.publication_links import public_links_view
 from backend.qr_code import create_qr_svg
+from backend.response_export import render_response_workbook
 from backend.report_export import (
     ExportFormat,
     export_filename,
@@ -222,6 +224,20 @@ def list_responses(
     store: SurveyStore = Depends(current_store),
 ) -> ApiResponse[list[SurveyResponseView]]:
     return ApiResponse(data=store.responses(user, survey_id, offset=offset, limit=limit))
+
+
+@router.post("/{survey_id}/responses/export", response_class=Response)
+def export_response_workbook(
+    survey_id: str,
+    request: ResponseWorkbookRequest,
+    user: UserRecord = Depends(current_user),
+    store: SurveyStore = Depends(current_store),
+) -> Response:
+    content, filename = render_response_workbook(store, user, survey_id, request)
+    return Response(content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={
+        "Content-Disposition": f"attachment; filename=responses.xlsx; filename*=UTF-8''{quote(filename)}",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+    })
 
 
 @router.get("/{survey_id}/report", response_model=ApiResponse[SurveyReport])

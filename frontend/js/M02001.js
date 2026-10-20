@@ -57,7 +57,15 @@
             this.resumeFlow = params.get("flow") === "new";
             if (params.get("create") === "1") this.openCreateForm();
             else if (params.get("editId")) await this.openEditForm(params.get("editId"));
-            else if (params.get("urlId")) await this.openPublicLinks(params.get("urlId"));
+            else if (params.get("urlId")) {
+                if (context.isCurrentRoute?.() === false) return;
+                const surveyId = params.get("urlId");
+                params.delete("urlId");
+                const query = params.toString();
+                // This is a one-time open request, not a persistent page mode.
+                history.replaceState(history.state, "", `${location.href.split("#", 1)[0]}#/M02001${query ? `?${query}` : ""}`);
+                await this.openPublicLinks(surveyId);
+            }
         },
         bind() {
             this.onClick = async (event) => {

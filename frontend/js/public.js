@@ -216,6 +216,7 @@
         dom.form.addEventListener("input", onInput);
         dom.form.addEventListener("change", onInput);
         dom.form.addEventListener("click", onClick);
+        dom.toastStack.addEventListener("click", onClick);
         dom.form.addEventListener("pointerup", (event) => {
             if (event.target.matches("[data-slider]")) onInput(event);
         });
@@ -548,6 +549,7 @@
         document.querySelector("[data-public-mode]").textContent = state.survey.settings?.anonymous === false ? text("identified") : text("anonymous");
         document.querySelector("[data-public-notice]").hidden = true;
 
+        state.questionNumbers = window.SurveyQuestionNumbering.numbers(state.sections);
         let questionIndex = 0;
         dom.list.innerHTML = state.sections.map((section, sectionIndex) => {
             const result = sectionMarkup(section, sectionIndex, questionIndex);
@@ -707,12 +709,13 @@
         const titleId = `question-title-${token}`;
         const helpId = `question-help-${token}`;
         const errorId = `question-error-${token}`;
-        const title = localizedQuestionField(question, "title");
+        const title = window.SurveyQuestionNumbering.title(question, state.survey.settings, localizedQuestionField(question, "title"));
         const help = localizedQuestionField(question, "description");
         const describedBy = `${help ? `${helpId} ` : ""}${errorId}`;
         const behavior = question.behavior || (question.required ? "fixed_required" : "fixed_optional");
-        const numbered = state.survey.settings?.showQuestionNumbers !== false;
-        return `<section id="question-${token}" class="public-question-card" data-question-id="${Common.escapeHtml(question.id)}" data-question-number="${index + 1}" data-question-behavior="${Common.escapeHtml(behavior)}" tabindex="-1" aria-labelledby="${titleId}"><div class="question-number"><span>${Common.escapeHtml(text("questionLabel").toUpperCase())}${numbered ? ` ${String(index + 1).padStart(2, "0")}` : ""}</span><span>${Common.escapeHtml(typeLabel(question.type))}</span></div><h2 id="${titleId}">${numbered ? `${index + 1}. ` : ""}${Common.escapeHtml(title)} ${question.required ? `<span class="required-mark" aria-label="${Common.escapeHtml(text("required"))}">*</span>` : ""}</h2>${help ? `<p id="${helpId}" class="question-help">${Common.escapeHtml(help)}</p>` : ""}<div class="public-answer">${answerMarkup(question, { titleId, describedBy })}</div><p id="${errorId}" class="question-error" role="alert" aria-live="polite" hidden></p></section>`;
+        const numbered = state.survey.settings?.showQuestionNumbers !== false && !window.SurveyQuestionNumbering.excluded(question);
+        const number = state.questionNumbers?.has(String(question.id)) ? state.questionNumbers.get(String(question.id)) : index + 1;
+        return `<section id="question-${token}" class="public-question-card" data-question-id="${Common.escapeHtml(question.id)}" data-question-number="${numbered ? number : ""}" data-question-behavior="${Common.escapeHtml(behavior)}" tabindex="-1" aria-labelledby="${titleId}"><div class="question-number"><span>${Common.escapeHtml(text("questionLabel").toUpperCase())}${numbered ? ` ${String(number).padStart(2, "0")}` : ""}</span><span>${Common.escapeHtml(typeLabel(question.type))}</span></div><h2 id="${titleId}">${numbered ? `${number}. ` : ""}${Common.escapeHtml(title)} ${question.required ? `<span class="required-mark" aria-label="${Common.escapeHtml(text("required"))}">*</span>` : ""}</h2>${help ? `<p id="${helpId}" class="question-help">${Common.escapeHtml(help)}</p>` : ""}<div class="public-answer">${answerMarkup(question, { titleId, describedBy })}</div><p id="${errorId}" class="question-error" role="alert" aria-live="polite" hidden></p></section>`;
     }
 
     function typeLabel(type) {
@@ -757,12 +760,12 @@
 
 
     const RATING_COPY = {
-        ko: { empty: "미응답", direct: "점수 직접 선택", clear: "선택 지우기", hint: "슬라이더를 움직이거나 점수를 직접 선택해 주세요." },
-        en: { empty: "Not answered", direct: "Choose a score", clear: "Clear selection", hint: "Move the slider or choose a score directly." },
-        ja: { empty: "未回答", direct: "点数を選択", clear: "選択をクリア", hint: "スライダーを動かすか、点数を直接選んでください。" },
-        zh: { empty: "未作答", direct: "直接选择分数", clear: "清除选择", hint: "拖动滑块或直接选择分数。" },
-        vi: { empty: "Chưa trả lời", direct: "Chọn điểm", clear: "Xóa lựa chọn", hint: "Di chuyển thanh trượt hoặc chọn điểm trực tiếp." },
-        fil: { empty: "Walang sagot", direct: "Pumili ng puntos", clear: "Alisin ang pinili", hint: "Igalaw ang slider o direktang pumili ng puntos." }
+        ko: { selected: "선택한 점수", empty: "미응답", direct: "점수 직접 선택", clear: "선택 지우기", hint: "선 위의 동그라미를 누르거나 손잡이를 움직여 점수를 선택해 주세요." },
+        en: { selected: "Selected score", empty: "Not answered", direct: "Choose a score", clear: "Clear selection", hint: "Tap a circle on the line or drag the handle to choose a score." },
+        ja: { selected: "選択した点数", empty: "未回答", direct: "点数を選択", clear: "選択をクリア", hint: "線上の丸を押すか、つまみを動かして点数を選んでください。" },
+        zh: { selected: "所选分数", empty: "未作答", direct: "直接选择分数", clear: "清除选择", hint: "点击线上的圆点或拖动滑块选择分数。" },
+        vi: { selected: "Điểm đã chọn", empty: "Chưa trả lời", direct: "Chọn điểm", clear: "Xóa lựa chọn", hint: "Chạm vào vòng tròn trên thanh hoặc kéo nút để chọn điểm." },
+        fil: { selected: "Napiling puntos", empty: "Walang sagot", direct: "Pumili ng puntos", clear: "Alisin ang pinili", hint: "Pindutin ang bilog sa linya o i-drag ang hawakan upang pumili ng puntos." }
     };
 
     function ratingCopy() { return RATING_COPY[uiLocale()] || RATING_COPY.ko; }
@@ -775,6 +778,12 @@
         const descending = question.settings?.scaleOrder === "descending";
         const values = discrete ? Array.from({length: maximum - minimum + 1}, (_, i) => minimum + i) : [minimum, maximum];
         if (descending) values.reverse();
+        const intervals = Math.floor((maximum - minimum) / step + 1e-9);
+        const stopCount = Math.min(intervals + 1, 11);
+        const stops = Array.from({ length: stopCount }, (_, i) => Number((minimum + Math.round(i * intervals / Math.max(1, stopCount - 1)) * step).toFixed(8)));
+        if (descending) stops.reverse();
+        const position = value => `${Number(((descending ? maximum - value : value - minimum) / (maximum - minimum || 1) * 100).toFixed(6))}%`;
+        const ticks = discrete ? stops : values;
         const copy = ratingCopy(), token = `rating-${domToken(question.id, 0)}`;
         const escape = Common.escapeHtml;
         const directAria = aria.replace(/aria-labelledby="([^"]*)"/, (_, ids) => `aria-labelledby="${ids} ${token}-label"`);
@@ -782,7 +791,7 @@
         const control = discrete
             ? `<select name="${escape(name)}" data-rating-input ${directAria}><option value="">${escape(copy.empty)}</option>${values.map(value => `<option value="${value}">${value}${value === minimum && question.minLabel ? ` · ${escape(localizedQuestionField(question, "minLabel"))}` : value === maximum && question.maxLabel ? ` · ${escape(localizedQuestionField(question, "maxLabel"))}` : ""}</option>`).join("")}</select>`
             : `<input type="number" name="${escape(name)}" min="${minimum}" max="${maximum}" step="${step}" inputmode="decimal" placeholder="${minimum}–${maximum}" data-rating-input ${directAria}>`;
-        return `<div class="slider-answer is-unanswered" data-rating><div class="scale-labels"><span id="${token}-start">${escape(localizedQuestionField(question, descending ? "maxLabel" : "minLabel"))}</span><span id="${token}-end">${escape(localizedQuestionField(question, descending ? "minLabel" : "maxLabel"))}</span></div><output class="slider-value" data-slider-value aria-live="polite">${escape(copy.empty)}</output><div class="rating-track"><input type="range" min="${minimum}" max="${maximum}" step="${step}" value="${minimum}" dir="${descending ? "rtl" : "ltr"}" data-slider ${rangeAria} aria-valuetext="${escape(copy.empty)}"><div class="rating-ticks" aria-hidden="true">${values.map(value => `<span>${value}</span>`).join("")}</div></div><div class="rating-controls"><label><span id="${token}-label">${escape(copy.direct)}</span>${control}</label><button type="button" data-rating-clear disabled>${escape(copy.clear)}</button></div><p id="${token}-hint" class="rating-hint">${escape(copy.hint)}</p></div>`;
+        return `<div class="slider-answer is-unanswered" data-rating><div class="rating-track"><div class="scale-labels rating-endpoints"><span id="${token}-start"><b>${descending ? maximum : minimum}</b><span>${escape(localizedQuestionField(question, descending ? "maxLabel" : "minLabel"))}</span></span><span id="${token}-end"><b>${descending ? minimum : maximum}</b><span>${escape(localizedQuestionField(question, descending ? "minLabel" : "maxLabel"))}</span></span></div><div class="rating-rail"><input type="range" min="${minimum}" max="${maximum}" step="${step}" value="${minimum}" dir="${descending ? "rtl" : "ltr"}" data-slider ${rangeAria} aria-valuetext="${escape(copy.empty)}"><div class="rating-stops" aria-hidden="true">${stops.map(value => `<span class="rating-stop" data-rating-stop="${value}" style="--rating-position:${position(value)}"></span>`).join("")}</div></div><div class="rating-ticks" aria-hidden="true">${ticks.map(value => `<span style="--rating-position:${position(value)}">${value}</span>`).join("")}</div></div><div class="rating-selection"><span>${escape(copy.selected)}</span><output class="slider-value" data-slider-value aria-live="polite">${escape(copy.empty)}</output></div><div class="rating-controls"><label><span id="${token}-label">${escape(copy.direct)}</span>${control}</label><button type="button" data-rating-clear disabled>${escape(copy.clear)}</button></div><p id="${token}-hint" class="rating-hint">${escape(copy.hint)}</p></div>`;
     }
 
     function updateRating(card) {
@@ -797,10 +806,14 @@
         else range.value = range.min;
         range.setAttribute("aria-valuetext", valueText);
         const output = group.querySelector("[data-slider-value]");
-        if (output.textContent !== valueText) output.textContent = valueText;
+        const scoreText = answered && current.type === "scale"
+            ? `${input.value}${localizedQuestionField(current, "unit")} / ${range.max}${localizedQuestionField(current, "unit")}${endpoint ? ` · ${endpoint}` : ""}`
+            : valueText;
+        if (output.textContent !== scoreText) output.textContent = scoreText;
         group.querySelector("[data-rating-clear]").disabled = !answered;
         group.classList.toggle("is-unanswered", !answered);
-        group.querySelectorAll(".rating-ticks span").forEach(tick => tick.classList.toggle("is-selected", answered && tick.textContent === input.value));
+        group.querySelectorAll(".rating-ticks span").forEach(tick => tick.classList.toggle("is-selected", answered && Number(tick.textContent) === Number(input.value)));
+        group.querySelectorAll("[data-rating-stop]").forEach(stop => stop.classList.toggle("is-selected", answered && Number(stop.dataset.ratingStop) === Number(input.value)));
     }
 
     function choiceSearchMarkup(question) {
@@ -952,6 +965,13 @@
     }
 
     function onClick(event) {
+        const errorJump = event.target.closest("[data-public-error-jump]");
+        if (errorJump) {
+            event.preventDefault();
+            const card = [...dom.list.querySelectorAll("[data-question-id]")].find(item => item.dataset.questionId === errorJump.dataset.publicErrorJump);
+            if (focusQuestion(card)) clearValidationToasts();
+            return;
+        }
         // An opaque preview has no allow-forms permission: validate through an
         // explicit button action without triggering the browser form algorithm.
         if (state.preview && event.target.closest(".public-submit")) return submit(event);
@@ -1154,6 +1174,12 @@
         return String(value ?? "").trim() !== "";
     }
 
+    function displayQuestionLabel(card) {
+        const current = question(card.dataset.questionId);
+        const title = window.SurveyQuestionNumbering.title(current, state.survey.settings, localizedQuestionField(current, "title")) || text("questionFallback");
+        return card.dataset.questionNumber ? text("questionLink", { number: card.dataset.questionNumber, title }) : title;
+    }
+
     function validate() {
         collectAnswers();
         applyLogic();
@@ -1179,24 +1205,51 @@
             }
             if (visible && !message && currentQuestion.required && currentQuestion.type.startsWith("matrix_") && (currentQuestion.rows || []).some((row, index) => !hasValue(answer?.[axisItemId(currentQuestion, "rows", index)]))) message = "모든 항목에 응답해 주세요.";
             setQuestionError(card, message);
-            if (message) errors.push({ number: card.dataset.questionNumber, title: localizedQuestionField(currentQuestion, "title"), message, card });
+            if (message) errors.push({ label: displayQuestionLabel(card), message, card });
             if (!visible) errorElement.hidden = true;
         });
         renderValidationSummary();
         if (errors.length) {
-            errors.slice(0, 5).forEach((error) => showQuestionToast(
-                `${text("questionLink", { number: error.number, title: error.title })} · ${error.message}`
-            ));
-            const first = errors[0].card;
-            if (presentationMode() === "one_at_a_time") {
-                const cards = activeQuestionCards();
-                state.activeQuestionIndex = Math.max(0, cards.indexOf(first));
-                updatePresentation();
-            }
-            first.scrollIntoView({ behavior: "smooth", block: "center" });
-            (first.querySelector("input,select,textarea,button") || first).focus({ preventScroll: true });
+            clearValidationToasts();
+            const first = errors[0];
+            showQuestionToast(`${first.label} · ${first.message}`, first.card, errors.slice(1));
+            focusQuestion(first.card);
         }
         return !errors.length;
+    }
+
+    function focusQuestion(card) {
+        if (!isCardActive(card)) return false;
+        if (presentationMode() === "one_at_a_time") {
+            state.activeQuestionIndex = Math.max(0, activeQuestionCards().indexOf(card));
+            updatePresentation();
+        }
+        const controls = [...card.querySelectorAll("input,select,textarea,button")].filter(control =>
+            !control.disabled && control.type !== "hidden" && !control.closest("[hidden]") && control.getClientRects().length
+        );
+        const missingRow = [...card.querySelectorAll("[data-matrix-row-id]")].find(row =>
+            !row.querySelector("input:checked") && row.querySelector('input[type="radio"],input[type="checkbox"]')
+        );
+        const target = controls.find(control => missingRow?.contains(control)) || controls[0] || card;
+        target.focus({ preventScroll: true });
+        // Start alignment keeps the heading visible even for very tall option lists.
+        card.scrollIntoView({ behavior: "instant", block: "start" });
+        const bounds = target.getBoundingClientRect?.();
+        if (bounds) {
+            const headerBottom = document.querySelector(".public-header")?.getBoundingClientRect().bottom || 0;
+            const footerTop = dom.form?.querySelector(".public-submit-row")?.getBoundingClientRect().top || innerHeight;
+            if (bounds.top < headerBottom + 12 || bounds.bottom > Math.min(innerHeight, footerTop) - 12) {
+                target.scrollIntoView({ behavior: "instant", block: "center" });
+            }
+        }
+        return true;
+    }
+
+    function clearValidationToasts() {
+        dom.toastStack?.querySelectorAll("[data-public-validation-toast]").forEach(item => {
+            clearTimeout(item.dismissTimer);
+            item.remove();
+        });
     }
 
     function setQuestionError(card, message) {
@@ -1212,18 +1265,21 @@
     }
 
     function clearQuestionError(card) {
-        if (card?.classList.contains("has-error")) setQuestionError(card, "");
+        if (card?.classList.contains("has-error")) {
+            setQuestionError(card, "");
+            clearValidationToasts();
+        }
     }
 
     function renderValidationSummary() {
         const errors = [...dom.list.querySelectorAll("[data-question-id].has-error")].map((card) => ({
             card,
-            number: card.dataset.questionNumber,
-            title: localizedQuestionField(question(card.dataset.questionId), "title") || text("questionFallback")
+            label: displayQuestionLabel(card)
         }));
         dom.summary.querySelector("strong").textContent = text("validationTitle");
-        dom.summary.querySelector("ul").innerHTML = errors.map((error) => `<li><a href="#${error.card.id}">${Common.escapeHtml(text("questionLink", { number: error.number, title: error.title }))}</a></li>`).join("");
+        dom.summary.querySelector("ul").innerHTML = errors.map((error) => `<li><a href="#${Common.escapeHtml(error.card.id)}" data-public-error-jump="${Common.escapeHtml(error.card.dataset.questionId)}">${Common.escapeHtml(error.label)}</a></li>`).join("");
         dom.summary.hidden = !errors.length;
+        if (!errors.length) clearValidationToasts();
     }
 
     function presentationMode() {
@@ -1291,8 +1347,10 @@
             const currentQuestion = question(current.dataset.questionId);
             if (currentQuestion?.required && !hasValue(state.answers[currentQuestion.id])) {
                 setQuestionError(current, text("requiredError"));
-                showQuestionToast(text("requiredToast", { number: current.dataset.questionNumber }));
-                (current.querySelector("input,select,textarea,button") || current).focus();
+                clearValidationToasts();
+                showQuestionToast(`${displayQuestionLabel(current)} · ${text("requiredError")}`, current);
+                renderValidationSummary();
+                focusQuestion(current);
                 return;
             }
         }
@@ -1303,11 +1361,27 @@
         target.focus({ preventScroll: true });
     }
 
-    function showQuestionToast(message) {
+    const ERROR_NAV_COPY = {
+        ko: { jump: "문항으로 이동", more: "다른 오류 문항 {count}개 보기" },
+        en: { jump: "Go to question", more: "Show {count} other questions" },
+        ja: { jump: "質問へ移動", more: "ほかの質問を表示（{count}件）" },
+        zh: { jump: "转到题目", more: "查看其他 {count} 道题目" },
+        vi: { jump: "Đến câu hỏi", more: "Xem {count} câu hỏi khác" },
+        fil: { jump: "Pumunta sa tanong", more: "Ipakita ang {count} iba pang tanong" }
+    };
+
+    function showQuestionToast(message, card = null, others = []) {
         const item = document.createElement("div");
         item.className = "public-toast";
         item.setAttribute("role", "alert");
-        item.innerHTML = `<span>${Common.escapeHtml(message)}</span><span class="public-toast-actions"><button type="button" data-public-toast-copy title="메시지 복사" aria-label="메시지 내용 복사">${Common.icon("copy", 16)}</button><button type="button" data-public-toast-close title="닫기" aria-label="메시지 닫기">×</button></span>`;
+        const escape = Common.escapeHtml;
+        const copy = ERROR_NAV_COPY[uiLocale()] || ERROR_NAV_COPY.ko;
+        const jumpButton = (target, label) => `<button class="public-toast-target" type="button" data-public-error-jump="${escape(target.dataset.questionId)}">${escape(label)}<small>${escape(copy.jump)} →</small></button>`;
+        if (card) item.dataset.publicValidationToast = "true";
+        const content = card
+            ? `<div>${jumpButton(card, message)}${others.length ? `<details class="public-toast-details"><summary>${escape(copy.more.replace("{count}", others.length))}</summary><ul>${others.map(error => `<li>${jumpButton(error.card, `${error.label} · ${error.message}`)}</li>`).join("")}</ul></details>` : ""}</div>`
+            : `<span>${escape(message)}</span>`;
+        item.innerHTML = `${content}<span class="public-toast-actions"><button type="button" data-public-toast-copy title="메시지 복사" aria-label="메시지 내용 복사">${Common.icon("copy", 16)}</button><button type="button" data-public-toast-close title="닫기" aria-label="메시지 닫기">×</button></span>`;
         const dismiss = () => {
             clearTimeout(item.dismissTimer);
             item.remove();
@@ -1325,7 +1399,7 @@
             }
         });
         dom.toastStack.appendChild(item);
-        item.dismissTimer = setTimeout(dismiss, 5000);
+        if (!card) item.dismissTimer = setTimeout(dismiss, 5000);
     }
 
     function applyLogic(stabilizing = false) {

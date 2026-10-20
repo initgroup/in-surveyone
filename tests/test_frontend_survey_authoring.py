@@ -25,6 +25,7 @@ global.document = { addEventListener() {}, querySelector() { return null; } };
 global.CSS = { escape(value) { return String(value); } };
 global.Common = { escapeHtml(value) { return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;"); }, api: { post() { throw new Error("Unexpected POST"); }, get() { throw new Error("Unexpected GET"); } } };
 global.SURVEYONE_CONFIG = {};
+eval(fs.readFileSync("frontend/js/question-numbering.js", "utf8"));
 const source = fs.readFileSync("frontend/js/public.js", "utf8");
 eval(source.replace(/\}\)\(\);\s*$/, "globalThis.runtime = {state, dom, answerMarkup, applyChoiceExclusions, filterChoiceOptions, scheduleDraft, submit, onClick, noticePageVisible, collectAnswers, populateDraft, updateRating};})();"));
 runtime.state.survey = { settings: {} };
@@ -179,7 +180,8 @@ runtime.state.sections = [{id:"s",questions:[q]}];
 runtime.state.questions = [q];
 const input = {value:""}, range = {value:"0",min:"0",max:"10",setAttribute(key,value){this[key]=value;}};
 const output = {}, clear = {}, ticks = [{textContent:"0",classList:{toggle(name,selected){this.selected=selected;}}}];
-const group = {querySelector(selector){return {"[data-rating-input]":input,"[data-slider]":range,"[data-slider-value]":output,"[data-rating-clear]":clear}[selector];},querySelectorAll(){return ticks;},classList:{toggle(name,value){this.unanswered=value;}}};
+const stops = [{dataset:{ratingStop:"0"},classList:{toggle(name,selected){this.selected=selected;}}}];
+const group = {querySelector(selector){return {"[data-rating-input]":input,"[data-slider]":range,"[data-slider-value]":output,"[data-rating-clear]":clear}[selector];},querySelectorAll(selector){return selector === "[data-rating-stop]" ? stops : ticks;},classList:{toggle(name,value){this.unanswered=value;}}};
 const card = {dataset:{questionId:"rating"},querySelector(selector){return selector === "[data-rating-input]" ? input : selector === "[data-rating]" ? group : null;}};
 runtime.dom.list = {querySelectorAll(){return [card];},querySelector(){return card;}};
 runtime.collectAnswers();
@@ -194,6 +196,9 @@ assert.equal(range.value,"0");
 assert.equal(group.classList.unanswered,false);
 assert.equal(clear.disabled,false);
 assert.equal(range["aria-valuetext"],"0 · Low");
+assert.equal(output.textContent,"0 / 10 · Low");
+assert.equal(stops[0].classList.selected,true);
+assert.equal(ticks[0].classList.selected,true);
 runtime.collectAnswers();
 assert.equal(runtime.state.answers.rating,"0");
 input.value="";
@@ -201,6 +206,9 @@ runtime.collectAnswers();runtime.updateRating(card);
 assert.equal(runtime.state.answers.rating,"");
 assert.equal(clear.disabled,true);
 assert.equal(range["aria-valuetext"],"미응답");
+assert.equal(output.textContent,"미응답");
+assert.equal(stops[0].classList.selected,false);
+assert.equal(ticks[0].classList.selected,false);
 """)
 
 
@@ -215,6 +223,12 @@ assert.match(html,/data-rating-input/);
 assert(html.indexOf(">HIGH</span>")<html.indexOf(">LOW</span>"));
 assert.deepEqual([...html.matchAll(/<option value="(\d+)"/g)].map(x=>x[1]),["5","4","3","2","1"]);
 assert.match(html,/aria-describedby="help error"/);
+assert(html.indexOf("rating-endpoints")<html.indexOf("rating-rail"));
+assert(html.indexOf("rating-ticks")<html.indexOf("rating-selection"));
+assert(html.indexOf("rating-selection")<html.indexOf("rating-controls"));
+assert.match(html,/<b>5<\/b><span>HIGH<\/span>/);
+assert.match(html,/<b>1<\/b><span>LOW<\/span>/);
+assert.match(html,/선택한 점수/);
 const generic={id:"free",type:"slider",title:"Value",min:0,max:100,settings:{step:5}};
 runtime.state.sections[0].questions.push(generic);
 assert.match(runtime.answerMarkup(generic,{titleId:"title",describedBy:"error"}),/type="number"[^>]*step="5"/);
@@ -359,4 +373,86 @@ eval(fs.readFileSync("frontend/js/M02003.js","utf8"));
  await page.publishSurvey();assert.deepEqual(events,['save','publish','links']);assert.equal(manage.hidden,false);assert.equal(button.textContent,'재확정 · 기존 URL 유지');assert.equal(button.disabled,false);
  events.length=0;page.saveExplicit=async()=>false;await page.publishSurvey();assert.deepEqual(events,[]);
 })().catch(error=>{console.error(error);process.exit(1)});
+""")
+
+
+def test_slider_stops_match_numeric_positions_in_both_directions_and_step_values() -> None:
+    _node(HARNESS + r"""
+for (const descending of [false,true]) {
+    const q={id:"five",type:"scale",title:"Rating",min:1,max:5,settings:{scaleDisplay:"slider",scaleOrder:descending?"descending":"ascending"}};
+    const html=runtime.answerMarkup(q,{titleId:"title",describedBy:"help"});
+    const stops=[...html.matchAll(/data-rating-stop="([^"]+)" style="--rating-position:([^%]+)%"/g)].map(x=>[Number(x[1]),Number(x[2])]);
+    assert.deepEqual(stops,descending?[[5,0],[4,25],[3,50],[2,75],[1,100]]:[[1,0],[2,25],[3,50],[4,75],[5,100]]);
+    assert.match(html,/rating-stops" aria-hidden="true"/);
+    assert.match(html,/class="slider-answer is-unanswered"/);
+    assert.match(html,/선 위의 동그라미/);
+}
+const decimal={id:"decimal",type:"slider",title:"Fractional steps",min:0.1,max:0.3,settings:{step:0.1}};
+const decimalHtml=runtime.answerMarkup(decimal,{titleId:"title",describedBy:"help"});
+assert.deepEqual([...decimalHtml.matchAll(/data-rating-stop="([^"]+)"/g)].map(x=>Number(x[1])),[0.1,0.2,0.3]);
+const many={id:"many",type:"slider",title:"Long range",min:0,max:100,settings:{step:5}};
+const manyHtml=runtime.answerMarkup(many,{titleId:"title",describedBy:"help"});
+const marks=[...manyHtml.matchAll(/data-rating-stop="([^"]+)"/g)].map(x=>Number(x[1]));
+assert.equal(marks.length,11);assert.equal(marks[0],0);assert.equal(marks.at(-1),100);
+assert(marks.every(value=>value%5===0));
+""")
+
+
+def test_error_navigation_focuses_visible_controls_and_resolves_stable_question_ids() -> None:
+    _node(HARNESS.replace("updateRating};", "updateRating,focusQuestion};") + r"""
+const events=[];
+const control=(name,options={})=>({name,type:"text",disabled:false,closest(){return null;},getClientRects(){return [1];},focus(config){events.push(["focus",name,config]);},...options});
+const controls=[control("hidden",{type:"hidden"}),control("disabled",{disabled:true}),control("invisible",{getClientRects(){return [];}}),control("answer")];
+const card={dataset:{questionId:"stable-question"},hidden:false,closest(){return {hidden:false};},querySelectorAll(selector){return selector==="[data-matrix-row-id]"?[]:controls;},scrollIntoView(config){events.push(["scroll",config]);}};
+assert.equal(runtime.focusQuestion(card),true);
+assert.deepEqual(events,[["focus","answer",{preventScroll:true}],["scroll",{behavior:"instant",block:"start"}]]);
+let removed=0,prevented=0;
+runtime.dom.list={querySelectorAll(){return [card];}};
+runtime.dom.toastStack={querySelectorAll(){return [{remove(){removed++;}}];}};
+runtime.onClick({preventDefault(){prevented++;},target:{closest(selector){return selector==="[data-public-error-jump]"?{dataset:{publicErrorJump:"stable-question"}}:null;}}});
+assert.equal(prevented,1);assert.equal(removed,1);assert.equal(events.length,4);
+card.hidden=true;
+assert.equal(runtime.focusQuestion(card),false);assert.equal(events.length,4);
+""")
+
+
+def test_error_navigation_focuses_first_unanswered_matrix_row() -> None:
+    _node(HARNESS.replace("updateRating};", "updateRating,focusQuestion};") + r"""
+let focused;
+const control=name=>({type:"radio",disabled:false,closest(){return null;},getClientRects(){return [1];},focus(){focused=name;}});
+const answered=control("answered"),missing=control("missing");
+const rows=[{querySelector(selector){return selector==="input:checked"?answered:answered;},contains(item){return item===answered;}},{querySelector(selector){return selector==="input:checked"?null:missing;},contains(item){return item===missing;}}];
+const card={hidden:false,closest(){return {hidden:false};},querySelectorAll(selector){return selector==="[data-matrix-row-id]"?rows:[answered,missing];},scrollIntoView(){}};
+assert.equal(runtime.focusQuestion(card),true);assert.equal(focused,"missing");
+""")
+
+
+def test_continuous_numbers_skip_profile_and_notice_blocks_and_replace_source_prefixes() -> None:
+    _node(HARNESS.replace("updateRating};", "updateRating,questionMarkup,displayQuestionLabel};") + r"""
+const make=(id,title,extra={})=>({id,title,type:"short_text",settings:{},...extra});
+const profile=make("grade","직급 확인",{settings:{excludeFromNumbering:true}});
+const performance=Array.from({length:24},(_,i)=>make("performance_"+(i+1),(i+1)+". 평가 문항"));
+const pay=Array.from({length:17},(_,i)=>make("pay_"+(i+1),(i+1)+". 보수 문항"));
+const department=make("department","소속 확인",{settings:{excludeFromNumbering:true}});
+const cooperation=[make("coop1","1. 우수 부서"),make("coop2","2. 미흡 부서")];
+const sections=[{id:"cover",questions:[{id:"notice",type:"notice"},profile]},{id:"evaluation",questions:performance},{id:"pay",questions:pay},{id:"cooperation",questions:[department,...cooperation]}];
+runtime.state.survey={settings:{showQuestionNumbers:true}};runtime.state.sections=sections;runtime.state.questions=sections.flatMap(s=>s.questions);
+runtime.state.questionNumbers=SurveyQuestionNumbering.numbers(sections);
+assert.equal(runtime.state.questionNumbers.get("performance_24"),24);
+assert.equal(runtime.state.questionNumbers.get("pay_1"),25);
+assert.equal(runtime.state.questionNumbers.get("pay_17"),41);
+assert.equal(runtime.state.questionNumbers.get("coop1"),42);
+assert.equal(runtime.state.questionNumbers.get("coop2"),43);
+assert.equal(runtime.state.questionNumbers.get("grade"),null);
+const html=runtime.questionMarkup(pay[0],25);
+assert.match(html,/data-question-number="25"/);assert.match(html,/>25\. 보수 문항 /);assert(!html.includes("25. 1."));
+assert.equal(runtime.displayQuestionLabel({dataset:{questionId:"pay_1",questionNumber:"25"}}),"25번 보수 문항");
+assert.equal(runtime.displayQuestionLabel({dataset:{questionId:"grade",questionNumber:""}}),"직급 확인");
+assert.equal(pay[0].title,"1. 보수 문항");
+const cooperationOnly=SurveyQuestionNumbering.numbers([sections[3]]);
+assert.equal(cooperationOnly.get("coop1"),1);assert.equal(cooperationOnly.get("coop2"),2);
+const q=make("text","1. 원문");
+assert.equal(SurveyQuestionNumbering.title(q,{showQuestionNumbers:false},q.title),"1. 원문");
+for(const title of ["2026. 계획","1.5배 인상","제1항 내용"]){assert.equal(SurveyQuestionNumbering.title(q,{},title),title);}
+assert.equal(SurveyQuestionNumbering.title(q,{},"(24) 문항"),"문항");
 """)

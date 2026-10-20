@@ -255,3 +255,12 @@ def test_choice_layout_draft_and_published_snapshot_are_independent() -> None:
         assert client.get(f"/api/surveys/{detail['id']}").json()["data"]["questions"][0]["settings"]["choiceLayout"] == "columns_2"
         slug = published.json()["data"]["slug"]
         assert client.get(f"/api/public/surveys/{slug}").json()["data"]["questions"][0]["settings"]["choiceLayout"] == "columns_3"
+
+
+def test_numbering_exclusion_roundtrip_preserves_question_identity_and_source_title() -> None:
+    question = Question(id="profile", type="short_text", title="1. Original title", settings={"excludeFromNumbering": True})
+    restored = Question.model_validate_json(question.model_dump_json(by_alias=True))
+    assert restored.settings.exclude_from_numbering is True
+    assert restored.id == "profile"
+    assert restored.title == "1. Original title"
+    assert QuestionSettings().exclude_from_numbering is False

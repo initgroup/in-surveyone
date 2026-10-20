@@ -465,6 +465,7 @@ class QuestionSettings(ApiModel):
         extra="allow",
     )
 
+    exclude_from_numbering: bool = False
     min_value: float | None = None
     max_value: float | None = None
     step: float | None = None
@@ -1853,6 +1854,19 @@ class ResponseReceipt(ApiModel):
     survey_version: int
     submitted_at: datetime
     message: str
+
+
+class ResponseWorkbookRequest(ApiModel):
+    mode: Literal["visible", "analysis", "raw"] = "visible"
+    question_ids: list[StableId] | None = Field(default=None, max_length=1000)
+    response_ids: list[StableId] | None = Field(default=None, max_length=20000)
+
+    @field_validator("question_ids", "response_ids")
+    @classmethod
+    def unique_export_ids(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and len(value) != len(set(value)):
+            raise ValueError("Export IDs must be unique.")
+        return value
 
 
 class SurveyResponseView(ApiModel):

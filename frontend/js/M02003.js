@@ -561,6 +561,7 @@
             this.choiceLayoutCleanup?.();
             host.innerHTML = "";
             let questionIndex = 0;
+            const questionNumbers = window.SurveyQuestionNumbering.numbers(this.survey.sections);
             this.survey.sections.forEach((section, sectionIndex) => {
                 const heading = document.createElement("section");
                 heading.className = "builder-section-heading";
@@ -572,7 +573,10 @@
                     node.dataset.questionId = question.id;
                     node.dataset.sectionId = section.id;
                     node.classList.toggle("is-active", question.id === this.activeId);
-                    node.querySelector(".question-index").textContent = String(++questionIndex).padStart(2, "0");
+                    questionIndex += 1;
+                    const displayNumber = questionNumbers.get(String(question.id));
+                    node.querySelector(".question-index").textContent = this.survey.settings.showQuestionNumbers === false
+                        ? String(questionIndex).padStart(2, "0") : displayNumber == null ? "—" : String(displayNumber).padStart(2, "0");
                     node.querySelector(".question-type-badge").textContent = this.typeLabel(question.type);
                     node.querySelector("[data-question-title]").value = this.localizedQuestionField(question, "title");
                     const description = node.querySelector("[data-question-description-preview]");
@@ -611,7 +615,8 @@
                 const values = Array.from({ length: count }, (_, i) => minimum + i);
                 if (descending) values.reverse();
                 const labels = `<div class="scale-preview-labels"><span>${Common.escapeHtml(this.localizedQuestionField(question, descending ? "maxLabel" : "minLabel"))}</span><span>${Common.escapeHtml(this.localizedQuestionField(question, descending ? "minLabel" : "maxLabel"))}</span></div>`;
-                if (question.settings?.scaleDisplay === "slider") return `${labels}<div class="rating-editor-preview"><div class="rating-editor-track" aria-hidden="true"></div><div class="rating-editor-ticks">${values.map(value => `<span>${value}</span>`).join("")}</div><small>슬라이더 + 점수 직접 선택 · 응답 전에는 미선택</small></div>`;
+                const sliderLabels = `<div class="scale-preview-labels rating-editor-endpoints"><span><b>${descending ? maximum : minimum}</b><span>${Common.escapeHtml(this.localizedQuestionField(question, descending ? "maxLabel" : "minLabel"))}</span></span><span><b>${descending ? minimum : maximum}</b><span>${Common.escapeHtml(this.localizedQuestionField(question, descending ? "minLabel" : "maxLabel"))}</span></span></div>`;
+                if (question.settings?.scaleDisplay === "slider") return `<div class="rating-editor-preview">${sliderLabels}<div class="rating-editor-track" aria-hidden="true"><div class="rating-editor-stops">${values.map((value, index) => `<span class="rating-editor-stop" style="--rating-position:${index / (values.length - 1) * 100}%"></span>`).join("")}</div></div><div class="rating-editor-ticks">${values.map((value, index) => `<span style="--rating-position:${index / (values.length - 1) * 100}%">${value}</span>`).join("")}</div><small>선 위의 동그라미를 눌러 점수 선택 · 응답 전에는 미선택</small></div>`;
                 return `<div class="scale-preview" style="--count:${count}">${values.map(value => `<span>${value}</span>`).join("")}</div>${labels}`;
             }
             if (choiceMatrixTypes.has(question.type)) return this.axisTableMarkup(question, question.type === "matrix_multiple" ? "checkbox" : "radio");
@@ -678,6 +683,9 @@
             const behaviorSelect = this.root.querySelector("[data-prop-behavior]");
             behaviorSelect.value = question.behavior || (question.required ? "fixed_required" : "fixed_optional");
             behaviorSelect.disabled = question.type === "notice";
+            const excludeNumber = this.root.querySelector("[data-prop-exclude-numbering]");
+            excludeNumber.checked = question.type === "notice" || question.settings?.excludeFromNumbering === true;
+            excludeNumber.disabled = question.type === "notice";
             this.renderActivationConditions(question);
             const descriptionEnabled = this.root.querySelector("[data-prop-description-enabled]");
             descriptionEnabled.checked = Boolean(question.description);
@@ -907,6 +915,7 @@
                 }
                 const canonicalName = { showProgress: "showProgressBar", oneResponse: "oneResponsePerRespondent", allowEdit: "allowResponseEdit" }[setting];
                 this.survey.settings[setting] = value;
+                if (setting === "showQuestionNumbers") this.renderQuestions();
                 if (canonicalName) this.survey.settings[canonicalName] = value;
                 this.scheduleSave();
                 return;
@@ -933,6 +942,10 @@
             if (!question) return;
             for (const [selector, key] of [["[data-prop-min-selections]", "minSelections"], ["[data-prop-max-selections]", "maxSelections"]]) {
                 if (event.target.matches(selector)) question.settings = { ...(question.settings || {}), [key]: event.target.value === "" ? null : Number(event.target.value) };
+            }
+            if (event.target.matches("[data-prop-exclude-numbering]")) {
+                question.settings = { ...(question.settings || {}), excludeFromNumbering: event.target.checked };
+                this.renderQuestions();
             }
             if (event.target.matches("[data-prop-scale-order]")) question.settings = { ...(question.settings || {}), scaleOrder: event.target.value };
             if (event.target.matches("[data-prop-scale-display]")) question.settings = { ...(question.settings || {}), scaleDisplay: event.target.value };

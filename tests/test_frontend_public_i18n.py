@@ -72,7 +72,7 @@ def test_public_generated_controls_use_localized_accessible_text() -> None:
         'text("rowInputAria"',
         'text("rowDeleteAria"',
         'text("requiredError")',
-        'text("requiredToast"',
+        'displayQuestionLabel(current)',
         'text("questionLink"',
         'text("pageStatus"',
     ):
