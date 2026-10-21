@@ -56,19 +56,20 @@ def _env_int_compat(
     return value
 
 
-def _normalize_origin(value: str) -> str:
+def _normalize_origin(value: str, *, setting_name: str = "INIT_ALLOWED_ORIGINS") -> str:
     raw_value = value.strip()
     parsed = urlsplit(raw_value)
     if (
         parsed.scheme.lower() not in {"http", "https"}
         or not parsed.hostname
+        or "*" in parsed.hostname
         or parsed.username is not None
         or parsed.password is not None
         or parsed.path not in {"", "/"}
         or parsed.query
         or parsed.fragment
     ):
-        raise ValueError(f"Invalid origin in INIT_ALLOWED_ORIGINS: {value!r}")
+        raise ValueError(f"Invalid origin in {setting_name}: {value!r}")
 
     scheme = parsed.scheme.lower()
     host = parsed.hostname.lower()
@@ -240,18 +241,6 @@ def get_settings() -> Settings:
     db_password = legacy_db_password or _first_env("SURVEYONE_DB_PASSWORD")
     db_dsn = legacy_db_dsn or _first_env("SURVEYONE_DB_DSN")
 
-    raw_origins = str(
-        _first_env("INIT_ALLOWED_ORIGINS", "SURVEYONE_ALLOWED_ORIGINS") or ""
-    ).strip()
-    origin_values = (
-        [item for item in raw_origins.split(",") if item.strip()]
-        if raw_origins
-        else ["http://127.0.0.1:8300", "http://localhost:8300"]
-    )
-    if "*" in origin_values:
-        raise ValueError("INIT_ALLOWED_ORIGINS cannot contain '*'.")
-    allowed_origins = tuple(dict.fromkeys(_normalize_origin(item) for item in origin_values))
-
     samesite = str(
         _first_env("INIT_COOKIE_SAMESITE", "SURVEYONE_COOKIE_SAMESITE") or "lax"
     ).strip().lower()
@@ -276,6 +265,32 @@ def get_settings() -> Settings:
     ).strip().rstrip("/")
     if not base_url:
         raise ValueError("SURVEYONE_BASE_URL cannot be empty.")
+
+    raw_origins = str(
+        _first_env("INIT_ALLOWED_ORIGINS", "SURVEYONE_ALLOWED_ORIGINS") or ""
+    ).strip()
+    origin_values = (
+        [item for item in raw_origins.split(",") if item.strip()]
+        if raw_origins
+        else ["http://127.0.0.1:8300", "http://localhost:8300"]
+    )
+    # Trust the configured public origin even when an older shared allowlist
+    # still names the Render URL. CORS and browser-write protection consume
+    # this same list; never infer trust from Host or forwarded request headers.
+    public_origin = urlsplit(base_url)._replace(path="", query="", fragment="").geturl()
+    origin_values.append(public_origin)
+    if any(item.strip() == "*" for item in origin_values):
+        raise ValueError("INIT_ALLOWED_ORIGINS cannot contain '*'.")
+    normalized_origins = [_normalize_origin(item) for item in origin_values]
+    # Service-specific additions stay effective even when a shared INIT list is
+    # present. Require complete origins; do not grant trust to sibling hosts.
+    additional_origins_key = "SURVEYONE_ADDITIONAL_ALLOWED_ORIGINS"
+    normalized_origins.extend(
+        _normalize_origin(item, setting_name=additional_origins_key)
+        for item in str(os.getenv(additional_origins_key) or "").split(",")
+        if item.strip()
+    )
+    allowed_origins = tuple(dict.fromkeys(normalized_origins))
 
     session_secret = str(
         _first_env("INIT_SECRET_KEY", "SURVEYONE_SESSION_SECRET") or ""

@@ -37,6 +37,7 @@
 - UI framework, Google API, 다른 프로젝트 runtime을 필수 조건으로 추가하지 않습니다.
 - 브라우저 상태는 화면 편의를 위한 cache일 뿐 tenant 권한·버전·공개 상태의 기준이 아닙니다.
 - 공개 설문 renderer는 관리자 SPA와 별도 shell로 유지합니다.
+- 운영 도메인을 변경할 때 `SURVEYONE_BASE_URL`, `INIT_ALLOWED_ORIGINS`와 서비스 전용 추가 목록 `SURVEYONE_ADDITIONAL_ALLOWED_ORIGINS`를 함께 점검합니다. 설정된 공개 주소의 origin은 CORS·쓰기 요청 허용 목록에 포함하되 요청 Host/forwarded 헤더로 신뢰를 확장하지 않습니다. 도메인별 로그인·세션·저장 및 외부 Origin 차단 회귀 테스트를 유지합니다.
 
 ## 메뉴 ID와 파일 계약
 

@@ -242,11 +242,36 @@ Oracle 설정은 공통 `DB_*` 키를 사용합니다. 비밀번호와 Wallet은
 
 Wallet 파일(`tnsnames.ora`, `sqlnet.ora`, `cwallet.sso` 및 Wallet이 요구하는 인증 파일)은 Git이 아니라 배포 서비스의 Secret Files로 제공해야 합니다.
 
+### 카페24 도메인과 Render 연동
+
+카페24 DNS에서 `www.insurveyone.com`을 Render에 연결한 뒤에는 Render의 해당 서비스 Environment에도 공개 주소와 허용 출처를 함께 설정합니다. 서비스 전용 값은 연결된 Environment Group보다 우선합니다.
+
+```text
+SURVEYONE_BASE_URL=https://www.insurveyone.com
+INIT_ALLOWED_ORIGINS=https://www.insurveyone.com,https://insurveyone.com,https://in-surveyone.onrender.com
+INIT_COOKIE_SECURE=true
+INIT_COOKIE_SAMESITE=lax
+```
+
+`Save and deploy`로 기존 빌드에 설정을 적용합니다. `Save only`는 다음 배포 전까지 실행 중인 서비스에 반영되지 않습니다. 코드를 변경한 경우에는 변경 코드의 배포도 필요합니다.
+
+애플리케이션은 설정된 `SURVEYONE_BASE_URL`의 origin을 허용 목록에 자동 포함하고, CORS와 API 쓰기 요청의 Origin 검증에 같은 목록을 사용합니다. 따라서 공개 주소만 변경하고 이전 Render 주소의 허용 목록을 남겨 두어도 공식 주소의 로그인·저장이 차단되지 않습니다. 추가 접속 주소는 `INIT_ALLOWED_ORIGINS`에 명시합니다. `SURVEYONE_ALLOWED_ORIGINS`는 기존과 같이 `INIT_ALLOWED_ORIGINS`가 없을 때만 사용하는 호환 키입니다. 요청의 Host/프록시 헤더나 임의 하위 도메인으로 허용 출처를 확장하지 않습니다.
+
+추가 서브도메인은 공용 목록을 수정하지 않고 서비스 전용 `SURVEYONE_ADDITIONAL_ALLOWED_ORIGINS`에 쉼표로 등록할 수 있습니다. 아래는 운영자가 소유·관리하며 같은 서비스에 연결할 서브도메인의 예시입니다.
+
+```text
+SURVEYONE_ADDITIONAL_ALLOWED_ORIGINS=https://survey.insurveyone.com,https://portal.insurveyone.com
+```
+
+최종 허용 목록은 기존 `INIT_ALLOWED_ORIGINS`(없으면 `SURVEYONE_ALLOWED_ORIGINS`) + 공식 `SURVEYONE_BASE_URL`의 origin + `SURVEYONE_ADDITIONAL_ALLOWED_ORIGINS`입니다. 중복은 제거하며 새 설정이 비어 있으면 기존 동작을 유지합니다. `https://`를 포함한 정확한 주소를 입력하고 경로·query·fragment·사용자정보·`*`는 넣지 않습니다. 프로토콜과 포트도 구분하며, 등록하지 않은 다른 서브도메인은 허용되지 않습니다. 해당 서브도메인의 카페24 DNS와 Render Custom Domains 연결을 완료한 뒤, 새 설정을 지원하는 코드를 배포하고 환경설정을 적용합니다. 로컬 환경설정을 변경한 뒤에는 서버를 재시작합니다. 복사할 설정 항목과 현재 공식 도메인 목록은 `.env.example`에도 제공됩니다. 로컬 실행용 `.env`에는 같은 키로 값을 설정합니다. `.env`는 Git 제외 파일이므로 소스로 보존할 설정 기준은 `.env.example`과 이 문서를 함께 유지합니다. Render 운영 값은 서비스 Environment에도 등록합니다.
+
+DNS·HTTPS·화면 조회가 정상이어도 새 도메인의 POST/PATCH가 403 `요청 출처가 허용되지 않았습니다.`이면 DB 호출 전 Origin 차단입니다. `/api/runtime-config`의 `publicBaseUrl`이 공식 주소인지 확인하고, 각 접속 주소에서 로그인·저장·로그아웃을 점검합니다. 쿠키는 접속한 호스트에만 발급되므로 Render 주소와 공식 주소의 로그인 상태는 각각 유지됩니다. 점검 명령과 운영 적용 절차는 [도메인 운영 안내](reference/deployment/README.md)를 참고합니다.
+
 ### QR 공개 주소
 
 배포 센터의 QR은 임의 미리보기 패턴이 아니라 서버가 `qrcode` 라이브러리로 생성한 표준 SVG입니다. 오류 복원 수준 Q와 4모듈 여백을 적용하며, QR에 들어가는 주소는 `SURVEYONE_BASE_URL + /s/{slug}`입니다.
 
-- Render에서는 `SURVEYONE_BASE_URL=https://in-surveyone.onrender.com`처럼 외부에서 접속 가능한 실제 HTTPS origin을 설정합니다.
+- 현재 공식 주소는 `SURVEYONE_BASE_URL=https://www.insurveyone.com`으로 설정합니다. Render 기본 주소만 사용하는 별도 환경은 해당 환경의 실제 HTTPS origin을 사용합니다.
 - `127.0.0.1`과 `localhost`는 휴대폰 자기 자신을 가리키므로 휴대폰 QR 시험에 사용할 수 없습니다.
 - 로컬 휴대폰 시험은 `SURVEYONE_HOST=0.0.0.0`, `SURVEYONE_BASE_URL=http://PC-LAN-IP:8300`으로 실행하고 같은 origin을 `INIT_ALLOWED_ORIGINS`에 추가합니다. PC와 휴대폰은 같은 Wi-Fi에 있어야 하며 Windows 방화벽에서 TCP 8300 접근을 허용해야 합니다.
 - Git/Render 빌드는 `requirements.txt`의 `qrcode==8.2`를 설치하므로 별도 CDN이나 외부 QR API가 필요하지 않습니다.

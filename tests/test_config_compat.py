@@ -52,6 +52,11 @@ def _clear_database_environment(monkeypatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_additional_origins(monkeypatch) -> None:
+    monkeypatch.delenv("SURVEYONE_ADDITIONAL_ALLOWED_ORIGINS", raising=False)
+
+
 def _read_settings():
     return get_settings.__wrapped__()
 
@@ -237,3 +242,93 @@ def test_production_rejects_insecure_cookie_or_http_origin(monkeypatch) -> None:
 
         with pytest.raises(ValueError, match="must be true in production"):
             _read_settings()
+
+
+@pytest.mark.parametrize("raw_origins", [None, "", " , "])
+def test_public_origin_is_allowed_without_an_explicit_allowlist(monkeypatch, raw_origins) -> None:
+    monkeypatch.delenv("INIT_ALLOWED_ORIGINS", raising=False)
+    monkeypatch.delenv("SURVEYONE_ALLOWED_ORIGINS", raising=False)
+    if raw_origins is not None:
+        monkeypatch.setenv("INIT_ALLOWED_ORIGINS", raw_origins)
+    monkeypatch.setenv("SURVEYONE_BASE_URL", "https://www.insurveyone.com")
+
+    settings = _read_settings()
+
+    assert "https://www.insurveyone.com" in settings.allowed_origins
+    assert "https://untrusted.example" not in settings.allowed_origins
+
+
+def test_public_origin_is_added_to_an_older_shared_allowlist(monkeypatch) -> None:
+    monkeypatch.setenv("INIT_ALLOWED_ORIGINS", "https://in-surveyone.onrender.com")
+    monkeypatch.setenv("SURVEYONE_BASE_URL", "https://www.insurveyone.com")
+
+    assert _read_settings().allowed_origins == (
+        "https://in-surveyone.onrender.com",
+        "https://www.insurveyone.com",
+    )
+
+
+def test_public_origin_normalizes_and_deduplicates_without_trusting_sibling_hosts(monkeypatch) -> None:
+    monkeypatch.setenv("INIT_ALLOWED_ORIGINS", " https://www.insurveyone.com:443/ ")
+    monkeypatch.setenv("SURVEYONE_BASE_URL", "https://WWW.INSURVEYONE.COM:443/")
+
+    assert _read_settings().allowed_origins == ("https://www.insurveyone.com",)
+
+
+def test_legacy_origin_alias_and_primary_precedence_are_preserved(monkeypatch) -> None:
+    monkeypatch.delenv("INIT_ALLOWED_ORIGINS", raising=False)
+    monkeypatch.setenv("SURVEYONE_ALLOWED_ORIGINS", "https://alias.example")
+    monkeypatch.setenv("SURVEYONE_BASE_URL", "https://www.insurveyone.com")
+    assert _read_settings().allowed_origins == (
+        "https://alias.example", "https://www.insurveyone.com",
+    )
+
+    monkeypatch.setenv("INIT_ALLOWED_ORIGINS", "https://primary.example")
+    assert _read_settings().allowed_origins == (
+        "https://primary.example", "https://www.insurveyone.com",
+    )
+
+
+@pytest.mark.parametrize("origin", ["*", " https://valid.example, * ", "null", "https://*.example"])
+def test_invalid_origins_are_rejected_even_with_a_valid_public_url(monkeypatch, origin) -> None:
+    monkeypatch.setenv("INIT_ALLOWED_ORIGINS", origin)
+    monkeypatch.setenv("SURVEYONE_BASE_URL", "https://www.insurveyone.com")
+    with pytest.raises(ValueError):
+        _read_settings()
+
+
+@pytest.mark.parametrize("primary_key", ["INIT_ALLOWED_ORIGINS", "SURVEYONE_ALLOWED_ORIGINS"])
+def test_additional_origins_extend_shared_or_legacy_list(monkeypatch, primary_key) -> None:
+    monkeypatch.delenv("INIT_ALLOWED_ORIGINS", raising=False)
+    monkeypatch.delenv("SURVEYONE_ALLOWED_ORIGINS", raising=False)
+    monkeypatch.setenv(primary_key, "https://in-surveyone.onrender.com")
+    monkeypatch.setenv("SURVEYONE_BASE_URL", "https://www.insurveyone.com")
+    monkeypatch.setenv("SURVEYONE_ADDITIONAL_ALLOWED_ORIGINS", (
+        " https://survey.insurveyone.com,https://portal.insurveyone.com:8443/, "
+        "https://SURVEY.INSURVEYONE.COM:443/,https://www.insurveyone.com, "
+    ))
+
+    assert _read_settings().allowed_origins == (
+        "https://in-surveyone.onrender.com", "https://www.insurveyone.com",
+        "https://survey.insurveyone.com", "https://portal.insurveyone.com:8443",
+    )
+
+
+@pytest.mark.parametrize("value", ["", " , "])
+def test_empty_additional_origins_leave_existing_list_unchanged(monkeypatch, value) -> None:
+    monkeypatch.setenv("INIT_ALLOWED_ORIGINS", "https://www.insurveyone.com")
+    monkeypatch.setenv("SURVEYONE_BASE_URL", "https://www.insurveyone.com")
+    monkeypatch.setenv("SURVEYONE_ADDITIONAL_ALLOWED_ORIGINS", value)
+    assert _read_settings().allowed_origins == ("https://www.insurveyone.com",)
+
+
+@pytest.mark.parametrize("value", [
+    "*", "https://*.insurveyone.com", "null", "survey.insurveyone.com",
+    "https://survey.insurveyone.com/path", "https://survey.insurveyone.com?x=1",
+    "https://survey.insurveyone.com#fragment", "https://user@survey.insurveyone.com",
+])
+def test_additional_origins_reject_unsafe_or_incomplete_values(monkeypatch, value) -> None:
+    monkeypatch.setenv("SURVEYONE_BASE_URL", "https://www.insurveyone.com")
+    monkeypatch.setenv("SURVEYONE_ADDITIONAL_ALLOWED_ORIGINS", value)
+    with pytest.raises(ValueError, match="SURVEYONE_ADDITIONAL_ALLOWED_ORIGINS"):
+        _read_settings()

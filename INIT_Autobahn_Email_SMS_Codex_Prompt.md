@@ -1238,7 +1238,7 @@ SMS 발신번호 정책 미확인
 
 * 관리자로그인
 
-iniadmin / init2026!
+initadmin / init2026!
 
 * 메일, 카톡, 문자 발송
 NHN Cloud Notification Hub
