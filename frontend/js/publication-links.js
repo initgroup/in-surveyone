@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    function absoluteUrl(value, base = location.origin) {
+    function absoluteUrl(value, base) {
         const url = new URL(value, base);
         if (!["http:", "https:"].includes(url.protocol)) throw new Error("설문 주소 형식이 올바르지 않습니다.");
         return url.href;
@@ -29,10 +29,11 @@
             try {
                 const [payload, runtime] = await Promise.all([
                     context.api.get(`${endpoint}/public-links`),
-                    baseUrl ? Promise.resolve({}) : context.api.get("/api/runtime-config").catch(() => ({}))
+                    baseUrl ? Promise.resolve({}) : context.api.get("/api/runtime-config")
                 ]);
                 if (!current()) return;
-                baseUrl ||= runtime?.publicBaseUrl || location.origin;
+                baseUrl ||= runtime?.publicBaseUrl;
+                if (!baseUrl) throw new Error("공개 주소 설정을 불러오지 못했습니다. 다시 시도해 주세요.");
                 view = payload?.data || payload;
                 host.querySelector("[data-publication-title]").textContent = view.title;
                 content.innerHTML = linksMarkup(view, baseUrl);

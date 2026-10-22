@@ -24,18 +24,18 @@
             <div class="card-body form-grid">
                 <div class="form-grid form-grid-two"><label class="form-field">대표 색상<span class="color-field"><input type="color" value="#2457d6" data-skin-primary><input type="text" value="#2457d6" data-skin-primary-text></span></label><label class="form-field">강조 색상<span class="color-field"><input type="color" value="#4ed7bd" data-skin-accent><input type="text" value="#4ed7bd" data-skin-accent-text></span></label></div>
                 <div class="form-grid form-grid-two"><label class="form-field">글꼴<select data-skin-font><option value="system">기본 한글 시스템 글꼴</option><option value="serif">차분한 명조</option><option value="rounded">부드러운 고딕</option></select></label><label class="form-field">카드 모서리<select data-skin-radius><option value="6px">단정하게</option><option value="12px">기본</option><option value="18px">부드럽게</option><option value="24px">둥글게</option></select></label></div>
-                <label class="form-field">상단 이미지<input type="file" accept="image/png,image/jpeg,image/webp" data-skin-header-image><span class="field-help">권장 1600×400px, 2MB 이하. 현재 미리보기는 브라우저에서만 처리됩니다.</span></label>
-                <label class="setting-row"><span><strong>기관 로고 표시</strong><small>응답 화면 상단에 IN-SURVEYONE 대신 회원사 로고를 표시합니다.</small></span><input type="checkbox" data-skin-show-logo></label>
+                <label class="form-field">상단 이미지 시험 미리보기<input type="file" accept="image/png,image/jpeg,image/webp" data-skin-header-image><span class="field-help">저장되지 않는 시험 미리보기입니다. 이미지 업로드·공개 화면 연계는 아직 제공하지 않습니다. 2MB 이하 PNG·JPEG·WebP만 사용할 수 있습니다.</span></label>
+                <label class="setting-row"><span><strong>기관 로고 표시</strong><small>기관 로고 업로드·공개 화면 연계는 아직 제공하지 않습니다.</small></span><input type="checkbox" data-skin-show-logo disabled></label>
                 <label class="setting-row"><span><strong>고대비 응답 모드</strong><small>본문 대비와 포커스 표시를 한 단계 강화합니다.</small></span><input type="checkbox" data-skin-contrast></label>
             </div>
         </article>
 
         <article class="card skin-control-card">
-            <header class="card-header"><div><span class="eyebrow">PROJECT POLICY</span><h2>공개 프로젝트 설정</h2></div></header>
+            <header class="card-header"><div><span class="eyebrow">PROJECT POLICY</span><h2>공개 프로젝트 설정</h2><p>공유 제목·설명은 검색·SNS 연계 전으로 편집할 수 없습니다. 기존 값은 보존됩니다.</p></div></header>
             <div class="card-body form-grid">
                 <label class="form-field">응답 URL 별칭<div class="slug-field"><span>/s/</span><input type="text" data-project-slug placeholder="배포 시 자동 생성" disabled></div></label>
-                <label class="form-field">홈페이지 게시 제목<input type="text" data-project-share-title placeholder="공유 카드 제목"></label>
-                <label class="form-field">검색·공유 설명<textarea rows="3" data-project-share-description placeholder="SNS나 메신저 공유 시 표시할 설명"></textarea></label>
+                <label class="form-field">홈페이지 게시 제목<input type="text" data-project-share-title placeholder="공유 카드 제목" disabled></label>
+                <label class="form-field">검색·공유 설명<textarea rows="3" data-project-share-description disabled placeholder="SNS나 메신저 공유 시 표시할 설명"></textarea></label>
             </div>
         </article>
 

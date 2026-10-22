@@ -5,11 +5,11 @@
     const STORAGE_KEY_PREFIX = "inSurveyOne.reportDrafts.v1";
     const WIDTHS = [4, 6, 8, 12];
     const WIDGETS = [
-        { type: "kpis", title: "응답 핵심 지표", description: "응답 수, 완료율과 응답 시간을 요약합니다.", icon: "Σ", span: 12 },
+        { type: "kpis", title: "응답 핵심 지표", description: "응답 수와 완료율을 요약합니다. 응답 시간은 집계 제공 시 표시됩니다.", icon: "Σ", span: 12 },
         { type: "completion", title: "완료 현황", description: "완료·진행 중 응답의 비중을 비교합니다.", icon: "%", span: 6 },
         { type: "questions", title: "문항 응답 분포", description: "대표 선택형 문항의 보기별 비율을 표시합니다.", icon: "▥", span: 6 },
         { type: "question-table", title: "문항 요약표", description: "문항별 유형과 응답 건수를 표로 제공합니다.", icon: "表", span: 12 },
-        { type: "trend", title: "응답 추이", description: "일자별 응답 수집 흐름을 확인합니다.", icon: "↗", span: 6 },
+        { type: "trend", title: "응답 추이", description: "일자별 응답 집계 연계 후 사용할 수 있습니다.", icon: "↗", span: 6, unavailable: true },
         { type: "survey-info", title: "설문 기준 정보", description: "설문 상태와 보고서 생성 기준을 기록합니다.", icon: "i", span: 6 }
     ];
     const WIDGET_BY_TYPE = new Map(WIDGETS.map((widget) => [widget.type, widget]));
@@ -225,19 +225,26 @@
             if (button) handleLayoutAction(button.dataset.itemId, button.dataset.action);
         }, { signal });
         root.querySelector('[data-role="save-draft"]')?.addEventListener("click", saveDraft, { signal });
-        root.querySelector('[data-role="new-draft"]')?.addEventListener("click", () => resetEditor({ keepSurvey: true }), { signal });
+        root.querySelector('[data-role="new-draft"]')?.addEventListener("click", async () => { if (await confirmDiscard()) resetEditor({ keepSurvey: true }); }, { signal });
         state.elements.deleteDraft?.addEventListener("click", deleteDraft, { signal });
-        state.elements.draftSelect?.addEventListener("change", () => loadDraft(state.elements.draftSelect.value), { signal });
+        state.elements.draftSelect?.addEventListener("change", async () => {
+            const requestedId = state.elements.draftSelect.value;
+            if (await confirmDiscard()) loadDraft(requestedId);
+            else renderDraftOptions();
+        }, { signal });
         state.elements.retry?.addEventListener("click", () => {
             if (state.surveys.length) loadReport();
             else loadSurveys();
         }, { signal });
-        root.querySelector('[data-role="print-demo"]')?.addEventListener("click", () => {
+        root.querySelector('[data-role="print-report"]')?.addEventListener("click", () => {
             if (!state.items.length) {
                 notify("인쇄할 위젯을 먼저 추가해 주세요.", "error");
                 return;
             }
-            notify("인쇄 미리보기는 Demo 기능이며 브라우저 인쇄 설정을 사용합니다.", "info");
+            if (!state.report || state.elements.workbench.hidden) {
+                notify("설문 응답 데이터를 불러온 후 인쇄해 주세요.", "error");
+                return;
+            }
             if (typeof window.print === "function") window.print();
         }, { signal });
     }
@@ -265,7 +272,7 @@
             select.append(new Option(`${surveyTitle(survey)} · ${surveyStatus(survey)}`, id));
         });
         const available = Array.from(select.options).some((option) => option.value === String(preferredId));
-        select.value = available ? String(preferredId) : (select.options[1]?.value || "");
+        select.value = available ? String(preferredId) : (preferredId ? "" : (select.options[1]?.value || ""));
         state.selectedSurveyId = select.value;
     }
 
@@ -364,12 +371,13 @@
         }));
         const summary = read(source, ["summary", "overview", "totals"], {});
         const { total, completed, rate } = completionMetrics(source);
-        const seconds = numberValue(read(summary, ["averageDurationSeconds", "avgDurationSeconds", "averageSeconds"], 0));
+        const duration = read(summary, ["averageDurationSeconds", "avgDurationSeconds", "averageSeconds"], null);
+        const seconds = numberValue(duration);
         return [
             { label: "총 응답", value: total, unit: "count" },
             { label: "완료 응답", value: completed, unit: "count" },
             { label: "완료율", value: rate, unit: "rate" },
-            { label: "평균 응답 시간", value: seconds >= 60 ? `${Math.floor(seconds / 60)}분 ${Math.round(seconds % 60)}초` : `${Math.round(seconds)}초`, unit: "text" }
+            { label: "평균 응답 시간", value: duration === null ? "집계 없음" : seconds >= 60 ? `${Math.floor(seconds / 60)}분 ${Math.round(seconds % 60)}초` : `${Math.round(seconds)}초`, unit: "text" }
         ];
     }
 
@@ -390,6 +398,13 @@
         return ({ SINGLE: "객관식", SINGLE_CHOICE: "객관식", RADIO: "객관식", MULTIPLE_CHOICE: "복수응답", CHECKBOX: "복수응답", MULTIPLE: "복수응답", MULTI: "복수응답", TEXT: "주관식", SHORT_TEXT: "단답형", LONG_TEXT: "장문형", NUMBER: "숫자", SCALE: "척도", LIKERT: "척도", MATRIX: "매트릭스", TABLE: "표", REPEAT_TABLE: "반복표" })[type] || (type ? type.replace(/_/g, " ") : "문항");
     }
 
+    function choicePercent(choice) {
+        const percent = read(choice, ["percent", "percentage"], null);
+        if (percent !== null) return numberValue(percent);
+        const ratio = read(choice, ["rate", "ratio"], null);
+        return ratio === null ? null : numberValue(ratio) * 100;
+    }
+
     function normalizeChoices(question, responseCount) {
         const raw = read(question, ["options", "choices", "distribution", "answerDistribution", "answers", "values"], []);
         let choices = [];
@@ -397,20 +412,19 @@
             choices = raw.map((choice, index) => choice && typeof choice === "object" ? {
                 label: String(read(choice, ["label", "text", "name", "option", "value"], `보기 ${index + 1}`)),
                 count: numberValue(read(choice, ["count", "responses", "responseCount", "frequency"], 0)),
-                percent: read(choice, ["percent", "percentage", "rate", "ratio"], null)
+                percent: choicePercent(choice)
             } : { label: String(choice), count: 0, percent: null });
         } else if (raw && typeof raw === "object") {
             choices = Object.entries(raw).map(([label, value]) => ({
                 label,
                 count: numberValue(value && typeof value === "object" ? read(value, ["count", "frequency", "value"], 0) : value),
-                percent: value && typeof value === "object" ? read(value, ["percent", "percentage", "rate"], null) : null
+                percent: value && typeof value === "object" ? choicePercent(value) : null
             }));
         }
         const sum = choices.reduce((total, choice) => total + choice.count, 0);
         const denominator = responseCount || sum;
         return choices.map((choice) => {
-            let percent = choice.percent === null ? (denominator ? choice.count / denominator * 100 : 0) : numberValue(choice.percent);
-            if (percent > 0 && percent <= 1) percent *= 100;
+            const percent = choice.percent === null ? (denominator ? choice.count / denominator * 100 : 0) : numberValue(choice.percent);
             return { ...choice, percent: clampPercent(percent) };
         });
     }
@@ -487,8 +501,14 @@
         };
     }
 
-    function writeDrafts() {
-        window.localStorage.setItem(state.storageKey, JSON.stringify(state.drafts.slice(0, 20)));
+    function writeDrafts(next) {
+        const limited = next.slice(0, 20);
+        window.localStorage.setItem(state.storageKey, JSON.stringify(limited));
+        state.drafts = limited;
+    }
+
+    function confirmDiscard() {
+        return !state.dirty || state.confirmMessage("저장하지 않은 맞춤형 보고서 변경사항이 있습니다. 변경사항을 버리고 계속할까요?", { title: "미저장 변경사항", confirmLabel: "변경사항 버리기" });
     }
 
     function renderDraftOptions() {
@@ -525,11 +545,9 @@
             updatedAt: new Date().toISOString(),
             schemaVersion: 1
         };
-        const index = state.drafts.findIndex((item) => item.id === id);
-        if (index >= 0) state.drafts.splice(index, 1, draft);
-        else state.drafts.unshift(draft);
+        const next = [draft, ...state.drafts.filter((item) => item.id !== id)];
         try {
-            writeDrafts();
+            writeDrafts(next);
             state.activeDraftId = id;
             state.dirty = false;
             renderDraftOptions();
@@ -579,9 +597,9 @@
             tone: "error",
             destructive: true
         }))) return;
-        state.drafts = state.drafts.filter((item) => item.id !== id);
+        const next = state.drafts.filter((item) => item.id !== id);
         try {
-            writeDrafts();
+            writeDrafts(next);
         } catch (error) {
             notify("로컬 초안을 삭제하지 못했습니다.", "error");
             return;
@@ -617,7 +635,7 @@
 
     function addWidget(type) {
         const definition = WIDGET_BY_TYPE.get(String(type));
-        if (!definition || state.items.some((item) => item.type === definition.type)) return;
+        if (!definition || definition.unavailable || state.items.some((item) => item.type === definition.type)) return;
         state.items.push({ id: createId("widget"), type: definition.type, span: definition.span });
         renderPalette();
         renderLayout();
@@ -667,9 +685,9 @@
             button.type = "button";
             button.className = "custom-report-add-button";
             button.dataset.addWidget = widget.type;
-            button.disabled = used.has(widget.type);
-            button.textContent = used.has(widget.type) ? "✓" : "+";
-            button.setAttribute("aria-label", used.has(widget.type) ? `${widget.title} 위젯이 이미 추가됨` : `${widget.title} 위젯 추가`);
+            button.disabled = Boolean(widget.unavailable) || used.has(widget.type);
+            button.textContent = widget.unavailable ? "—" : used.has(widget.type) ? "✓" : "+";
+            button.setAttribute("aria-label", widget.unavailable ? `${widget.title} · 집계 연계 필요` : used.has(widget.type) ? `${widget.title} 위젯이 이미 추가됨` : `${widget.title} 위젯 추가`);
             card.append(icon, copy, button);
             palette.append(card);
         });
@@ -795,7 +813,7 @@
 
     function renderTrendWidget() {
         const rows = deriveTrend(state.report);
-        if (!rows.length) return emptyWidget("표시할 일자별 응답 추이가 없습니다.");
+        if (!rows.length) return emptyWidget("일자별 응답 집계 연계 후 사용할 수 있는 위젯입니다.");
         const maximum = Math.max(...rows.map((row) => row.count), 1);
         const wrapper = document.createElement("div");
         wrapper.className = "custom-preview-bars";
@@ -881,6 +899,15 @@
     function updatePaperAppearance() {
         const paper = state.elements.paper;
         if (!paper) return;
+        let printStyle = document.querySelector("style[data-custom-report-print-size]");
+        if (!printStyle) {
+            printStyle = document.createElement("style");
+            printStyle.dataset.customReportPrintSize = "";
+            document.head.append(printStyle);
+        }
+        const size = state.paperSize === "A3" ? "A3" : "A4";
+        const orientation = state.orientation === "LANDSCAPE" ? "landscape" : "portrait";
+        printStyle.textContent = `@media print { @page { size: ${size} ${orientation}; margin: 12mm; } }`;
         paper.classList.toggle("is-a4", state.paperSize === "A4");
         paper.classList.toggle("is-a3", state.paperSize === "A3");
         paper.classList.toggle("is-portrait", state.orientation === "PORTRAIT");
@@ -923,6 +950,8 @@
             await loadSurveys();
         },
 
+        hasUnsavedChanges() { return state.dirty; },
+        beforeLeave() { return confirmDiscard(); },
         async beforeRefresh() {
             return !state.dirty || state.confirmMessage(
                 "저장하지 않은 맞춤형 보고서 변경사항이 있습니다. 변경사항을 버리고 현재 화면을 새로고침할까요?",
@@ -931,6 +960,7 @@
         },
 
         destroy() {
+            document.querySelector("style[data-custom-report-print-size]")?.remove();
             state.requestVersion += 1;
             state.events?.abort();
             state.root = null;

@@ -55,7 +55,7 @@
             this.publishedSurvey = null;
             this.draft = null;
             this.providers = this.normalizeProviders({});
-            this.publicBaseUrl = location.origin;
+            this.publicBaseUrl = null;
             this.step = 1;
             this.maxStep = 1;
             this.view = localStorage.getItem("surveyone-distribution-view") || "grid";
@@ -146,10 +146,11 @@
             try {
                 const [surveys, runtime, providers] = await Promise.all([
                     this.context.api.get("/api/surveys?status=published"),
-                    this.context.api.get("/api/runtime-config").catch(() => ({})),
+                    this.context.api.get("/api/runtime-config"),
                     this.context.api.get("/api/deployments/providers").catch((error) => ({ loadError: error.message }))
                 ]);
-                this.publicBaseUrl = runtime?.publicBaseUrl || location.origin;
+                if (!runtime?.publicBaseUrl) throw new Error("공개 주소 설정을 불러오지 못했습니다. 다시 시도해 주세요.");
+                this.publicBaseUrl = runtime.publicBaseUrl;
                 this.providers = this.normalizeProviders(providers);
                 this.items = arrayPayload(surveys).filter((item) => this.isFinalized(item));
                 this.populateCategoryFilter();
@@ -379,8 +380,8 @@
             const alert = this.root.querySelector("[data-provider-alert]");
             alert.className = `distribution-provider-alert${disabled.length ? " is-warning" : " is-ready"}`;
             alert.innerHTML = disabled.length
-                ? `<strong>외부 발송 준비 확인</strong><span>${disabled.map((item) => item.label).join("·")} provider가 비활성 상태입니다. 대상자와 문안은 저장할 수 있지만 해당 채널의 실행 결과는 <b>DISABLED</b>로 보류됩니다.</span>`
-                : `<strong>외부 발송 provider 준비 완료</strong><span>선택한 채널의 수신 동의와 최종 대상 수를 STEP 04에서 다시 확인하세요.</span>`;
+                ? `<strong>발송 서비스 미연동 · 실제 전송되지 않음</strong><span>${disabled.map((item) => item.label).join("·")} provider가 비활성 상태입니다. 대상자와 문안은 저장할 수 있지만 해당 채널의 실행 결과는 <b>DISABLED</b>로 보류됩니다.</span>`
+                : `<strong>채널 설정 확인 · 실제 전송 기능 연계 필요</strong><span>현재는 발송 작업 등록까지 가능합니다. 실제 이메일·문자 전송은 추후 발송 서비스와 전송 처리 기능을 연계해야 합니다.</span>`;
         },
 
         async loadPublishedSurveyState(survey) {
@@ -869,7 +870,7 @@
             const slug = item?.publicSlug || item?.slug;
             const value = item?.publicUrl || (slug ? `/s/${encodeURIComponent(slug)}` : "");
             if (!value) return "";
-            try { return new URL(String(value), this.publicBaseUrl || location.origin).href; }
+            try { return new URL(String(value), this.publicBaseUrl).href; }
             catch { return ""; }
         },
 
@@ -1207,6 +1208,8 @@
             this.root.querySelector("[data-distribution-search]")?.focus({ preventScroll: true });
         },
 
+        hasUnsavedChanges() { return Boolean(this.dirty); },
+        beforeLeave() { return !this.dirty || this.context.confirmMessage("저장하지 않은 배포 변경사항이 있습니다. 변경사항을 버리고 이동할까요?", { title: "미저장 변경사항", confirmLabel: "변경사항 버리기" }); },
         async beforeRefresh() {
             return !this.dirty || this.context.confirmMessage(
                 "저장하지 않은 배포 변경사항이 있습니다. 변경사항을 버리고 현재 화면을 새로고침할까요?",

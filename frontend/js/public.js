@@ -195,6 +195,10 @@
     }
 
     function cacheDom() {
+        dom.header = document.querySelector(".public-header");
+        dom.progressTrack = document.querySelector(".public-progress");
+        dom.cover = document.querySelector(".public-cover");
+        dom.submitRow = document.querySelector(".public-submit-row");
         dom.loading = document.querySelector("[data-public-loading]");
         dom.form = document.querySelector("[data-public-form]");
         dom.list = document.querySelector("[data-public-question-list]");
@@ -232,6 +236,18 @@
         dom.previous.addEventListener("click", () => moveQuestionPage(-1));
         dom.next.addEventListener("click", () => moveQuestionPage(1));
         window.addEventListener("scroll", updateProgress, { passive: true });
+        window.addEventListener("resize", syncStickyLayout, { passive: true });
+        if (window.ResizeObserver) {
+            const observer = new ResizeObserver(syncStickyLayout);
+            [dom.header, dom.progressTrack, dom.pager].forEach(element => observer.observe(element));
+        }
+    }
+
+    function syncStickyLayout() {
+        const root = document.documentElement;
+        root.style.setProperty("--public-header-height", `${dom.header.getBoundingClientRect().height}px`);
+        root.style.setProperty("--public-progress-height", `${dom.progressTrack.getBoundingClientRect().height}px`);
+        root.style.setProperty("--public-pager-height", `${dom.pager.getBoundingClientRect().height}px`);
     }
 
     function publicSurveyPath(locale) {
@@ -589,7 +605,8 @@
         root.style.setProperty("--survey-accent", safeColor(skin.accent, preset.accent || "#4ed7bd"));
         root.style.setProperty("--survey-surface", safeColor(skin.surface, preset.surface || "#f3f7ff"));
         root.style.setProperty("--survey-radius", safeRadius);
-        if (skin.font === "serif") root.style.setProperty("--survey-font", '"Batang",serif');
+        const fonts = { system: '"Noto Sans KR","Malgun Gothic",system-ui,sans-serif', serif: '"Batang",serif', rounded: '"Arial Rounded MT Bold","Malgun Gothic",system-ui,sans-serif' };
+        root.style.setProperty("--survey-font", fonts[skin.font] || fonts.system);
         document.body.classList.toggle("high-contrast", Boolean(skin.highContrast));
         const image = document.querySelector("[data-public-cover-image]");
         const headerImage = safeAssetUrl(skin.headerImageUrl);
@@ -701,7 +718,7 @@
 
     function noticeMarkup(question) {
         const content = question.settings?.contentHtml ? window.SurveyContent.render(question.settings.contentHtml) : `<p>${Common.escapeHtml(localizedQuestionField(question, "description"))}</p>`;
-        return `<aside class="public-notice survey-document" role="note"><h2>${Common.escapeHtml(localizedQuestionField(question, "title"))}</h2>${content}</aside>`;
+        return `<aside class="public-notice survey-document" data-notice-id="${Common.escapeHtml(question.id)}" role="note"><h2>${Common.escapeHtml(localizedQuestionField(question, "title"))}</h2>${content}</aside>`;
     }
 
     function questionMarkup(question, index) {
@@ -723,6 +740,11 @@
             || PUBLIC_TYPE_LABELS.ko[type]
             || window.SURVEYONE_CONFIG?.questionTypes?.find((item) => item.code === type)?.label
             || type;
+    }
+
+    function scalePointLabel(question, score) {
+        const point = (question.settings?.scalePoints || []).find(point => Number(point.score) === Number(score));
+        return point?.label || String(score);
     }
 
     function answerMarkup(question, ids) {
@@ -748,7 +770,7 @@
             const descending = question.settings?.scaleOrder === "descending";
             const values = Array.from({ length: count }, (_, index) => minimum + index);
             if (descending) values.reverse();
-            const choices = values.map((value) => `<label><input type="radio" name="${Common.escapeHtml(name)}" value="${value}" ${aria}><span>${value}</span></label>`).join("");
+            const choices = values.map((value) => `<label><input type="radio" name="${Common.escapeHtml(name)}" value="${value}" ${aria}><span>${Common.escapeHtml(scalePointLabel(question, value))}</span></label>`).join("");
             return `<fieldset class="public-answer-group" ${aria}><legend class="public-visually-hidden">${Common.escapeHtml(localizedQuestionField(question, "title"))}</legend><div class="public-scale" style="--scale-count:${count}">${choices}</div><div class="scale-labels"><span>${Common.escapeHtml(localizedQuestionField(question, descending ? "maxLabel" : "minLabel"))}</span><span>${Common.escapeHtml(localizedQuestionField(question, descending ? "minLabel" : "maxLabel"))}</span></div></fieldset>`;
         }
         if (question.type === "slider") return ratingMarkup(question, name, aria);
@@ -789,7 +811,7 @@
         const directAria = aria.replace(/aria-labelledby="([^"]*)"/, (_, ids) => `aria-labelledby="${ids} ${token}-label"`);
         const rangeAria = aria.replace(/aria-describedby="([^"]*)"/, (_, ids) => `aria-describedby="${ids} ${token}-start ${token}-end ${token}-hint"`);
         const control = discrete
-            ? `<select name="${escape(name)}" data-rating-input ${directAria}><option value="">${escape(copy.empty)}</option>${values.map(value => `<option value="${value}">${value}${value === minimum && question.minLabel ? ` · ${escape(localizedQuestionField(question, "minLabel"))}` : value === maximum && question.maxLabel ? ` · ${escape(localizedQuestionField(question, "maxLabel"))}` : ""}</option>`).join("")}</select>`
+            ? `<select name="${escape(name)}" data-rating-input ${directAria}><option value="">${escape(copy.empty)}</option>${values.map(value => `<option value="${value}">${escape(scalePointLabel(question, value))}${value === minimum && question.minLabel ? ` · ${escape(localizedQuestionField(question, "minLabel"))}` : value === maximum && question.maxLabel ? ` · ${escape(localizedQuestionField(question, "maxLabel"))}` : ""}</option>`).join("")}</select>`
             : `<input type="number" name="${escape(name)}" min="${minimum}" max="${maximum}" step="${step}" inputmode="decimal" placeholder="${minimum}–${maximum}" data-rating-input ${directAria}>`;
         return `<div class="slider-answer is-unanswered" data-rating><div class="rating-track"><div class="scale-labels rating-endpoints"><span id="${token}-start"><b>${descending ? maximum : minimum}</b><span>${escape(localizedQuestionField(question, descending ? "maxLabel" : "minLabel"))}</span></span><span id="${token}-end"><b>${descending ? minimum : maximum}</b><span>${escape(localizedQuestionField(question, descending ? "minLabel" : "maxLabel"))}</span></span></div><div class="rating-rail"><input type="range" min="${minimum}" max="${maximum}" step="${step}" value="${minimum}" dir="${descending ? "rtl" : "ltr"}" data-slider ${rangeAria} aria-valuetext="${escape(copy.empty)}"><div class="rating-stops" aria-hidden="true">${stops.map(value => `<span class="rating-stop" data-rating-stop="${value}" style="--rating-position:${position(value)}"></span>`).join("")}</div></div><div class="rating-ticks" aria-hidden="true">${ticks.map(value => `<span style="--rating-position:${position(value)}">${value}</span>`).join("")}</div></div><div class="rating-selection"><span>${escape(copy.selected)}</span><output class="slider-value" data-slider-value aria-live="polite">${escape(copy.empty)}</output></div><div class="rating-controls"><label><span id="${token}-label">${escape(copy.direct)}</span>${control}</label><button type="button" data-rating-clear disabled>${escape(copy.clear)}</button></div><p id="${token}-hint" class="rating-hint">${escape(copy.hint)}</p></div>`;
     }
@@ -1236,8 +1258,10 @@
         card.scrollIntoView({ behavior: "instant", block: "start" });
         const bounds = target.getBoundingClientRect?.();
         if (bounds) {
-            const headerBottom = document.querySelector(".public-header")?.getBoundingClientRect().bottom || 0;
-            const footerTop = dom.form?.querySelector(".public-submit-row")?.getBoundingClientRect().top || innerHeight;
+            const headerBottom = Math.max(document.querySelector(".public-header")?.getBoundingClientRect().bottom || 0,
+                dom.pager && !dom.pager.hidden ? dom.pager.getBoundingClientRect().bottom : 0);
+            const footer = dom.form?.querySelector(".public-submit-row");
+            const footerTop = footer && !footer.hidden ? footer.getBoundingClientRect().top : innerHeight;
             if (bounds.top < headerBottom + 12 || bounds.bottom > Math.min(innerHeight, footerTop) - 12) {
                 target.scrollIntoView({ behavior: "instant", block: "center" });
             }
@@ -1319,17 +1343,23 @@
             customFrame.hidden = customFrame.dataset.enabled !== "true" || (paged && afterLastQuestion && state.activeQuestionIndex < cards.length - 1);
         };
         if (!paged) {
+            dom.cover.classList.remove("public-visually-hidden");
+            dom.submitRow.hidden = false;
             cards.forEach((card) => card.classList.remove("is-current-question"));
             dom.list.querySelectorAll(".public-notice").forEach((notice) => { notice.hidden = false; });
             updateCustomFrame();
             return;
         }
         state.activeQuestionIndex = Math.min(Math.max(0, state.activeQuestionIndex), Math.max(0, cards.length - 1));
+        // Keep the document heading accessible without repeating the visual introduction on every page.
+        dom.cover.classList.toggle("public-visually-hidden", state.activeQuestionIndex > 0);
+        dom.submitRow.hidden = state.activeQuestionIndex < cards.length - 1;
         cards.forEach((card, index) => card.classList.toggle("is-current-question", index === state.activeQuestionIndex));
         dom.previous.disabled = state.activeQuestionIndex === 0;
         dom.next.hidden = state.activeQuestionIndex >= cards.length - 1;
         dom.pageStatus.textContent = text("pageStatus", { current: cards.length ? state.activeQuestionIndex + 1 : 0, total: cards.length });
         updateCustomFrame();
+        syncStickyLayout();
         const current = cards[state.activeQuestionIndex];
         emitCustomEvent("pageChange", { questionId: current?.dataset.questionId || null, sectionId: current?.closest("[data-section-id]")?.dataset.sectionId || null });
         const activeSectionIds = cards.map((card) => card.closest("[data-section-id]")?.dataset.sectionId);

@@ -1,6 +1,20 @@
 (function () {
     "use strict";
     const TAGS = new Set("p br strong em u h2 h3 h4 ul ol li blockquote table caption thead tbody tfoot tr th td div span".split(" "));
+    const FORMAT_VALUES = Object.freeze({
+        "data-svy-align": Object.freeze(["left", "center", "right", "justify"]),
+        "data-svy-size": Object.freeze(["12", "14", "16", "18", "20", "24", "28", "32"]),
+        "data-svy-color": Object.freeze(["ink", "blue", "green", "red", "purple"])
+    });
+    const colors = { ink: "#17233a", blue: "#174bb8", green: "#08705f", red: "#b42332", purple: "#7138a8" };
+    const presentationStyles = `.survey-document{line-height:1.75;overflow-wrap:anywhere}.survey-document p{white-space:pre-line}.survey-document table{width:100%;border-collapse:collapse;table-layout:fixed;margin:16px 0;font-size:14px}.survey-document th,.survey-document td{border:1px solid var(--line,#cbd5e1);padding:10px;text-align:left;vertical-align:top}.survey-document th{background:var(--survey-surface,#f3f6fa)}.survey-document caption{text-align:left;padding:8px;font-weight:700}.survey-document blockquote{margin:16px 0;padding:12px 16px;border-left:4px solid var(--survey-primary,#2457d6);background:var(--survey-surface,#f3f6fa)}` +
+        FORMAT_VALUES["data-svy-align"].map(value => `.survey-document [data-svy-align="${value}"]{text-align:${value}}`).join("") +
+        FORMAT_VALUES["data-svy-size"].map(value => `.survey-document [data-svy-size="${value}"]{font-size:${value}px}`).join("") +
+        Object.entries(colors).map(([name, value]) => `.survey-document [data-svy-color="${name}"]{color:${value}}`).join("");
+    const style = document.createElement("style");
+    style.dataset.surveyContentStyle = "";
+    style.textContent = presentationStyles;
+    document.head.append(style);
     // Rebuild from an allowlist, never insert arbitrary author HTML into an app shell.
     function render(source) {
         const parsed = new DOMParser().parseFromString(String(source || ""), "text/html");
@@ -17,6 +31,10 @@
                 const scope = node.getAttribute("scope");
                 if (node.localName === "th" && ["row", "col", "rowgroup", "colgroup"].includes(scope)) element.setAttribute("scope", scope);
             }
+            for (const [name, values] of Object.entries(FORMAT_VALUES)) {
+                const value = node.getAttribute(name);
+                if (values.includes(value)) element.setAttribute(name, value);
+            }
             for (const child of node.childNodes) copy(child, element);
             parent.append(element);
         };
@@ -31,6 +49,7 @@
         for (const element of parsed.body.querySelectorAll("*")) {
             if (!TAGS.has(element.localName)) throw new Error(`안내 서식에는 ${element.localName} 태그를 사용할 수 없습니다.`);
             for (const attribute of element.attributes) {
+                if (FORMAT_VALUES[attribute.name]?.includes(attribute.value)) continue;
                 const cell = ["td", "th"].includes(element.localName);
                 if (cell && ["colspan", "rowspan"].includes(attribute.name) && /^(?:[1-9]|1[0-9]|20)$/.test(attribute.value)) continue;
                 if (element.localName === "th" && attribute.name === "scope" && ["row", "col", "rowgroup", "colgroup"].includes(attribute.value)) continue;
@@ -44,5 +63,5 @@
         cover: "<p>안녕하십니까?</p>\n<p>본 조사는 <strong>조사 목적</strong>을 파악하고 개선 방향을 마련하기 위해 실시합니다.</p>\n<p>응답 내용은 통계 분석 목적으로만 활용됩니다. 다음 안내를 읽고 설문에 참여해 주세요.</p>\n<ul><li>조사 대상: 대상자를 입력하세요.</li><li>응답 방법: 해당하는 보기를 선택해 주세요.</li></ul>",
         table: '<table>\n<caption>응답 기준 안내</caption>\n<thead><tr><th scope="col">구분</th><th scope="col">설명</th></tr></thead>\n<tbody><tr><th scope="row">항목 1</th><td>첫 번째 내용을 입력하세요.</td></tr><tr><th scope="row">항목 2</th><td>두 번째 내용을 입력하세요.</td></tr></tbody>\n</table>'
     });
-    window.SurveyContent = Object.freeze({ render, validate, presets });
+    window.SurveyContent = Object.freeze({ render, validate, presets, FORMAT_VALUES, presentationStyles });
 })();

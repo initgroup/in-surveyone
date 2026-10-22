@@ -47,7 +47,9 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     assert "언어별 설문 URL·메시지" not in html  # compact step labels stay scannable
     assert "언어별 URL과 안내문" in html
     assert "저장하고 발송 대기열 등록" in html
-    assert "실제 외부 전송은 운영 provider worker 연동 후 처리됩니다." in html
+    assert "실제 메일·문자는 전송되지 않습니다." in html
+    assert "추후 발송 서비스와 전송 처리 기능 연계가 필요합니다." in html
+    assert html.index("실제 이메일·문자 발송은 연동되어 있지 않습니다.") < html.index("data-distribution-project-view")
     assert "Excel 양식" in html
     assert '.csv,.txt,.xlsx' in html
     assert "data-recipient-import-progress" in html

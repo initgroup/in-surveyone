@@ -25,6 +25,9 @@
         routeGeneration: 0,
         routeController: null,
         routeTask: null,
+        leaveTask: null,
+        pendingHash: "",
+        activeHash: "",
         refreshing: false,
         guestCapabilities: null,
         guestCapabilitiesPromise: null,
@@ -53,6 +56,7 @@
     document.addEventListener("DOMContentLoaded", init);
 
     async function init() {
+        Common.preferences.apply(Common.preferences.read());
         cacheDom();
         syncSidebarForViewport();
         renderNavigation();
@@ -132,6 +136,11 @@
     }
 
     function bindShellEvents() {
+        window.addEventListener("beforeunload", (event) => {
+            if (!state.currentPage?.hasUnsavedChanges?.()) return;
+            event.preventDefault();
+            event.returnValue = "";
+        });
         window.addEventListener("surveyone:session-invalid", handleInvalidSession);
         window.addEventListener("surveyone:session-refreshed", handleSessionRefreshed);
         dom.menuToggle.addEventListener("click", toggleSidebar);
@@ -360,11 +369,37 @@
 
     function routeCode() {
         const code = location.hash.replace(/^#\/?/, "").split(/[?&]/)[0].toUpperCase();
+        if (!code && state.user) return Common.preferences.read().startPage;
         return window.PAGE_CONFIG[code] ? code : window.SURVEYONE_CONFIG.defaultRoute;
     }
 
     function route(options = {}) {
         const refresh = options?.refresh === true;
+        if (!refresh && !options?.leaveApproved && state.user && state.leaveTask) {
+            state.pendingHash = location.hash;
+            return state.leaveTask;
+        }
+        if (!refresh && !options?.leaveApproved && state.user && state.currentPage?.beforeLeave && location.hash !== state.activeHash) {
+            state.pendingHash = location.hash;
+            const previousHash = state.activeHash;
+            const leavingPage = state.currentPage;
+            state.leaveTask = Promise.resolve().then(async () => {
+                let allowed = false;
+                try { allowed = await leavingPage.beforeLeave(); }
+                catch (error) { toast(`현재 작업을 확인해 주세요. ${error.message}`, "error"); }
+                const nextHash = state.pendingHash;
+                state.leaveTask = null;
+                if (state.currentPage !== leavingPage || !state.user) return;
+                if (allowed === false) {
+                    history.replaceState(null, "", previousHash);
+                    return;
+                }
+                if (nextHash === previousHash) return;
+                history.replaceState(null, "", nextHash);
+                return route({ leaveApproved: true });
+            });
+            return state.leaveTask;
+        }
         const requestedCode = routeCode();
         const generation = state.routeGeneration + 1;
         state.routeGeneration = generation;
@@ -474,6 +509,7 @@
                 });
             }
             assertCurrentRoute(generation, controller);
+            state.activeHash = location.hash;
             state.currentPage = candidatePage;
             candidatePage = null;
             dom.pageHost.focus({ preventScroll: true });
@@ -539,7 +575,7 @@
     }
 
     async function refreshCurrentPage() {
-        if (state.refreshing || !state.currentPage) return;
+        if (state.refreshing || state.leaveTask || !state.currentPage) return;
         try {
             if (state.currentPage.beforeRefresh) {
                 const allowed = await state.currentPage.beforeRefresh();
@@ -642,7 +678,7 @@
             link.onload = () => signal?.aborted ? onAbort() : finish(candidate);
             link.onerror = () => {
                 link.remove();
-                finish(null);
+                finish(null, new Error("화면 스타일을 불러오지 못했습니다. 다시 시도해 주세요."));
             };
             signal?.addEventListener("abort", onAbort, { once: true });
             document.head.appendChild(link);
@@ -926,7 +962,7 @@
         document.querySelector("[data-user-avatar]").textContent = name.trim().charAt(0).toUpperCase() || "G";
         document.querySelector("[data-tenant-name]").textContent = tenant;
         document.querySelector("[data-save-state]").innerHTML = user
-            ? '<i aria-hidden="true"></i> 모든 변경사항 저장됨'
+            ? '<i aria-hidden="true"></i> 화면별 저장 상태 확인'
             : '<i aria-hidden="true"></i> 읽기 전용 둘러보기';
         document.querySelector("[data-quick-create]").innerHTML = user
             ? '<span aria-hidden="true">＋</span> 새 설문'

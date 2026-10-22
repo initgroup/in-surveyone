@@ -55,11 +55,15 @@ def test_project_list_buttons_keep_correct_spa_destinations_and_mobile_visibilit
     assert 'if (event.target.closest("[data-response-project-back]")) this.showProjectList()' in raw_data
     assert ".workspace-list-button {" in app_css
     assert ".workspace-list-button-icon {" in app_css
-    assert ".builder-actions .workspace-list-button { display: inline-flex;" in builder_css
-    assert "grid-template-columns: minmax(220px, .7fr) auto minmax(520px, 1.3fr)" in builder_css
-    assert ".builder-actions .button { flex: 0 0 auto; white-space: nowrap; }" in builder_css
-    assert "@media (max-width: 128rem)" in builder_css
-    assert ".builder-actions .workspace-list-button { width: 40px;" in builder_css
+    assert ".builder-topbar .workspace-list-button { width: 44px; min-width: 44px;" in builder_css
+    assert "grid-template-columns: 44px minmax(0, 1fr) auto" in builder_css
+    assert ".builder-command-row > * { flex: 0 0 auto; }" in builder_css
+    page = _read("frontend/pages/M02003.html")
+    project_row = page.split('class="builder-project-row"', 1)[1].split('class="builder-command-row"', 1)[0]
+    assert "data-builder-back" in project_row
+    assert "data-builder-save" in project_row
+    assert "data-builder-preview" in project_row
+    assert 'class="builder-mobile-actions"' not in page
 
 
 def test_public_urls_use_readable_application_font_sizes() -> None:
@@ -67,8 +71,10 @@ def test_public_urls_use_readable_application_font_sizes() -> None:
     distribution_css = _read("frontend/css/pages/M03001.css")
 
     assert ".project-public-url code" in project_css
-    assert "font-size: 13px" in project_css
+    assert "font-size: var(--text-ui)" in project_css.split(".project-public-url code", 1)[1].split("}", 1)[0]
+    assert "--text-ui: 14px;" in _read("frontend/css/app.css")
     assert ".distribution-language-url input" in distribution_css
     assert ".distribution-review-languages code" in distribution_css
-    assert distribution_css.count("font-size: 13px") >= 2
+    for selector in (".distribution-language-url input", ".distribution-review-languages code"):
+        assert "font-size: var(--text-ui)" in distribution_css.split(selector, 1)[1].split("}", 1)[0]
     assert "font-family: Consolas,monospace" not in distribution_css

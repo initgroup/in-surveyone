@@ -1,6 +1,7 @@
 (function () {
     "use strict";
     const PAGE_NAME = "M02003";
+    const draftFields = ["title", "description", "category", "sections", "theme", "skin", "logicRules", "settings", "languages", "translations"];
     const optionTypes = new Set(["single", "multiple", "dropdown"]);
     const rangeTypes = new Set(["number", "scale", "slider"]);
     const matrixTypes = new Set(["matrix_single", "matrix_multiple", "table", "repeat_table"]);
@@ -49,8 +50,17 @@
             this.openTemplateOnLoad = params.get("template") === "1" || Boolean(this.recommendedTemplateId);
             this.survey = null;
             this.activeId = null;
-            this.saveTimer = null;
+            this.activeSectionId = null;
+            this.mode = "questions";
+            this.canvasScrollPositions = {};
+            this.collapsedSections = new Set();
+            this.insertionMode = "after";
+            this.selectedQuestionType = "single";
+            this.addedQuestionId = null;
             this.savePromise = null;
+            this.savedDraft = null;
+            this.savingExplicit = false;
+            this.leavePromise = null;
             this.publishing = false;
             this.dirty = false;
             this.destroyed = false;
@@ -72,7 +82,7 @@
             this.root.querySelectorAll("[data-template-admin-publish]").forEach((button) => { button.hidden = !this.templateAdmin; });
             this.root.querySelectorAll("[data-builder-template-library]").forEach((button) => { button.hidden = this.templateAdmin; });
             this.root.querySelectorAll("[data-builder-distribute]").forEach((button) => { button.hidden = this.templateAdmin; });
-            this.root.querySelector("[data-builder-publish]").hidden = this.templateAdmin;
+            this.root.querySelectorAll("[data-builder-publish]").forEach(button => { button.hidden = this.templateAdmin; });
             if (this.templateAdmin) {
                 this.root.querySelector("[data-builder-back]").setAttribute("aria-label", "공용 템플릿 목록으로 돌아가기");
                 this.root.querySelector("[data-builder-back]").setAttribute("title", "공용 템플릿 목록");
@@ -86,49 +96,51 @@
         },
         bind() {
             this.onClick = async (event) => {
-                if (event.target.closest("[data-builder-basic]")) {
-                    try {
-                        await this.flushSave();
-                        return this.context.navigate("M02001", { editId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
-                    } catch (error) {
-                        return this.context.toast(`저장하지 못해 이동을 중단했습니다. ${error.message}`, "error");
-                    }
-                }
-                if (event.target.closest("[data-builder-skin-step]")) {
-                    try {
-                        await this.flushSave();
-                        return this.context.navigate("M02005", { surveyId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
-                    } catch (error) {
-                        return this.context.toast(`저장하지 못해 이동을 중단했습니다. ${error.message}`, "error");
-                    }
-                }
-                if (event.target.closest("[data-builder-experience]")) {
-                    try {
-                        await this.flushSave();
-                        return this.context.navigate("M02004", { surveyId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
-                    } catch (error) {
-                        return this.context.toast(`저장하지 못해 이동을 중단했습니다. ${error.message}`, "error");
-                    }
-                }
-                if (event.target.closest("[data-builder-back]")) {
-                    try {
-                        await this.flushSave();
-                        return this.context.navigate(this.templateAdmin ? "M07001" : "M02001");
-                    } catch (error) {
-                        return this.context.toast(`저장하지 못해 이동을 중단했습니다. ${error.message}`, "error");
-                    }
-                }
+                if (event.target.closest("[data-builder-file-menu] button")) this.root.querySelector("[data-builder-file-menu]").open = false;
+                if (event.target.closest("[data-builder-basic]")) return this.context.navigate("M02001", { editId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
+                if (event.target.closest("[data-builder-skin-step]")) return this.context.navigate("M02005", { surveyId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
+                if (event.target.closest("[data-builder-experience]")) return this.context.navigate("M02004", { surveyId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
+                if (event.target.closest("[data-builder-back]")) return this.context.navigate(this.templateAdmin ? "M07001" : "M02001");
                 const tool = event.target.closest("[data-question-type]");
-                if (tool) return this.addQuestion(tool.dataset.questionType);
-                if (event.target.closest("[data-canvas-add]")) return this.addQuestion("single");
+                if (tool) return this.selectQuestionType(tool.dataset.questionType);
+                if (event.target.closest("[data-add-selected-question]")) return this.addQuestion(this.selectedQuestionType || "single");
+                if (event.target.closest("[data-canvas-add]")) return this.addQuestion(this.selectedQuestionType || "single", { mode: "survey-end" });
                 if (event.target.closest("[data-add-section]")) return this.addSection();
+                const foldAll = event.target.closest("[data-sections-fold]");
+                if (foldAll) return this.setAllSectionsCollapsed(foldAll.dataset.sectionsFold === "collapse");
+                const fold = event.target.closest("[data-section-toggle]");
+                if (fold) {
+                    const id = fold.closest(".builder-section-heading").dataset.sectionId;
+                    return this.setSectionCollapsed(id, !this.collapsedSections?.has(id));
+                }
+                const sectionAdd = event.target.closest("[data-section-select]");
+                if (sectionAdd) {
+                    const sectionId = sectionAdd.closest(".builder-section-heading").dataset.sectionId;
+                    this.selectSection(sectionId);
+                    return this.chooseQuestionInsertion({ mode: "section-end", sectionId });
+                }
+                const sectionDelete = event.target.closest("[data-section-delete]");
+                if (sectionDelete) return this.confirmSectionRemoval(sectionDelete.closest(".builder-section-heading").dataset.sectionId);
+                if (event.target.closest("[data-scroll-selection]")) return this.revealSelection();
+                const documentScroll = event.target.closest("[data-builder-scroll]");
+                if (documentScroll) return this.navigateDocument(documentScroll.dataset.builderScroll);
+                const heading = event.target.closest(".builder-section-heading");
+                if (heading) this.selectSection(heading.dataset.sectionId);
                 const card = event.target.closest("[data-question-id]");
                 if (card) this.selectQuestion(card.dataset.questionId);
+                const insert = event.target.closest("[data-question-insert]");
+                if (insert) return this.chooseQuestionInsertion({ mode: insert.dataset.questionInsert, questionId: card.dataset.questionId });
                 if (event.target.closest("[data-question-up]")) return this.moveQuestion(card.dataset.questionId, -1);
                 if (event.target.closest("[data-question-down]")) return this.moveQuestion(card.dataset.questionId, 1);
                 if (event.target.closest("[data-question-duplicate]")) return this.duplicateQuestion(card.dataset.questionId);
                 if (event.target.closest("[data-question-delete]")) return this.deleteQuestion(card.dataset.questionId);
                 if (event.target.closest("[data-question-settings]")) return this.openProperties(card.dataset.questionId);
+                const moveOption = event.target.closest("[data-option-move]");
+                if (moveOption) return this.moveOption(card.dataset.questionId, moveOption.dataset.optionMove, Number(moveOption.dataset.optionDirection));
+                const insertOption = event.target.closest("[data-option-insert]");
+                if (insertOption) return this.addOption(card.dataset.questionId, insertOption.dataset.optionInsert);
+                const insertAxis = event.target.closest("[data-axis-insert]");
+                if (insertAxis) return this.addAxisItem(insertAxis.dataset.axisInsert, Number(insertAxis.dataset.axisIndex));
                 const addOption = event.target.closest("[data-add-option]");
                 if (addOption) return this.addOption(addOption.dataset.addOption);
                 const deleteOption = event.target.closest("[data-delete-option]");
@@ -142,6 +154,7 @@
                 const mode = event.target.closest("[data-builder-mode]");
                 if (mode) return this.setMode(mode.dataset.builderMode);
                 if (event.target.closest("[data-builder-save]")) return this.saveExplicit();
+                if (event.target.closest("[data-builder-discard]")) return this.confirmDiscardChanges();
                 if (event.target.closest("[data-builder-preview]")) return this.preview();
                 if (event.target.closest("[data-builder-template-library]")) return this.openTemplateLibrary();
                 if (event.target.closest("[data-builder-code]")) return this.openCustomCode();
@@ -162,21 +175,29 @@
                 if (event.target.closest("[data-properties-close]")) return this.closeProperties();
                 const skin = event.target.closest("[data-skin-code]");
                 if (skin) return this.setSkin(skin.dataset.skinCode);
-                if (event.target.closest("[data-open-skins]")) {
-                    try {
-                        await this.flushSave();
-                        return this.context.navigate("M02005", { surveyId: this.survey.id, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
-                    } catch (error) {
-                        return this.context.toast(`저장하지 못해 이동을 중단했습니다. ${error.message}`, "error");
-                    }
-                }
+                if (event.target.closest("[data-open-skins]")) return this.context.navigate("M02005", { surveyId: this.survey.id, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId } : {}) });
                 if (event.target.closest("[data-add-rule]")) return this.addLogicRule();
                 if (event.target.closest("[data-remove-rule]")) return this.removeLogicRule(event.target.closest("[data-rule-id]").dataset.ruleId);
                 if (event.target.closest("[data-add-condition]")) return this.addActivationCondition();
                 const removeCondition = event.target.closest("[data-remove-condition]");
                 if (removeCondition) return this.removeActivationCondition(Number(removeCondition.dataset.removeCondition));
-                if (event.target.closest("[data-mobile-tools]")) this.root.querySelector(".builder-toolbox")?.scrollIntoView({ behavior: "smooth" });
             };
+            this.onSelectionPointerDown = () => { this.selectingByPointer = true; };
+            this.onSelectionPointerEnd = () => { this.selectingByPointer = false; };
+            this.root.addEventListener("pointerdown", this.onSelectionPointerDown);
+            document.addEventListener("pointerup", this.onSelectionPointerEnd);
+            document.addEventListener("pointercancel", this.onSelectionPointerEnd);
+            this.onSelectionFocus = (event) => {
+                // Pointer selection runs on click so the banner cannot move a button between down and up.
+                if (this.selectingByPointer || event.target.closest("[data-section-toggle]")) return;
+                const card = event.target.closest("[data-question-id]");
+                if (card) this.selectQuestion(card.dataset.questionId);
+                else {
+                    const heading = event.target.closest(".builder-section-heading");
+                    if (heading) this.selectSection(heading.dataset.sectionId);
+                }
+            };
+            this.root.addEventListener("focusin", this.onSelectionFocus);
             this.onInput = (event) => this.handleInput(event);
             this.onChange = (event) => {
                 if (event.target.matches("[data-import-draft-file]")) { this.importDraftPackage(event.target.files[0]); event.target.value = ""; return; }
@@ -186,13 +207,86 @@
             this.onDragEnd = (event) => { event.target.closest("[data-question-id]")?.classList.remove("is-dragging"); this.dragId = null; };
             this.onDragOver = (event) => event.preventDefault();
             this.onDrop = (event) => { event.preventDefault(); const target = event.target.closest("[data-question-id]"); if (target && this.dragId && target.dataset.questionId !== this.dragId) this.reorderTo(this.dragId, target.dataset.questionId); };
+            this.onToolDoubleClick = (event) => {
+                const tool = event.target.closest("[data-question-tools] [data-question-type]");
+                if (!tool) return;
+                event.preventDefault();
+                this.selectQuestionType(tool.dataset.questionType);
+                this.addQuestion(this.selectedQuestionType);
+            };
             this.root.addEventListener("click", this.onClick);
+            this.root.addEventListener("dblclick", this.onToolDoubleClick);
             this.root.addEventListener("input", this.onInput);
             this.root.addEventListener("change", this.onChange);
             this.root.addEventListener("dragstart", this.onDragStart);
             this.root.addEventListener("dragend", this.onDragEnd);
             this.root.addEventListener("dragover", this.onDragOver);
             this.root.addEventListener("drop", this.onDrop);
+            const toolbar = this.root.querySelector(".builder-topbar");
+            const shell = this.root.querySelector("[data-builder-shell]");
+            this.syncToolbarLayout = () => {
+                if (this.destroyed) return;
+                const rect = toolbar.getBoundingClientRect();
+                if (this.toolbarWidth !== rect.width) { this.toolbarWidth = rect.width; this.resizeQuestionTitles?.(); }
+                shell.style.setProperty("--builder-toolbar-height", `${Math.ceil(rect.height)}px`);
+                shell.style.setProperty("--builder-toolbar-bottom", `${Math.ceil(rect.bottom)}px`);
+                const workspace = this.root.querySelector(".builder-workspace");
+                const bottomSpace = parseFloat(getComputedStyle(this.root).paddingBottom) || 16;
+                // Keep a viewport-sized workbench; the outer page may scroll its introductions away.
+                const headerHeight = parseFloat(getComputedStyle(this.root).getPropertyValue("--header-height")) || 0;
+                const height = Math.max(240, window.innerHeight - headerHeight - rect.height - bottomSpace - 2);
+                shell.style.setProperty("--builder-workspace-height", `${Math.floor(height)}px`);
+                if (window.matchMedia("(min-width: 60.001rem)").matches) workspace.style.height = `${Math.floor(height)}px`;
+                else workspace.style.removeProperty("height");
+            };
+            this.toolbarResizeObserver = new ResizeObserver(this.syncToolbarLayout);
+            this.toolbarResizeObserver.observe(toolbar);
+            this.workspaceResizeObserver = new ResizeObserver(() => this.syncToolbarLayout());
+            this.workspaceResizeObserver.observe(this.root.querySelector(".builder-publication-guide"));
+            this.workspaceResizeObserver.observe(this.root.querySelector(".builder-document-navigation"));
+            this.fileMenu = this.root.querySelector("[data-builder-file-menu]");
+            this.onFileMenuToggle = () => {
+                if (!this.fileMenu.open) return;
+                const anchor = this.fileMenu.querySelector("summary").getBoundingClientRect();
+                const panel = this.fileMenu.querySelector(".builder-file-menu-panel");
+                panel.style.left = `${Math.max(8, Math.min(anchor.left, window.innerWidth - 238))}px`;
+                panel.style.top = `${Math.min(anchor.bottom + 6, Math.max(8, window.innerHeight - panel.offsetHeight - 8))}px`;
+            };
+            this.onToolbarPointerDown = event => {
+                if (this.fileMenu.open && (!(event.target instanceof Node) || !this.fileMenu.contains(event.target))) this.fileMenu.open = false;
+            };
+            this.onToolbarKeyDown = event => {
+                this.selectingByPointer = false;
+                const tool = event.target.closest("[data-question-tools] [data-question-type]");
+                if (tool && event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                    event.preventDefault();
+                    this.selectQuestionType(tool.dataset.questionType);
+                    this.addQuestion(this.selectedQuestionType);
+                    return;
+                }
+                if (event.key === "Escape" && this.fileMenu.open) {
+                    this.fileMenu.open = false; this.fileMenu.querySelector("summary").focus(); event.preventDefault();
+                }
+                const tab = event.target.closest("[data-builder-mode]");
+                if (tab && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+                    event.preventDefault();
+                    const tabs = [...this.root.querySelectorAll("[data-builder-mode]")];
+                    const index = tabs.indexOf(tab);
+                    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+                    tabs[next].click(); tabs[next].focus();
+                }
+            };
+            this.onToolbarScroll = event => {
+                this.syncToolbarLayout();
+                if (!this.fileMenu.open) return;
+                if (event.type === "resize") this.fileMenu.open = false;
+                else if (!(event.target instanceof Node) || !this.fileMenu.contains(event.target)) this.onFileMenuToggle();
+            };
+            this.fileMenu.addEventListener("toggle", this.onFileMenuToggle);
+            document.addEventListener("pointerdown", this.onToolbarPointerDown);
+            document.addEventListener("scroll", this.onToolbarScroll, true);
+            window.addEventListener("resize", this.onToolbarScroll);
+            this.root.addEventListener("keydown", this.onToolbarKeyDown);
         },
         async load() {
             try {
@@ -200,7 +294,17 @@
                 this.survey = payload.survey || payload;
                 this.normalizeSurvey();
                 this.persistedSourceLocale = this.survey.languages.sourceLocale;
+                this.dirty = false;
                 this.renderSurvey();
+                this.savedDraft = this.draftSnapshot();
+                this.setSaveLabel("저장됨");
+                requestAnimationFrame(() => {
+                    if (this.destroyed) return;
+                    this.syncToolbarLayout();
+                    requestAnimationFrame(() => {
+                        if (!this.destroyed && !document.querySelector("dialog[open]")) this.scrollOuterToWorkspace();
+                    });
+                });
             } catch (error) {
                 const backLabel = this.templateAdmin ? "공용 템플릿 목록" : "프로젝트 목록";
                 this.root.querySelector(".builder-canvas").innerHTML = `<section class="empty-state error-state"><span class="empty-icon">!</span><h2>설문을 열 수 없습니다</h2><p>${Common.escapeHtml(error.message)}</p><button class="button workspace-list-button" data-builder-back><span class="workspace-list-button-icon" aria-hidden="true">←</span><span>${backLabel}</span></button></section>`;
@@ -359,6 +463,78 @@
         matrixItemKey(question, field, index) {
             return String(question.settings?.[field]?.[index]?.id ?? index);
         },
+        ensureResultCodes(items) {
+            const used = new Set(items.map(item => item.resultCode).filter(value => value != null));
+            let next = Math.max(0, ...[...used].filter(value => /^[0-9]{1,6}$/.test(value)).map(Number)) + 1;
+            items.forEach(item => {
+                if (item.resultCode != null) return;
+                if (item.code && !used.has(item.code)) item.resultCode = item.code;
+                else { while (used.has(String(next))) next += 1; item.resultCode = String(next++); }
+                used.add(item.resultCode);
+            });
+        },
+        ensureScalePoints(question) {
+            if (question.type !== "scale") return;
+            const current = question.settings.scalePoints || [];
+            const minimum = question.min ?? 1, maximum = question.max ?? 5;
+            const used = new Set(current.filter(point => point.score >= minimum && point.score <= maximum).map(point => point.resultCode));
+            question.settings.scalePoints = Array.from({length: Math.min(11, Math.max(0, maximum - minimum + 1))}, (_, index) => {
+                const score = minimum + index;
+                const existing = current.find(point => point.score === score);
+                if (existing) return existing;
+                const point = {score, label: String(score)};
+                if (!used.has(String(score))) { point.resultCode = String(score); used.add(point.resultCode); }
+                return point;
+            });
+            this.ensureResultCodes(question.settings.scalePoints);
+        },
+        validateCodeControls(question) {
+            const card = this.root.querySelector(`[data-question-id="${CSS.escape(question.id)}"]`);
+            const groups = [];
+            if (card) groups.push([...card.querySelectorAll("[data-option-result-code]")], [...card.querySelectorAll("[data-option-code]")]);
+            if (this.activeId === question.id) ["rows", "columns"].forEach(field => groups.push([...this.root.querySelectorAll(`[data-axis-result-code="${field}"]`)]));
+            if (this.activeId === question.id) groups.push([...this.root.querySelectorAll("[data-scale-code]")]);
+            groups.forEach(inputs => {
+                const values = inputs.map(input => input.value.trim());
+                inputs.forEach((input, index) => {
+                    const value = values[index];
+                    const valid = value.length > 0 && value.length <= 120 && !/[\x00-\x1f\x7f]/.test(value) && values.filter(other => other === value).length === 1 && (!input.matches("[data-option-code]") || /^[1-9][0-9]{0,5}$/.test(value));
+                    input.setCustomValidity(valid ? "" : "비어 있지 않은 고유한 코드를 입력하세요.");
+                    input.setAttribute("aria-invalid", String(!valid));
+                });
+            });
+        },
+        resultCodeProblem() {
+            for (const question of this.survey.questions) {
+                const groups = [question.options || [], question.settings?.rows || [], question.settings?.columns || [], question.settings?.scalePoints || []];
+                for (const group of groups) {
+                    const codes = group.map(item => String(item.resultCode ?? item.id ?? "").trim());
+                    if (codes.some(code => !code || code.length > 120 || /[\x00-\x1f\x7f]/.test(code)) || new Set(codes).size !== codes.length) return `“${this.localizedQuestionField(question, "title")}”의 결과 코드를 확인하세요. 같은 목록 안에서 중복 없이 1~120자로 입력해야 합니다.`;
+                }
+                if (question.settings?.choiceInput === "codes") {
+                    const codes = (question.options || []).map(option => option.code);
+                    if (codes.some(code => !/^[1-9][0-9]{0,5}$/.test(code || "")) || new Set(codes).size !== codes.length) return "번호 입력용 보기 번호는 중복 없이 1~999999로 지정하세요.";
+                }
+            }
+            return "";
+        },
+        responseContract(question) {
+            if (optionTypes.has(question.type)) return "표시 문구는 응답 화면에, 결과 코드는 결과 코드형 내보내기에 사용됩니다. 중간 삽입·순서 변경으로 기존 코드는 바뀌지 않습니다. 응답 연결 ID는 자동으로 유지됩니다.";
+            if (matrixTypes.has(question.type)) return "행·열의 표시 문구와 결과 코드를 따로 설정합니다. 표의 입력 내용은 그대로 저장하고 결과 코드형에서는 지정한 행·열 코드로 구분합니다. 반복표의 행 순서는 응답자가 추가한 순서입니다.";
+            if (question.type === "scale") return "선택 점수는 숫자로 저장해 통계를 계산합니다. 점수별 표시 문구와 결과 코드는 아래에서 수정하며 결과 코드형 내보내기에 적용됩니다.";
+            if (["number", "slider"].includes(question.type)) return "응답자가 입력·선택한 숫자를 저장합니다. 표시 단위는 값에 포함되지 않습니다. 최솟값·최댓값과 간격으로 허용 값을 설정하세요.";
+            if (question.type === "date") return "응답자가 선택한 날짜를 YYYY-MM-DD 형식으로 저장합니다.";
+            if (question.type === "notice") return "안내 문항은 화면에만 표시되며 응답값을 저장하지 않습니다.";
+            return "응답자가 입력한 문자를 그대로 저장합니다. 표시 문구인 문항 제목·설명은 응답값에 포함되지 않습니다.";
+        },
+        renderScalePoints(question) {
+            const panel = this.root.querySelector("[data-scale-points]");
+            panel.hidden = question.type !== "scale";
+            if (panel.hidden) return;
+            this.ensureScalePoints(question);
+            const disabled = this.editingLocale !== this.survey.languages.sourceLocale ? "disabled" : "";
+            panel.querySelector("[data-scale-point-list]").innerHTML = question.settings.scalePoints.map(point => `<div class="scale-point-item"><strong>${point.score}점</strong><label>표시 문구<input type="text" maxlength="100" data-scale-label="${point.score}" value="${Common.escapeHtml(point.label)}" ${disabled}></label><label>결과 코드<input type="text" maxlength="120" data-scale-code="${point.score}" value="${Common.escapeHtml(point.resultCode)}" ${disabled}></label></div>`).join("");
+        },
         syncQuestionCompatibility(question) {
             const behaviors = new Set(["fixed_required", "fixed_optional", "dynamic_required", "dynamic_optional"]);
             question.behavior = behaviors.has(question.behavior) ? question.behavior : (question.required ? "fixed_required" : "fixed_optional");
@@ -368,6 +544,7 @@
                 if (question[topLevel] === undefined || question[topLevel] === null) question[topLevel] = question.settings[setting] ?? question[topLevel];
                 if (question[topLevel] !== undefined) question.settings[setting] = question[topLevel];
             });
+            this.ensureResultCodes(question.options || []);
             ["rows", "columns"].forEach((field) => {
                 const existing = Array.isArray(question.settings[field]) ? question.settings[field] : [];
                 if ((!Array.isArray(question[field]) || !question[field].length) && existing.length) question[field] = existing.map((item) => String(item?.label ?? item ?? ""));
@@ -377,7 +554,9 @@
                     id: String(existing[index]?.id || uid(field === "rows" ? "row" : "col")),
                     label: String(label ?? "")
                 }));
+                this.ensureResultCodes(question.settings[field]);
             });
+            this.ensureScalePoints(question);
         },
         setLocalizedSurveyField(field, value) {
             if (this.editingLocale === this.survey.languages.sourceLocale) {
@@ -528,7 +707,38 @@
             this.survey.questions = this.survey.sections.flatMap((section) => section.questions);
         },
         renderTools() {
-            this.root.querySelector("[data-question-tools]").innerHTML = window.SURVEYONE_CONFIG.questionTypes.map((item) => `<button class="question-tool" type="button" data-question-type="${item.code}"><span>＋ ${item.label}</span><small>${item.description}</small></button>`).join("");
+            const icons = {
+                radio: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+                "check-square": '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>',
+                "chevron-down": '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m9 10 3 3 3-3"/>',
+                text: '<path d="M4 6h16M12 6v13M8 19h8"/>',
+                "align-left": '<path d="M4 5h16M4 10h12M4 15h16M4 20h9"/>',
+                hash: '<path d="M9 3 7 21M17 3l-2 18M4 9h17M3 15h17"/>',
+                "bar-chart": '<path d="M4 20h16M7 16v-5m5 5V4m5 12V8"/>',
+                sliders: '<path d="M3 7h7m4 0h7M3 17h13m4 0h1"/><circle cx="12" cy="7" r="2"/><circle cx="18" cy="17" r="2"/>',
+                grid: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
+                table: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M10 4v16"/>',
+                copy: '<rect x="7" y="7" width="14" height="14" rx="2"/><path d="M17 7V3H3v14h4"/>',
+                calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18m-13 4h1m5 0h1"/>',
+                info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.1"/>'
+            };
+            this.root.querySelector("[data-question-tools]").innerHTML = window.SURVEYONE_CONFIG.questionTypes.map((item) => `<button class="question-tool" type="button" data-question-type="${item.code}" title="${Common.escapeHtml(item.description)} · 한 번 클릭: 선택 · 더블클릭 또는 Ctrl+Enter: 추가" aria-pressed="false" aria-label="${Common.escapeHtml(item.label)} 유형 선택 · ${Common.escapeHtml(item.description)}"><span class="question-tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24">${icons[item.icon] || icons.text}</svg></span><strong>${Common.escapeHtml(item.label)}</strong><small>${Common.escapeHtml(item.description)}</small></button>`).join("");
+            this.selectQuestionType(this.selectedQuestionType || "single");
+        },
+        selectQuestionType(type) {
+            const config = window.SURVEYONE_CONFIG.questionTypes.find(item => item.code === type);
+            if (!config) return;
+            this.selectedQuestionType = type;
+            this.root.querySelectorAll("[data-question-tools] [data-question-type]").forEach(tool => {
+                const selected = tool.dataset.questionType === type;
+                tool.classList.toggle("is-selected", selected);
+                tool.setAttribute("aria-pressed", String(selected));
+            });
+            this.root.querySelectorAll("[data-add-selected-question]").forEach(button => {
+                button.textContent = `＋ ${config.label} 추가`;
+                button.setAttribute("aria-label", `선택한 ${config.label} 문항을 지정 위치에 추가`);
+            });
+            this.root.querySelector("[data-canvas-add]").textContent = `＋ ${config.label} · 설문 맨 끝에 추가`;
         },
         renderSkins() {
             this.root.querySelector("[data-builder-skins]").innerHTML = window.SURVEYONE_CONFIG.skinPresets.map((skin) => `<button class="skin-dot" type="button" style="--skin-color:${skin.primary}" data-skin-code="${skin.code}" aria-label="${skin.name}"></button>`).join("");
@@ -560,15 +770,26 @@
             const template = this.root.querySelector("[data-question-template]");
             this.choiceLayoutCleanup?.();
             host.innerHTML = "";
+            this.collapsedSections = new Set([...(this.collapsedSections || [])].filter(id => this.section(id)));
             let questionIndex = 0;
             const questionNumbers = window.SurveyQuestionNumbering.numbers(this.survey.sections);
             this.survey.sections.forEach((section, sectionIndex) => {
-                const heading = document.createElement("section");
+                const group = document.createElement("section");
+                group.className = "builder-survey-section";
+                group.dataset.editorSection = section.id;
+                const body = document.createElement("div");
+                body.className = "builder-section-body";
+                body.dataset.sectionBody = section.id;
+                body.id = `builder-section-body-${encodeURIComponent(section.id)}`;
+                const heading = document.createElement("header");
                 heading.className = "builder-section-heading";
                 heading.dataset.sectionId = section.id;
-                heading.innerHTML = `<span>SECTION ${String(sectionIndex + 1).padStart(2, "0")}</span><div class="builder-section-copy"><input type="text" data-section-title value="${Common.escapeHtml(this.localizedSectionField(section, "title"))}" aria-label="${sectionIndex + 1}번 섹션 제목"><input type="text" data-section-description value="${Common.escapeHtml(this.localizedSectionField(section, "description"))}" placeholder="섹션 설명(선택)" aria-label="${sectionIndex + 1}번 섹션 설명"></div><small>${section.questions.length}개 문항</small>`;
-                host.appendChild(heading);
+                heading.innerHTML = `<span>SECTION ${String(sectionIndex + 1).padStart(2, "0")}</span><div class="builder-section-copy"><input type="text" data-section-title value="${Common.escapeHtml(this.localizedSectionField(section, "title"))}" aria-label="${sectionIndex + 1}번 섹션 제목"><input type="text" data-section-description value="${Common.escapeHtml(this.localizedSectionField(section, "description"))}" placeholder="섹션 설명(선택)" aria-label="${sectionIndex + 1}번 섹션 설명"></div><div class="builder-section-actions"><small data-section-summary>${section.questions.length}개 문항</small><button type="button" data-section-toggle aria-expanded="true" aria-controls="${Common.escapeHtml(body.id)}" aria-label="${sectionIndex + 1}번 섹션 접기">▾ 접기</button><button type="button" data-section-select aria-label="${sectionIndex + 1}번 섹션 끝에 문항 추가">섹션 끝에 추가</button><button type="button" data-section-delete ${this.survey.sections.length === 1 ? 'disabled title="설문에는 섹션이 하나 이상 필요합니다"' : ''} aria-label="${sectionIndex + 1}번 섹션 삭제">섹션 삭제</button></div>${section.questions.length ? '' : '<p class="builder-empty-section">비어 있는 섹션입니다. 문항 도구에서 유형을 선택해 이곳에 추가하세요.</p>'}`;
+                group.appendChild(heading);
+                group.appendChild(body);
+                host.appendChild(group);
                 section.questions.forEach((question) => {
+                    this.syncQuestionCompatibility(question);
                     const node = template.content.firstElementChild.cloneNode(true);
                     node.dataset.questionId = question.id;
                     node.dataset.sectionId = section.id;
@@ -578,15 +799,18 @@
                     node.querySelector(".question-index").textContent = this.survey.settings.showQuestionNumbers === false
                         ? String(questionIndex).padStart(2, "0") : displayNumber == null ? "—" : String(displayNumber).padStart(2, "0");
                     node.querySelector(".question-type-badge").textContent = this.typeLabel(question.type);
-                    node.querySelector("[data-question-title]").value = this.localizedQuestionField(question, "title");
+                    node.querySelector("[data-question-title]").value = this.displayQuestionTitle(question);
                     const description = node.querySelector("[data-question-description-preview]");
                     description.textContent = this.localizedQuestionField(question, "description");
                     description.hidden = !description.textContent;
                     node.querySelector("[data-required-label]").textContent = ({ fixed_required: "고정 · 필수", fixed_optional: "고정 · 선택", dynamic_required: "동적 · 필수", dynamic_optional: "동적 · 선택" })[question.behavior] || (question.required ? "필수 응답" : "선택 응답");
                     node.querySelector("[data-answer-editor]").innerHTML = this.answerMarkup(question);
-                    host.appendChild(node);
+                    body.appendChild(node);
                 });
             });
+            this.renderDocumentNavigation();
+            this.updateSelection();
+            this.resizeQuestionTitles();
             this.choiceLayoutCleanup = window.SurveyChoiceLayout?.mount(host);
             this.root.querySelector("[data-question-count]").textContent = `${this.survey.questions.length}개`;
             this.root.querySelector("[data-estimated-time]").textContent = `${Math.max(1, Math.ceil(this.survey.questions.filter((item) => item.type !== "notice").length * .35))}분`;
@@ -598,12 +822,20 @@
                 button.setAttribute("aria-label", recommendTemplate ? "추천: 템플릿으로 설문 시작" : "설문 템플릿 선택");
             });
         },
+        resizeQuestionTitles() {
+            const titles = [...(this.root?.querySelectorAll("textarea[data-question-title]") || [])];
+            titles.forEach(title => { title.style.height = "auto"; });
+            const heights = titles.map(title => Math.max(48, title.scrollHeight));
+            titles.forEach((title, index) => { title.style.height = `${heights[index]}px`; });
+        },
         answerMarkup(question) {
             if (optionTypes.has(question.type)) {
                 const grid = ["single", "multiple"].includes(question.type) && question.settings?.choiceInput !== "codes";
                 const layout = window.SurveyChoiceLayout?.normalize(question.settings?.choiceLayout) || "vertical";
-                const options = (question.options || []).map((option) => `<div class="option-row" data-choice-item>${question.settings?.choiceInput === "codes" ? `<input class="option-code" type="text" inputmode="numeric" maxlength="6" value="${Common.escapeHtml(option.code || "")}" data-option-code="${Common.escapeHtml(option.id)}" aria-label="보기 번호">` : `<span class="option-marker ${question.type === "multiple" ? "multiple" : ""}"></span>`}<input type="text" value="${Common.escapeHtml(this.localizedOptionLabel(question, option))}" data-option-id="${Common.escapeHtml(option.id)}" data-choice-label aria-label="보기 내용"><button type="button" data-delete-option="${Common.escapeHtml(option.id)}" aria-label="보기 삭제">×</button></div>`).join("");
-                return `${grid ? `<div class="choice-options-editor" data-choice-layout="${layout}">${options}</div>` : options}<button class="add-option" type="button" data-add-option="${question.id}">＋ 보기 추가</button>`;
+                const sourceEditing = this.editingLocale === this.survey.languages.sourceLocale;
+                const disabled = sourceEditing ? "" : "disabled";
+                const options = (question.options || []).map((option, index) => `<div class="option-row" data-choice-item data-option-row="${Common.escapeHtml(option.id)}"><span class="option-marker ${question.type === "multiple" ? 'multiple' : ''}" aria-hidden="true"></span><label class="option-label-field"><span>표시 문구</span><input type="text" maxlength="500" value="${Common.escapeHtml(this.localizedOptionLabel(question, option))}" data-option-id="${Common.escapeHtml(option.id)}" data-choice-label aria-label="보기 내용"></label><button type="button" data-delete-option="${Common.escapeHtml(option.id)}" aria-label="${index + 1}번 보기 삭제" ${!sourceEditing || question.options.length <= 1 ? 'disabled' : ''}>×</button><div class="option-value-fields"><label>결과 코드<input type="text" maxlength="120" value="${Common.escapeHtml(option.resultCode)}" data-option-result-code="${Common.escapeHtml(option.id)}" aria-label="${index + 1}번 보기 결과 코드" ${disabled}></label>${question.settings?.choiceInput === "codes" ? `<label>입력 번호<input class="option-code" type="text" inputmode="numeric" maxlength="6" value="${Common.escapeHtml(option.code || "")}" data-option-code="${Common.escapeHtml(option.id)}" aria-label="보기 번호" ${disabled}></label>` : ''}</div><div class="option-row-actions"><span>${index + 1}번째</span><button type="button" data-option-move="${Common.escapeHtml(option.id)}" data-option-direction="-1" aria-label="${index + 1}번 보기 위로 이동" ${!sourceEditing || index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-option-move="${Common.escapeHtml(option.id)}" data-option-direction="1" aria-label="${index + 1}번 보기 아래로 이동" ${!sourceEditing || index === question.options.length - 1 ? 'disabled' : ''}>↓</button><button type="button" data-option-insert="${Common.escapeHtml(option.id)}" ${disabled}>＋ 아래 삽입</button></div></div>`).join("");
+                return `<p class="option-contract-help sr-only">표시 문구는 설문에 보이고, 결과 코드는 결과 코드형으로 내보낼 때 사용합니다.${question.settings?.choiceInput === "codes" ? ' 입력 번호는 응답자가 번호로 선택할 때 사용합니다.' : ''}</p><div class="choice-options-editor">${options}</div>${grid ? `<details class="option-layout-preview"><summary>응답 화면의 보기 배열 미리보기</summary><div class="choice-layout-preview" data-choice-layout="${layout}">${question.options.map(option => `<div class="choice-layout-preview-item" data-choice-item><span class="option-marker ${question.type === 'multiple' ? 'multiple' : ''}" aria-hidden="true"></span><span data-choice-label>${Common.escapeHtml(this.localizedOptionLabel(question, option))}</span></div>`).join('')}</div></details>` : ''}<button class="add-option" type="button" data-add-option="${Common.escapeHtml(question.id)}" ${disabled}>＋ 마지막에 보기 추가</button>`;
             }
             if (question.type === "short_text") return `<div class="answer-placeholder">짧은 답변이 입력됩니다.</div>`;
             if (question.type === "long_text") return `<div class="answer-placeholder long">긴 답변이 입력됩니다.</div>`;
@@ -617,13 +849,13 @@
                 const labels = `<div class="scale-preview-labels"><span>${Common.escapeHtml(this.localizedQuestionField(question, descending ? "maxLabel" : "minLabel"))}</span><span>${Common.escapeHtml(this.localizedQuestionField(question, descending ? "minLabel" : "maxLabel"))}</span></div>`;
                 const sliderLabels = `<div class="scale-preview-labels rating-editor-endpoints"><span><b>${descending ? maximum : minimum}</b><span>${Common.escapeHtml(this.localizedQuestionField(question, descending ? "maxLabel" : "minLabel"))}</span></span><span><b>${descending ? minimum : maximum}</b><span>${Common.escapeHtml(this.localizedQuestionField(question, descending ? "minLabel" : "maxLabel"))}</span></span></div>`;
                 if (question.settings?.scaleDisplay === "slider") return `<div class="rating-editor-preview">${sliderLabels}<div class="rating-editor-track" aria-hidden="true"><div class="rating-editor-stops">${values.map((value, index) => `<span class="rating-editor-stop" style="--rating-position:${index / (values.length - 1) * 100}%"></span>`).join("")}</div></div><div class="rating-editor-ticks">${values.map((value, index) => `<span style="--rating-position:${index / (values.length - 1) * 100}%">${value}</span>`).join("")}</div><small>선 위의 동그라미를 눌러 점수 선택 · 응답 전에는 미선택</small></div>`;
-                return `<div class="scale-preview" style="--count:${count}">${values.map(value => `<span>${value}</span>`).join("")}</div>${labels}`;
+                return `<div class="scale-preview" style="--count:${count}">${values.map(value => `<span>${Common.escapeHtml(question.settings?.scalePoints?.find(point => point.score === value)?.label || String(value))}</span>`).join("")}</div>${labels}`;
             }
             if (choiceMatrixTypes.has(question.type)) return this.axisTableMarkup(question, question.type === "matrix_multiple" ? "checkbox" : "radio");
             if (question.type === "table") return this.axisTableMarkup(question, "text");
             if (question.type === "repeat_table") return this.repeatTableEditorMarkup(question);
             if (question.type === "date") return `<div class="answer-placeholder">연도-월-일</div>`;
-            if (question.type === "notice") return `<div class="survey-document">${question.settings?.contentHtml ? window.SurveyContent.render(question.settings.contentHtml) : Common.escapeHtml(this.localizedQuestionField(question, "description") || "안내 내용을 입력하세요.")}</div>`;
+            if (question.type === "notice") return `<div class="survey-document" data-notice-id="${Common.escapeHtml(question.id)}">${question.settings?.contentHtml ? window.SurveyContent.render(question.settings.contentHtml) : Common.escapeHtml(this.localizedQuestionField(question, "description") || "안내 내용을 입력하세요.")}</div>`;
             return `<div class="answer-placeholder">응답 영역</div>`;
         },
         axisTableMarkup(question, cellType) {
@@ -641,45 +873,330 @@
             return `<div class="repeat-table-editor-preview"><div class="repeat-table-editor-row is-heading" style="--columns:${Math.max(1, columns.length)}">${columns.map((column, index) => `<input type="text" data-matrix-column-index="${index}" value="${Common.escapeHtml(this.localizedIndexedLabel(question, "columns", index))}" aria-label="${index + 1}번 열 제목">`).join("")}<span></span></div><div class="repeat-table-editor-row" style="--columns:${Math.max(1, columns.length)}">${columns.map((column, index) => `<span>${Common.escapeHtml(this.localizedIndexedLabel(question, "columns", index) || `열 ${index + 1}`)} 입력</span>`).join("")}<button type="button" disabled aria-label="행 삭제 예시">×</button></div><span class="repeat-table-add-preview">＋ 응답자가 필요한 만큼 행 추가</span></div>`;
         },
         typeLabel(code) { return window.SURVEYONE_CONFIG.questionTypes.find((item) => item.code === code)?.label || code; },
-        addQuestion(type) {
+        displayQuestionTitle(question) {
+            return window.SurveyQuestionNumbering.title(question, this.survey.settings, this.localizedQuestionField(question, "title"));
+        },
+        setDisplayedQuestionTitle(question, value) {
+            const original = this.localizedQuestionField(question, "title");
+            const displayed = this.displayQuestionTitle(question);
+            const prefix = original.slice(0, original.length - displayed.length);
+            const numberedInput = window.SurveyQuestionNumbering.title(question, this.survey.settings, value) !== value;
+            this.setLocalizedQuestionField(question, "title", prefix && !numberedInput ? prefix + value : value);
+        },
+        questionInsertionTarget(placement = null) {
+            const mode = placement?.mode || this.insertionMode || "after";
+            if (!["before", "after", "section-end", "survey-end"].includes(mode)) return null;
+            const location = this.questionLocation(placement?.questionId ?? this.activeId);
+            if (["before", "after"].includes(mode) && location) return { section: location.section, index: location.questionIndex + (mode === "after" ? 1 : 0), mode, location };
+            // An explicit missing anchor must never silently become an append operation.
+            if (["before", "after"].includes(mode) && placement) return null;
+            if (mode === "section-end" && placement?.sectionId && !this.section(placement.sectionId)) return null;
+            const section = mode === "survey-end" ? this.survey.sections.at(-1) : this.section(placement?.sectionId ?? this.activeSectionId) || this.survey.sections.at(-1);
+            if (!section) return null;
+            return { section, index: section.questions.length, mode: mode === "survey-end" ? "survey-end" : "section-end", location: null };
+        },
+        questionInsertionLabel(target) {
+            if (target.mode === "survey-end") return "설문 전체의 맨 끝";
+            const sectionIndex = this.survey.sections.findIndex(section => section.id === target.section.id) + 1;
+            if (!target.location) return `섹션 ${sectionIndex}의 맨 끝`;
+            const number = window.SurveyQuestionNumbering.numbers(this.survey.sections).get(String(target.location.question.id));
+            const anchor = this.survey.settings.showQuestionNumbers !== false && number != null ? `${number}번 문항` : `섹션 ${sectionIndex} · ${target.location.questionIndex + 1}번째 항목`;
+            return `${anchor} 바로 ${target.mode === "before" ? "위" : "아래"}`;
+        },
+        chooseQuestionInsertion(placement) {
+            const target = this.questionInsertionTarget(placement);
+            if (!target) return this.context.toast("추가 기준 위치를 찾을 수 없습니다. 문항 또는 섹션을 다시 선택해 주세요.", "error");
+            // Freeze the anchor ID before opening the picker; focus changes cannot redirect insertion.
+            const captured = { mode: target.mode, sectionId: target.section.id, ...(target.location ? {questionId: target.location.question.id} : {}) };
+            const automatic = this.survey.settings.showQuestionNumbers !== false;
+            const dialog = this.context.openModal(`<section class="builder-insert-dialog"><header><h2>문항 삽입</h2><p><strong>${Common.escapeHtml(this.questionInsertionLabel(target))}</strong>에 추가할 문항 유형을 선택하세요.</p><p class="builder-insert-numbering">${automatic ? "문항 번호는 삽입 순서에 맞춰 자동 갱신됩니다. 안내문과 번호 제외 문항은 계산에서 제외됩니다." : "현재 자동 문항 번호가 꺼져 있습니다. 설문 설정에서 문항 번호 표시를 켜면 삽입 순서에 따라 번호가 갱신됩니다."}</p></header><div class="builder-insert-type-list" data-insert-type-list></div><footer><button class="button button-function" type="button" data-insert-cancel>취소</button></footer></section>`, { label: "문항 삽입 유형 선택", wide: true, initialFocus: "[data-insert-type]" });
+            const host = dialog.querySelector("[data-insert-type-list]");
+            this.root.querySelectorAll("[data-question-tools] [data-question-type]").forEach(tool => {
+                const button = tool.cloneNode(true);
+                button.dataset.insertType = tool.dataset.questionType;
+                button.removeAttribute("data-question-type");
+                button.removeAttribute("aria-pressed");
+                button.classList.remove("is-selected");
+                button.setAttribute("aria-label", `${this.typeLabel(tool.dataset.questionType)} 문항 삽입`);
+                host.appendChild(button);
+            });
+            let type = null;
+            host.addEventListener("click", event => {
+                const button = event.target.closest("[data-insert-type]");
+                if (button) { type = button.dataset.insertType; dialog.close(); }
+            });
+            dialog.querySelector("[data-insert-cancel]").addEventListener("click", () => dialog.close());
+            dialog.addEventListener("close", () => { if (type && !this.destroyed) { this.selectQuestionType(type); this.addQuestion(type, captured); } }, {once:true});
+        },
+        addQuestion(type, placement = null) {
+            if (!window.SURVEYONE_CONFIG.questionTypes.some(item => item.code === type)) return;
+            const target = this.questionInsertionTarget(placement);
+            if (!target) return this.context.toast("문항을 추가할 위치를 다시 선택해 주세요.", "error");
             const question = defaultQuestion(type);
-            const activeLocation = this.questionLocation(this.activeId);
-            const section = activeLocation?.section || this.survey.sections.at(-1) || this.addSection(false);
-            section.questions.push(question);
+            target.section.questions.splice(target.index, 0, question);
             this.refreshQuestions();
             this.activeId = question.id;
+            this.activeSectionId = target.section.id;
+            this.insertionMode = "after";
+            this.addedQuestionId = question.id;
+            this.setMode("questions");
             this.renderQuestions();
             this.openProperties(question.id);
-            this.scheduleSave();
-            requestAnimationFrame(() => {
-                if (!this.destroyed) this.root?.querySelector(`[data-question-id="${CSS.escape(question.id)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-            });
+            if (window.matchMedia("(max-width: 78rem)").matches) this.closeProperties();
+            this.markDirty();
+            this.revealSelection(true);
         },
         addSection(render = true) {
             const section = { id: uid("section"), title: `섹션 ${this.survey.sections.length + 1}`, description: "", questions: [] };
             this.survey.sections.push(section);
             this.refreshQuestions();
             if (render) {
+                this.setMode("questions");
+                this.selectSection(section.id);
                 this.renderQuestions();
-                this.scheduleSave();
-                requestAnimationFrame(() => {
-                    if (!this.destroyed) this.root?.querySelector(`[data-section-id="${CSS.escape(section.id)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-                });
+                this.renderRules();
+                this.markDirty();
+                this.revealSelection(true);
             }
             return section;
         },
-        selectQuestion(id) {
+        selectSection(id) {
+            if (!this.section(id)) return;
+            this.activeId = null;
+            this.activeSectionId = id;
+            this.insertionMode = "section-end";
+            this.addedQuestionId = null;
+            this.root.querySelector("[data-properties-empty]").hidden = false;
+            this.root.querySelector("[data-properties-panel]").hidden = true;
+            this.closeProperties();
+            this.updateSelection();
+        },
+        selectQuestion(id, syncProperties = true) {
+            const location = this.questionLocation(id);
+            if (!location) return;
+            const changed = this.activeId !== id;
+            if (changed) { this.addedQuestionId = null; this.insertionMode = "after"; }
             this.activeId = id;
-            this.root.querySelectorAll("[data-question-id]").forEach((card) => card.classList.toggle("is-active", card.dataset.questionId === id));
+            this.activeSectionId = location.section.id;
+            this.updateSelection();
+            // The desktop inspector stays visible even when its mobile overlay is closed.
+            const inspectorVisible = !window.matchMedia("(max-width: 78rem)").matches || this.root.querySelector(".builder-properties").classList.contains("is-open");
+            if (changed && syncProperties && inspectorVisible) this.openProperties(id);
+        },
+        updateSelection() {
+            const location = this.questionLocation(this.activeId);
+            if (location) this.activeSectionId = location.section.id;
+            else this.activeId = null;
+            if (!this.section(this.activeSectionId)) this.activeSectionId = this.survey.sections.at(-1)?.id || null;
+            this.root.querySelectorAll("[data-question-id]").forEach((card) => {
+                const selected = card.dataset.questionId === this.activeId;
+                card.classList.toggle("is-active", selected);
+                if (selected) card.setAttribute("aria-current", "true"); else card.removeAttribute("aria-current");
+                const banner = card.querySelector("[data-question-selection]");
+                banner.hidden = !selected;
+                banner.querySelector("strong").textContent = this.addedQuestionId === card.dataset.questionId ? "새 문항" : "편집 중";
+            });
+            this.root.querySelectorAll(".builder-section-heading").forEach((heading) => {
+                const selected = heading.dataset.sectionId === this.activeSectionId;
+                heading.classList.toggle("is-active", selected);
+                const button = heading.querySelector("[data-section-select]");
+                button.setAttribute("aria-pressed", String(selected && !location));
+                button.textContent = "섹션 끝에 추가";
+            });
+            const target = this.questionInsertionTarget();
+            const status = this.root.querySelector("[data-insertion-status]");
+            const message = target ? `${this.questionInsertionLabel(target)}에 추가` : "추가할 위치를 선택하세요.";
+            if (status.textContent !== message) status.textContent = message;
+            status.title = message;
+            const control = this.root.querySelector("[data-insertion-position]");
+            control.querySelectorAll('option[value="before"], option[value="after"]').forEach(option => { option.disabled = !location; });
+            control.value = target?.mode || "section-end";
+            control.title = message;
+            this.root.querySelectorAll("[data-question-selection] > [data-insertion-hint]").forEach(hint => { hint.textContent = `문항 도구: ${message}. 아래 버튼으로 이 문항 위·아래에도 삽입할 수 있습니다.`; });
+            this.applySectionFolding();
+        },
+        applySectionFolding() {
+            const collapsed = this.collapsedSections || new Set();
+            const selectedSection = this.questionLocation(this.activeId)?.section.id;
+            this.root.querySelectorAll(".builder-survey-section").forEach(group => {
+                const id = group.dataset.editorSection;
+                const section = this.section(id);
+                const folded = collapsed.has(id);
+                const heading = group.querySelector(".builder-section-heading");
+                const body = group.querySelector("[data-section-body]");
+                if (folded && body.contains(document.activeElement)) heading.querySelector("[data-section-toggle]").focus({preventScroll:true});
+                body.hidden = folded;
+                heading.classList.toggle("is-collapsed", folded);
+                const toggle = heading.querySelector("[data-section-toggle]");
+                toggle.setAttribute("aria-expanded", String(!folded));
+                toggle.setAttribute("aria-label", `${this.localizedSectionField(section, "title")} ${folded ? "펼치기" : "접기"}`);
+                toggle.textContent = folded ? "▸ 펼치기" : "▾ 접기";
+                heading.querySelector("[data-section-summary]").textContent = `${section.questions.length}개 문항${folded ? " · 접힘" : ""}${folded && selectedSection === id ? " · 선택 문항 포함" : ""}`;
+            });
+            const count = this.survey.sections.filter(section => collapsed.has(section.id)).length;
+            const status = this.root.querySelector("[data-section-fold-status]");
+            const message = `섹션 ${this.survey.sections.length}개 · ${count}개 접힘`;
+            if (status.textContent !== message) status.textContent = message;
+            this.root.querySelector('[data-sections-fold="collapse"]').disabled = count === this.survey.sections.length;
+            this.root.querySelector('[data-sections-fold="expand"]').disabled = count === 0;
+        },
+        setSectionCollapsed(id, collapsed) {
+            if (!this.section(id)) return;
+            this.collapsedSections = this.collapsedSections || new Set();
+            if (collapsed) this.collapsedSections.add(id); else this.collapsedSections.delete(id);
+            this.applySectionFolding();
+            if (!collapsed) this.resizeQuestionTitles();
+        },
+        setAllSectionsCollapsed(collapsed) {
+            this.collapsedSections = new Set(collapsed ? this.survey.sections.map(section => section.id) : []);
+            this.applySectionFolding();
+            if (!collapsed) this.resizeQuestionTitles();
+            this.scrollDocumentTarget(this.root.querySelector(".builder-section-heading"), "start");
+        },
+        scrollOuterToWorkspace() {
+            if (!window.matchMedia("(min-width: 60.001rem)").matches) return;
+            this.syncToolbarLayout();
+            const token = (this.workspaceAlignmentToken || 0) + 1;
+            this.workspaceAlignmentToken = token;
+            const align = (remaining = 2) => {
+                if (this.destroyed || this.workspaceAlignmentToken !== token) return;
+                const toolbar = this.root.querySelector(".builder-topbar");
+                const workspace = this.root.querySelector(".builder-workspace");
+                const headerHeight = parseFloat(getComputedStyle(this.root).getPropertyValue("--header-height")) || 0;
+                const offset = window.scrollY + workspace.getBoundingClientRect().top - headerHeight - toolbar.getBoundingClientRect().height;
+                window.scrollTo({top:Math.max(0, offset),behavior:"instant"});
+                // A newly measured height may update the outer scroll range on the next frame.
+                if (remaining && Math.abs(workspace.getBoundingClientRect().top - toolbar.getBoundingClientRect().bottom) > 3) requestAnimationFrame(() => align(remaining - 1));
+            };
+            requestAnimationFrame(() => align());
+        },
+
+        renderDocumentNavigation() {
+            const select = this.root.querySelector("[data-canvas-section]");
+            select.innerHTML = '<option value="">섹션으로 이동</option>' + this.survey.sections.map((section, index) => `<option value="${Common.escapeHtml(section.id)}">${index + 1}. ${Common.escapeHtml(this.localizedSectionField(section, "title"))}</option>`).join("");
+        },
+        documentScrollIsIndependent() {
+            const scroller = this.root.querySelector("[data-builder-document-scroll]");
+            return scroller && getComputedStyle(scroller).overflowY === "auto";
+        },
+        scrollDocumentTarget(target, alignment = "center") {
+            if (!target) return;
+            if (target.matches("[data-question-id]")) this.setSectionCollapsed(target.dataset.sectionId, false);
+            const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.uiMotion === "reduced";
+            const behavior = reduced ? "instant" : "smooth";
+            if (this.documentScrollIsIndependent()) {
+                this.scrollOuterToWorkspace();
+                const scroller = this.root.querySelector("[data-builder-document-scroll]");
+                const position = scroller.scrollTop + target.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+                const offset = alignment === "start" ? 16 : Math.max(16, (scroller.clientHeight - target.getBoundingClientRect().height) / 2);
+                scroller.scrollTo({ top: Math.max(0, position - offset), behavior });
+            } else if (alignment === "start") {
+                const toolbar = this.root.querySelector(".builder-topbar");
+                const toolbox = this.root.querySelector(".builder-toolbox");
+                const headerHeight = parseFloat(getComputedStyle(this.root).getPropertyValue("--header-height")) || 0;
+                const fixedTop = headerHeight + toolbar.getBoundingClientRect().height + (toolbox.hidden ? 0 : toolbox.getBoundingClientRect().height);
+                window.scrollTo({ top: Math.max(0, window.scrollY + target.getBoundingClientRect().top - fixedTop - 16), behavior });
+            } else target.scrollIntoView({ behavior, block: alignment });
+        },
+        navigateDocument(destination) {
+            if (destination === "selection") return this.revealSelection();
+            if (!["start", "end"].includes(destination)) return;
+            const scroller = this.root.querySelector("[data-builder-document-scroll]");
+            const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.uiMotion === "reduced";
+            const behavior = reduced ? "instant" : "smooth";
+            if (this.documentScrollIsIndependent()) scroller.scrollTo({ top: destination === "start" ? 0 : scroller.scrollHeight, behavior });
+            else {
+                const target = destination === "start" ? scroller : scroller.querySelector(`[data-mode-panel="${this.mode || "questions"}"]`);
+                target?.scrollIntoView({ behavior, block: destination === "start" ? "start" : "end" });
+            }
+        },
+        revealSelection(focusTitle = false) {
+            requestAnimationFrame(() => {
+                if (this.destroyed) return;
+                const selector = this.activeId ? `[data-question-id="${CSS.escape(this.activeId)}"]` : `.builder-section-heading[data-section-id="${CSS.escape(this.activeSectionId || "")}"]`;
+                const target = this.root?.querySelector(selector);
+                this.scrollDocumentTarget(target);
+                if (focusTitle) {
+                    const title = target?.querySelector("[data-question-title], [data-section-title]");
+                    title?.focus({ preventScroll: true });
+                    title?.select();
+                }
+            });
+        },
+        sectionRemovalPlan(id) {
+            const section = this.section(id);
+            if (!section) return null;
+            const questionIds = new Set(section.questions.map((question) => String(question.id)));
+            const dependents = this.survey.questions.filter((question) => !questionIds.has(String(question.id)) && (
+                questionIds.has(String(question.settings?.excludeSelectedFrom || "")) ||
+                (question.activationCondition?.conditions || []).some((condition) => questionIds.has(String(condition.sourceQuestionId || condition.source_question_id)))
+            ));
+            const routes = this.survey.settings.audienceRoutes || [];
+            const emptyRoutes = routes.filter((route) => route.sectionIds.includes(id) && route.sectionIds.length === 1);
+            const blocked = this.survey.sections.length <= 1 ? "설문에는 섹션이 하나 이상 필요합니다."
+                : dependents.length ? `다른 섹션의 문항이 이 섹션의 문항을 조건으로 사용합니다: ${dependents.slice(0, 3).map((question) => this.localizedQuestionField(question, "title")).join(", ")}. 해당 문항의 활성화 조건 또는 선행 보기 제외 연결을 먼저 수정해 주세요.`
+                : emptyRoutes.length ? `이 섹션을 삭제하면 대상 “${emptyRoutes.map((route) => route.label || route.code).join(", ")}”에 표시할 섹션이 없어집니다. 대상·섹션 분기에서 다른 섹션을 지정하거나 해당 대상을 먼저 삭제해 주세요.` : "";
+            const rules = (this.survey.logicRules || []).filter((rule) => ![
+                rule?.questionId, rule?.sourceQuestionId, rule?.targetQuestionId, rule?.destinationQuestionId
+            ].some((reference) => questionIds.has(String(reference ?? ""))) && ![
+                rule?.targetSectionId, rule?.destinationSectionId, rule?.gotoSectionId, rule?.destination
+            ].some((reference) => String(reference ?? "") === String(id)));
+            return { section, questionIds, rules, dependents, emptyRoutes, blocked,
+                ruleCount: (this.survey.logicRules || []).length - rules.length,
+                routeCount: routes.filter((route) => route.sectionIds.includes(id)).length };
+        },
+        confirmSectionRemoval(id) {
+            const plan = this.sectionRemovalPlan(id);
+            if (!plan) return;
+            const dialog = this.context.openModal(`<section class="builder-section-removal"><h2>섹션 삭제</h2><p>삭제할 섹션: <strong>${Common.escapeHtml(this.localizedSectionField(plan.section, "title"))}</strong></p><p>${plan.section.questions.length ? `포함된 문항 <strong>${plan.section.questions.length}개</strong>도 함께 삭제합니다.` : "문항이 없는 빈 섹션을 삭제합니다."}</p><ul><li>문항과 해당 번역이 함께 삭제됩니다.</li>${plan.ruleCount ? `<li>연결된 이동 분기 규칙 ${plan.ruleCount}개도 삭제됩니다.</li>` : ''}${plan.routeCount ? `<li>대상 ${plan.routeCount}개의 표시 섹션에서 제외됩니다.</li>` : ''}</ul><p>상단 저장을 눌러야 삭제가 저장됩니다. 변경 취소로 되돌릴 수 있으며 공개 설문에는 재확정한 뒤 반영됩니다.</p>${plan.blocked ? `<p class="form-error" role="alert">${Common.escapeHtml(plan.blocked)}</p>` : ''}<div class="builder-section-removal-actions"><button class="button button-function" type="button" data-section-remove-cancel>취소</button>${plan.emptyRoutes.length ? '<button class="button button-function" type="button" data-section-review-audiences>대상·섹션 분기 수정</button>' : ''}${plan.dependents.length ? '<button class="button button-function" type="button" data-section-review-dependent>연결된 문항 확인</button>' : ''}<button class="button button-delete" type="button" data-section-remove-confirm ${plan.blocked ? 'disabled' : ''}>${plan.section.questions.length ? '섹션과 문항 삭제' : '빈 섹션 삭제'}</button></div></section>`, { label: "섹션 삭제 확인", initialFocus: "[data-section-remove-cancel]" });
+            const afterClose = (callback) => {
+                dialog.addEventListener("close", () => { if (!this.destroyed) callback(); }, { once: true });
+                dialog.close();
+            };
+            dialog.querySelector("[data-section-remove-cancel]").addEventListener("click", () => dialog.close());
+            dialog.querySelector("[data-section-review-audiences]")?.addEventListener("click", () => afterClose(() => this.editAudiences()));
+            dialog.querySelector("[data-section-review-dependent]")?.addEventListener("click", () => {
+                afterClose(() => { this.openProperties(plan.dependents[0].id); this.revealSelection(); });
+            });
+            dialog.querySelector("[data-section-remove-confirm]").addEventListener("click", () => {
+                if (this.removeSection(id)) afterClose(() => this.revealSelection(true));
+            });
+        },
+        removeSection(id) {
+            const plan = this.sectionRemovalPlan(id);
+            if (!plan) return false;
+            if (plan.blocked) { this.context.toast(plan.blocked, "error"); return false; }
+            const index = this.survey.sections.findIndex((section) => section.id === id);
+            plan.questionIds.forEach((questionId) => this.pruneQuestionTranslations(questionId));
+            Object.values(this.survey.translations || {}).forEach((bucket) => {
+                if (!bucket || typeof bucket !== "object" || Array.isArray(bucket)) return;
+                ["sections", "sectionTitles", "section_titles", "sectionDescriptions", "section_descriptions"].forEach((field) => {
+                    if (bucket[field] && typeof bucket[field] === "object") delete bucket[field][id];
+                });
+            });
+            this.survey.sections.splice(index, 1);
+            this.survey.logicRules = plan.rules;
+            (this.survey.settings.audienceRoutes || []).forEach((route) => { route.sectionIds = route.sectionIds.filter((sectionId) => sectionId !== id); });
+            this.refreshQuestions();
+            if (this.activeSectionId === id || plan.questionIds.has(String(this.activeId))) this.selectSection(this.survey.sections[Math.min(index, this.survey.sections.length - 1)].id);
+            this.renderQuestions();
+            this.renderRules();
+            this.renderAudienceSummary();
+            this.markDirty();
+            this.context.toast("섹션을 삭제했습니다.", "success");
+            return true;
         },
         openProperties(id) {
-            this.selectQuestion(id);
+            if (this.mode && this.mode !== "questions") return;
+            this.selectQuestion(id, false);
             const question = this.question(id);
             if (!question) return;
             this.root.querySelector("[data-properties-empty]").hidden = true;
             this.root.querySelector("[data-properties-panel]").hidden = false;
             this.root.querySelector(".builder-properties").classList.add("is-open");
             this.root.querySelector("[data-properties-type]").textContent = this.typeLabel(question.type);
+            this.root.querySelector("[data-response-contract]").textContent = this.responseContract(question);
+            this.renderScalePoints(question);
             const behaviorSelect = this.root.querySelector("[data-prop-behavior]");
             behaviorSelect.value = question.behavior || (question.required ? "fixed_required" : "fixed_optional");
             behaviorSelect.disabled = question.type === "notice";
@@ -756,7 +1273,7 @@
             ["rows", "columns"].forEach((field) => {
                 const host = this.root.querySelector(`[data-axis-list="${field}"]`);
                 const label = field === "rows" ? "행" : "열";
-                host.innerHTML = (question[field] || []).map((value, index) => `<div class="axis-item"><span>${index + 1}</span><input type="text" data-matrix-${field === "rows" ? "row" : "column"}-index="${index}" value="${Common.escapeHtml(this.localizedIndexedLabel(question, field, index))}" aria-label="${index + 1}번 ${label} 제목"><div class="axis-item-actions"><button type="button" data-axis-move="${field}" data-axis-index="${index}" data-axis-direction="-1" aria-label="${index + 1}번 ${label} 위로 이동" ${!sourceEditing || index === 0 ? "disabled" : ""}>↑</button><button type="button" data-axis-move="${field}" data-axis-index="${index}" data-axis-direction="1" aria-label="${index + 1}번 ${label} 아래로 이동" ${!sourceEditing || index === question[field].length - 1 ? "disabled" : ""}>↓</button><button type="button" class="is-delete" data-axis-delete="${field}" data-axis-index="${index}" aria-label="${index + 1}번 ${label} 삭제" ${!sourceEditing || question[field].length <= 1 ? "disabled" : ""}>×</button></div></div>`).join("");
+                host.innerHTML = (question[field] || []).map((value, index) => `<div class="axis-item"><span>${index + 1}</span><label>표시 문구<input type="text" maxlength="500" data-matrix-${field === "rows" ? "row" : "column"}-index="${index}" value="${Common.escapeHtml(this.localizedIndexedLabel(question, field, index))}" aria-label="${index + 1}번 ${label} 제목"></label><label class="axis-result-field">결과 코드<input type="text" maxlength="120" data-axis-result-code="${field}" data-axis-index="${index}" value="${Common.escapeHtml(question.settings[field][index].resultCode)}" aria-label="${index + 1}번 ${label} 결과 코드" ${!sourceEditing ? 'disabled' : ''}></label><div class="axis-item-actions"><button type="button" data-axis-move="${field}" data-axis-index="${index}" data-axis-direction="-1" aria-label="${index + 1}번 ${label} 위로 이동" ${!sourceEditing || index === 0 ? "disabled" : ""}>↑</button><button type="button" data-axis-move="${field}" data-axis-index="${index}" data-axis-direction="1" aria-label="${index + 1}번 ${label} 아래로 이동" ${!sourceEditing || index === question[field].length - 1 ? "disabled" : ""}>↓</button><button type="button" data-axis-insert="${field}" data-axis-index="${index}" ${!sourceEditing ? 'disabled' : ''}>＋ 아래 삽입</button><button type="button" class="is-delete" data-axis-delete="${field}" data-axis-index="${index}" aria-label="${index + 1}번 ${label} 삭제" ${!sourceEditing || question[field].length <= 1 ? "disabled" : ""}>×</button></div></div>`).join("");
             });
             panel.querySelectorAll("[data-axis-add]").forEach((button) => { button.disabled = !sourceEditing; });
             panel.classList.toggle("is-translation", !sourceEditing);
@@ -785,7 +1302,7 @@
                 const multiple = operator === "in";
                 const knownIds = new Set(options.map((option) => String(option.id)));
                 const legacy = values.filter((value) => !knownIds.has(value));
-                return `<select data-condition-value ${multiple ? 'multiple size="4" aria-label="비교할 보기 복수 선택"' : ""}>${multiple ? "" : '<option value="">비교할 보기 선택</option>'}${options.map((option) => `<option value="${Common.escapeHtml(option.id)}" ${values.includes(String(option.id)) ? "selected" : ""}>${Common.escapeHtml(this.localizedOptionLabel(source, option))} · ${Common.escapeHtml(option.id)}</option>`).join("")}${legacy.map((value) => `<option value="${Common.escapeHtml(value)}" selected>기존 값 · ${Common.escapeHtml(value)}</option>`).join("")}</select>${multiple ? "<small>PC에서는 Ctrl/Command 키로, 모바일에서는 목록에서 여러 보기를 선택합니다.</small>" : ""}`;
+                return `<select data-condition-value ${multiple ? 'multiple size="4" aria-label="비교할 보기 복수 선택"' : ""}>${multiple ? "" : '<option value="">비교할 보기 선택</option>'}${options.map((option) => `<option value="${Common.escapeHtml(option.id)}" ${values.includes(String(option.id)) ? "selected" : ""}>${Common.escapeHtml(this.localizedOptionLabel(source, option))} · 결과 코드 ${Common.escapeHtml(option.resultCode ?? option.id)}</option>`).join("")}${legacy.map((value) => `<option value="${Common.escapeHtml(value)}" selected>기존 값 · ${Common.escapeHtml(value)}</option>`).join("")}</select>${multiple ? "<small>PC에서는 Ctrl/Command 키로, 모바일에서는 목록에서 여러 보기를 선택합니다.</small>" : ""}`;
             }
             return `<input data-condition-value value="${Common.escapeHtml(values.join(","))}" placeholder="비교할 응답값" ${disabled ? "disabled" : ""}>`;
         },
@@ -797,7 +1314,7 @@
             question.activationCondition ||= { combinator: "all", conditions: [] };
             question.activationCondition.conditions.push({ sourceQuestionId: source.id, operator: "exists", value: null });
             this.openProperties(question.id);
-            this.scheduleSave();
+            this.markDirty();
         },
         removeActivationCondition(index) {
             const question = this.question(this.activeId);
@@ -805,43 +1322,61 @@
             if (question.activationCondition.conditions.length <= 1) return this.context.toast("동적 문항에는 활성화 조건이 한 개 이상 필요합니다.", "error");
             question.activationCondition.conditions.splice(index, 1);
             this.openProperties(question.id);
-            this.scheduleSave();
+            this.markDirty();
         },
         closeProperties() { this.root.querySelector(".builder-properties").classList.remove("is-open"); },
         handleInput(event) {
-            if (!this.survey) return;
+            if (!this.survey || event.target.matches("[data-insertion-position], [data-canvas-section]")) return;
             if (event.target.matches("[data-section-title]")) {
                 const section = this.section(event.target.closest("[data-section-id]")?.dataset.sectionId);
                 if (section) this.setLocalizedSectionField(section, "title", this.editingLocale === this.survey.languages.sourceLocale ? (event.target.value || "새 섹션") : event.target.value);
-                this.scheduleSave();
+                this.renderDocumentNavigation();
+                this.markDirty();
                 return;
             }
             if (event.target.matches("[data-section-description]")) {
                 const section = this.section(event.target.closest("[data-section-id]")?.dataset.sectionId);
                 if (section) this.setLocalizedSectionField(section, "description", event.target.value);
-                this.scheduleSave();
+                this.markDirty();
                 return;
             }
             if (event.target.matches("[data-builder-title], [data-survey-heading]")) {
                 this.setLocalizedSurveyField("title", event.target.value);
                 const other = event.target.matches("[data-builder-title]") ? this.root.querySelector("[data-survey-heading]") : this.root.querySelector("[data-builder-title]");
                 if (document.activeElement !== other) other.value = event.target.value;
-                this.scheduleSave(); return;
+                this.markDirty(); return;
             }
-            if (event.target.matches("[data-survey-description]")) { this.setLocalizedSurveyField("description", event.target.value); this.scheduleSave(); return; }
-            if (event.target.matches('[data-setting="confirmationMessage"]')) { this.setLocalizedSurveyField("confirmationMessage", event.target.value); this.scheduleSave(); return; }
+            if (event.target.matches("[data-survey-description]")) { this.setLocalizedSurveyField("description", event.target.value); this.markDirty(); return; }
+            if (event.target.matches('[data-setting="confirmationMessage"]')) { this.setLocalizedSurveyField("confirmationMessage", event.target.value); this.markDirty(); return; }
             const card = event.target.closest("[data-question-id]");
             const question = card ? this.question(card.dataset.questionId) : this.question(this.activeId);
             if (!question) return;
-            if (event.target.matches("[data-question-title]")) this.setLocalizedQuestionField(question, "title", event.target.value);
+            if (event.target.matches("[data-question-title]")) { this.setDisplayedQuestionTitle(question, event.target.value); this.resizeQuestionTitles(); }
             if (event.target.matches("[data-option-id]")) { const option = question.options?.find((item) => item.id === event.target.dataset.optionId); if (option) this.setLocalizedOptionLabel(question, option, event.target.value); }
+            if (event.target.matches("[data-option-result-code], [data-axis-result-code], [data-scale-code], [data-scale-label]")) {
+                if (this.editingLocale !== this.survey.languages.sourceLocale) return;
+                let item;
+                let group;
+                if (event.target.matches("[data-option-result-code]")) { group = question.options; item = group.find(option => option.id === event.target.dataset.optionResultCode); }
+                else if (event.target.matches("[data-axis-result-code]")) { group = question.settings[event.target.dataset.axisResultCode]; item = group[Number(event.target.dataset.axisIndex)]; }
+                else { group = question.settings.scalePoints; item = group.find(point => point.score === Number(event.target.dataset.scaleCode ?? event.target.dataset.scaleLabel)); }
+                if (!item) return;
+                const label = event.target.matches("[data-scale-label]");
+                item[label ? "label" : "resultCode"] = label ? event.target.value : event.target.value.trim();
+                const valid = label || (item.resultCode.length > 0 && !/[\x00-\x1f\x7f]/.test(item.resultCode) && !group.some(other => other !== item && other.resultCode === item.resultCode));
+                event.target.setCustomValidity(valid ? "" : "비어 있지 않은 고유한 결과 코드를 입력하세요.");
+                event.target.setAttribute("aria-invalid", String(!valid));
+                this.validateCodeControls(question);
+                this.markDirty(); return;
+            }
             if (event.target.matches("[data-option-code]")) {
                 const option = question.options.find(item => item.id === event.target.dataset.optionCode);
                 const code = event.target.value.trim();
                 const valid = /^[1-9][0-9]{0,5}$/.test(code) && !question.options.some(item => item !== option && item.code === code);
                 event.target.setCustomValidity(valid ? "" : "다른 보기와 겹치지 않는 1~999999 번호를 입력하세요.");
-                if (!valid) { event.target.reportValidity(); return; }
                 option.code = code;
+                event.target.setAttribute("aria-invalid", String(!valid));
+                this.validateCodeControls(question);
             }
             if (event.target.matches("[data-prop-description]")) this.setLocalizedQuestionField(question, "description", event.target.value);
             if (event.target.matches("[data-prop-unit]")) this.setLocalizedQuestionField(question, "unit", event.target.value);
@@ -859,10 +1394,25 @@
                 question.max = question.type === "scale" && value !== null ? Math.min(10, Math.max(2, Math.round(value))) : value;
                 if (question.type === "scale" && value !== null) event.target.value = String(question.max);
             }
-            this.scheduleSave();
+            if (question.type === "scale" && event.target.matches("[data-prop-min], [data-prop-max]")) this.renderScalePoints(question);
+            this.markDirty();
         },
         handleChange(event) {
             if (!this.survey) return;
+            if (event.target.matches("[data-canvas-section]")) {
+                const heading = [...this.root.querySelectorAll(".builder-section-heading")].find(node => node.dataset.sectionId === event.target.value);
+                if (heading) {
+                    this.setSectionCollapsed(heading.dataset.sectionId, false);
+                    this.scrollDocumentTarget(heading);
+                }
+                event.target.value = "";
+                return;
+            }
+            if (event.target.matches("[data-insertion-position]")) {
+                this.insertionMode = event.target.value;
+                this.updateSelection();
+                return;
+            }
             if (event.target.matches("[data-edit-locale]")) {
                 this.editingLocale = this.survey.languages.enabled.includes(event.target.value) ? event.target.value : this.survey.languages.sourceLocale;
                 this.renderSurvey();
@@ -881,13 +1431,13 @@
                 this.renderSurvey();
                 if (this.activeId) this.openProperties(this.activeId);
                 this.context.toast(`원문을 ${this.localeLabel(next)}로 전환하고 이전 원문을 번역으로 보존했습니다.`, "success");
-                this.scheduleSave();
+                this.markDirty();
                 return;
             }
             if (event.target.matches("[data-default-locale]")) {
                 if (this.survey.languages.enabled.includes(event.target.value)) this.survey.languages.defaultLocale = event.target.value;
                 this.renderLanguageControls();
-                this.scheduleSave();
+                this.markDirty();
                 return;
             }
             if (event.target.matches("[data-language-code]")) {
@@ -902,7 +1452,7 @@
                 if (!this.survey.languages.enabled.includes(this.editingLocale)) this.editingLocale = this.survey.languages.sourceLocale;
                 this.renderSurvey();
                 if (this.activeId) this.openProperties(this.activeId);
-                this.scheduleSave();
+                this.markDirty();
                 return;
             }
             const setting = event.target.dataset.setting;
@@ -910,14 +1460,14 @@
                 const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
                 if (setting === "confirmationMessage") {
                     this.setLocalizedSurveyField("confirmationMessage", value);
-                    this.scheduleSave();
+                    this.markDirty();
                     return;
                 }
                 const canonicalName = { showProgress: "showProgressBar", oneResponse: "oneResponsePerRespondent", allowEdit: "allowResponseEdit" }[setting];
                 this.survey.settings[setting] = value;
                 if (setting === "showQuestionNumbers") this.renderQuestions();
                 if (canonicalName) this.survey.settings[canonicalName] = value;
-                this.scheduleSave();
+                this.markDirty();
                 return;
             }
             const ruleElement = event.target.closest("[data-rule-id]");
@@ -927,6 +1477,8 @@
                     if (event.target.matches("[data-rule-question]")) {
                         rule.questionId = event.target.value;
                         rule.sourceQuestionId = event.target.value;
+                        rule.value = "";
+                        this.renderRules();
                     }
                     if (event.target.matches("[data-rule-operator]")) rule.operator = event.target.value;
                     if (event.target.matches("[data-rule-value]")) rule.value = event.target.value;
@@ -934,7 +1486,7 @@
                         rule.destination = event.target.value;
                         rule.targetSectionId = event.target.value === "complete" || event.target.value === "next" ? null : event.target.value;
                     }
-                    this.scheduleSave();
+                    this.markDirty();
                 }
                 return;
             }
@@ -949,7 +1501,7 @@
             }
             if (event.target.matches("[data-prop-scale-order]")) question.settings = { ...(question.settings || {}), scaleOrder: event.target.value };
             if (event.target.matches("[data-prop-scale-display]")) question.settings = { ...(question.settings || {}), scaleDisplay: event.target.value };
-            if (event.target.matches("[data-prop-scale-order], [data-prop-scale-display]")) this.renderQuestions();
+            if (event.target.matches("[data-prop-scale-order], [data-prop-scale-display], [data-scale-label], [data-prop-min], [data-prop-max]")) this.renderQuestions();
             if (event.target.matches("[data-prop-choice-layout]")) {
                 question.settings = { ...(question.settings || {}), choiceLayout: event.target.value };
                 this.renderQuestions();
@@ -1005,7 +1557,7 @@
             }
             if (event.target.matches("[data-prop-description-enabled]") && this.editingLocale === this.survey.languages.sourceLocale) { if (event.target.checked && !question.description) question.description = "응답 기준이나 도움말을 입력하세요."; if (!event.target.checked) question.description = ""; this.openProperties(question.id); this.renderQuestions(); }
             if (event.target.matches("[data-prop-validation]")) question.validation = { ...(question.validation || {}), type: event.target.value };
-            this.scheduleSave();
+            this.markDirty();
         },
         section(id) { return this.survey.sections.find((item) => String(item.id) === String(id)); },
         question(id) { return this.questionLocation(id)?.question || null; },
@@ -1046,7 +1598,7 @@
                 return this.context.toast(`문항을 이동할 수 없습니다. ${orderProblem}`, "error");
             }
             this.renderQuestions();
-            this.scheduleSave();
+            this.markDirty();
         },
         moveQuestionTranslations(questionId, sourceSectionId, destinationSectionId) {
             const questionKey = String(questionId);
@@ -1073,8 +1625,13 @@
             location.section.questions.splice(location.questionIndex + 1, 0, copy);
             this.refreshQuestions();
             this.activeId = copy.id;
+            this.activeSectionId = location.section.id;
+            this.addedQuestionId = copy.id;
             this.renderQuestions();
-            this.scheduleSave();
+            this.openProperties(copy.id);
+            if (window.matchMedia("(max-width: 78rem)").matches) this.closeProperties();
+            this.markDirty();
+            this.revealSelection(true);
         },
         pruneQuestionTranslations(questionId) {
             const key = String(questionId);
@@ -1133,17 +1690,21 @@
                 });
             });
         },
-        addAxisItem(field) {
+        addAxisItem(field, afterIndex = null) {
             const question = this.question(this.activeId);
             if (!question || !["rows", "columns"].includes(field)) return;
             if (this.editingLocale !== this.survey.languages.sourceLocale) return this.context.toast("행과 열의 구조는 원문 언어에서만 변경할 수 있습니다.", "error");
             this.syncQuestionCompatibility(question);
             const label = field === "rows" ? `항목 ${question.rows.length + 1}` : `열 ${question.columns.length + 1}`;
-            question[field].push(label);
-            question.settings[field].push({ id: uid(field === "rows" ? "row" : "col"), label });
+            this.canonicalizeAxisTranslations(question, field);
+            const insertAt = afterIndex === null ? question[field].length : Math.max(0, Math.min(question[field].length, afterIndex + 1));
+            const item = { id: uid(field === "rows" ? "row" : "col"), label };
+            this.ensureResultCodes([...question.settings[field], item]);
+            question[field].splice(insertAt, 0, label);
+            question.settings[field].splice(insertAt, 0, item);
             this.renderQuestions();
             this.openProperties(question.id);
-            this.scheduleSave();
+            this.markDirty();
         },
         deleteAxisItem(field, index) {
             const question = this.question(this.activeId);
@@ -1156,7 +1717,7 @@
             question.settings[field].splice(index, 1);
             this.renderQuestions();
             this.openProperties(question.id);
-            this.scheduleSave();
+            this.markDirty();
         },
         moveAxisItem(field, index, direction) {
             const question = this.question(this.activeId);
@@ -1170,7 +1731,7 @@
             [question.settings[field][index], question.settings[field][target]] = [question.settings[field][target], question.settings[field][index]];
             this.renderQuestions();
             this.openProperties(question.id);
-            this.scheduleSave();
+            this.markDirty();
         },
         deleteQuestion(id) {
             const location = this.questionLocation(id);
@@ -1188,15 +1749,49 @@
             this.refreshQuestions();
             if (this.activeId === id) {
                 this.activeId = null;
+                this.activeSectionId = location.section.id;
+                this.addedQuestionId = null;
+                this.closeProperties();
                 this.root.querySelector("[data-properties-empty]").hidden = false;
                 this.root.querySelector("[data-properties-panel]").hidden = true;
             }
             this.renderQuestions();
             this.renderRules();
-            this.scheduleSave();
+            this.markDirty();
         },
-        addOption(questionId) { const question = this.question(questionId); if (!question) return; question.options = question.options || []; question.options.push({ id: uid("o"), label: `보기 ${question.options.length + 1}` }); if (question.settings?.choiceInput === "codes") this.ensureOptionCodes(question); this.renderQuestions(); this.scheduleSave(); },
-        deleteOption(questionId, optionId) { const question = this.question(questionId); if (!question || question.options.length <= 1) return this.context.toast("보기는 한 개 이상 필요합니다.", "error"); const referenced = this.survey.questions.some((candidate) => (candidate.activationCondition?.conditions || []).some((condition) => String(condition.sourceQuestionId || condition.source_question_id) === String(questionId) && (Array.isArray(condition.value) ? condition.value : [condition.value]).some((value) => String(value) === String(optionId)))); if (referenced) return this.context.toast("이 보기를 동적 문항 조건에서 사용 중입니다. 조건을 먼저 수정해 주세요.", "error"); question.options = question.options.filter((item) => item.id !== optionId); this.pruneOptionTranslations(questionId, optionId); this.renderQuestions(); this.scheduleSave(); },
+        addOption(questionId, afterId = null) {
+            const question = this.question(questionId);
+            if (!question) return;
+            if (this.editingLocale !== this.survey.languages.sourceLocale) return this.context.toast("보기 구조와 코드는 원문 언어에서만 변경할 수 있습니다.", "error");
+            question.options = question.options || [];
+            const option = {id: uid("o"), label: "새 보기"};
+            this.ensureResultCodes([...question.options, option]);
+            const index = afterId === null ? question.options.length : question.options.findIndex(item => item.id === afterId) + 1;
+            question.options.splice(index, 0, option);
+            if (question.settings?.choiceInput === "codes") this.ensureOptionCodes(question);
+            this.renderQuestions(); this.markDirty();
+            requestAnimationFrame(() => this.root?.querySelector(`[data-option-id="${CSS.escape(option.id)}"]`)?.focus());
+        },
+        moveOption(questionId, optionId, direction) {
+            const question = this.question(questionId);
+            if (!question || this.editingLocale !== this.survey.languages.sourceLocale || ![-1, 1].includes(direction)) return;
+            const index = question.options.findIndex(option => option.id === optionId);
+            const target = index + direction;
+            if (index < 0 || target < 0 || target >= question.options.length) return;
+            [question.options[index], question.options[target]] = [question.options[target], question.options[index]];
+            this.renderQuestions(); this.markDirty();
+            requestAnimationFrame(() => this.root?.querySelector(`[data-option-move="${CSS.escape(optionId)}"][data-option-direction="${direction}"]`)?.focus());
+        },
+        deleteOption(questionId, optionId) {
+            const question = this.question(questionId);
+            if (!question || this.editingLocale !== this.survey.languages.sourceLocale) return;
+            if (question.options.length <= 1) return this.context.toast("보기는 한 개 이상 필요합니다.", "error");
+            const referenced = this.survey.questions.some(candidate => (String(candidate.settings?.excludeSelectedFrom || "") === String(questionId) && (candidate.options || []).some(option => option.id === optionId)) || (candidate.activationCondition?.conditions || []).some(condition => String(condition.sourceQuestionId || condition.source_question_id) === String(questionId) && (Array.isArray(condition.value) ? condition.value : [condition.value]).some(value => String(value) === String(optionId))));
+            const ruleReference = (this.survey.logicRules || []).some(rule => String(rule.sourceQuestionId || rule.questionId || "") === String(questionId) && (Array.isArray(rule.value) ? rule.value : [rule.value || rule.optionId]).some(value => String(value) === String(optionId)));
+            if (referenced || ruleReference) return this.context.toast("이 보기를 문항 조건·선행 보기 제외·이동 분기에서 사용 중입니다. 연결을 먼저 수정해 주세요.", "error");
+            question.options = question.options.filter(item => item.id !== optionId);
+            this.pruneOptionTranslations(questionId, optionId); this.renderQuestions(); this.markDirty();
+        },
         conditionSourceDependents(sourceId) {
             return this.survey.questions.filter((question) => String(question.settings?.excludeSelectedFrom || "") === String(sourceId) || (question.activationCondition?.conditions || []).some((condition) => String(condition.sourceQuestionId || condition.source_question_id) === String(sourceId)));
         },
@@ -1215,15 +1810,47 @@
             }
             return "";
         },
-        setMode(mode) { this.root.querySelectorAll("[data-builder-mode]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.builderMode === mode))); this.root.querySelectorAll("[data-mode-panel]").forEach((panel) => { panel.hidden = panel.dataset.modePanel !== mode; }); },
+        setMode(mode) {
+            if (!["questions", "logic", "settings"].includes(mode)) return;
+            const previous = this.mode || "questions";
+            const scroller = this.root.querySelector("[data-builder-document-scroll]");
+            this.canvasScrollPositions = this.canvasScrollPositions || {};
+            if (previous !== mode) this.canvasScrollPositions[previous] = scroller.scrollTop;
+            this.mode = mode;
+            this.root.querySelector("[data-builder-shell]").dataset.editorMode = mode;
+            const editingQuestions = mode === "questions";
+            this.root.querySelector(".builder-toolbox").hidden = !editingQuestions;
+            this.root.querySelector(".builder-properties").hidden = !editingQuestions;
+            this.root.querySelectorAll("[data-question-navigation]").forEach(control => { control.hidden = !editingQuestions; });
+            if (!editingQuestions) this.closeProperties();
+            const copy = {
+                questions: ["설문 구성", "문항을 선택해 내용과 속성을 편집하세요."],
+                logic: ["분기 설계", "응답에 따른 섹션 이동과 URL 대상별 표시 범위를 설정하세요."],
+                settings: ["설문 설정", "설문 전체의 응답 정책, 언어와 화면 스타일을 설정하세요."]
+            }[mode];
+            this.root.querySelector("[data-canvas-title]").textContent = copy[0];
+            this.root.querySelector("[data-canvas-guide]").textContent = copy[1];
+            if (mode === "logic") this.renderRules();
+            this.root.querySelectorAll("[data-builder-mode]").forEach(button => {
+                const selected = button.dataset.builderMode === mode;
+                button.setAttribute("aria-selected", String(selected)); button.tabIndex = selected ? 0 : -1;
+            });
+            this.root.querySelectorAll("[data-mode-panel]").forEach(panel => { panel.hidden = panel.dataset.modePanel !== mode; });
+            if (editingQuestions) this.resizeQuestionTitles();
+            if (editingQuestions && previous !== mode && this.activeId && this.question(this.activeId)) {
+                this.openProperties(this.activeId);
+                if (window.matchMedia("(max-width: 78rem)").matches) this.closeProperties();
+            }
+            if (previous !== mode) scroller.scrollTop = this.canvasScrollPositions[mode] || 0;
+        },
         addLogicRule() {
             const source = this.survey.questions.find((question) => optionTypes.has(question.type)) || this.survey.questions[0];
             if (!source) return this.context.toast("먼저 분기 기준 문항을 추가하세요.", "error");
             this.survey.logicRules.push({ id: uid("r"), questionId: source.id, sourceQuestionId: source.id, operator: "equals", value: "", destination: "complete", targetSectionId: null });
             this.renderRules();
-            this.scheduleSave();
+            this.markDirty();
         },
-        removeLogicRule(id) { this.survey.logicRules = this.survey.logicRules.filter((item) => item.id !== id); this.renderRules(); this.scheduleSave(); },
+        removeLogicRule(id) { this.survey.logicRules = this.survey.logicRules.filter((item) => item.id !== id); this.renderRules(); this.markDirty(); },
         renderRules() {
             const host = this.root.querySelector("[data-logic-rules]");
             if (!host || !this.survey) return;
@@ -1231,11 +1858,17 @@
                 const sourceId = String(rule.sourceQuestionId || rule.questionId || "");
                 const destination = String(rule.targetSectionId || rule.destination || "complete");
                 const questionOptions = this.survey.questions.map((question) => `<option value="${Common.escapeHtml(question.id)}" ${String(question.id) === sourceId ? "selected" : ""}>${Common.escapeHtml(this.localizedQuestionField(question, "title"))}</option>`).join("");
+                const source = this.question(sourceId);
+                const value = String(rule.value ?? rule.optionId ?? "");
+                const options = source?.options || [];
+                const valueControl = options.length
+                    ? `<select data-rule-value><option value="">비교할 보기 선택</option>${options.map(option => `<option value="${Common.escapeHtml(option.id)}" ${value === option.id ? 'selected' : ''}>${Common.escapeHtml(this.localizedOptionLabel(source, option))} · 결과 코드 ${Common.escapeHtml(option.resultCode ?? option.id)}</option>`).join('')}${value && !options.some(option => option.id === value) ? `<option value="${Common.escapeHtml(value)}" selected>기존 값 · ${Common.escapeHtml(value)}</option>` : ''}</select>`
+                    : `<input type="text" data-rule-value value="${Common.escapeHtml(value)}" placeholder="비교할 응답값">`;
                 const sectionOptions = this.survey.sections.map((section) => `<option value="${Common.escapeHtml(section.id)}" ${String(section.id) === destination ? "selected" : ""}>${Common.escapeHtml(this.localizedSectionField(section, "title"))}</option>`).join("");
-                return `<article class="logic-rule" data-rule-id="${Common.escapeHtml(rule.id)}"><label class="form-field">기준 문항<select data-rule-question>${questionOptions}</select></label><label class="form-field">조건<select data-rule-operator><option value="equals" ${rule.operator === "equals" ? "selected" : ""}>같음</option><option value="notEquals" ${rule.operator === "notEquals" ? "selected" : ""}>같지 않음</option><option value="contains" ${rule.operator === "contains" ? "selected" : ""}>포함</option></select></label><label class="form-field">비교 값<input type="text" data-rule-value value="${Common.escapeHtml(rule.value || rule.optionId || "")}" placeholder="보기 ID 또는 값"></label><label class="form-field">이동 위치<select data-rule-destination><option value="complete" ${destination === "complete" ? "selected" : ""}>설문 완료</option><option value="next" ${destination === "next" ? "selected" : ""}>다음 섹션</option>${sectionOptions}</select></label><button class="button button-small button-delete" type="button" data-remove-rule>삭제</button></article>`;
+                return `<article class="logic-rule" data-rule-id="${Common.escapeHtml(rule.id)}"><label class="form-field">기준 문항<select data-rule-question>${questionOptions}</select></label><label class="form-field">조건<select data-rule-operator><option value="equals" ${rule.operator === "equals" ? "selected" : ""}>같음</option><option value="notEquals" ${rule.operator === "notEquals" ? "selected" : ""}>같지 않음</option><option value="contains" ${rule.operator === "contains" ? "selected" : ""}>포함</option></select></label><label class="form-field">비교 값${valueControl}</label><label class="form-field">이동 위치<select data-rule-destination><option value="complete" ${destination === "complete" ? "selected" : ""}>설문 완료</option><option value="next" ${destination === "next" ? "selected" : ""}>다음 섹션</option>${sectionOptions}</select></label><button class="button button-small button-delete" type="button" data-remove-rule>삭제</button></article>`;
             }).join("");
         },
-        setSkin(code) { this.survey.skin = { ...(this.survey.skin || {}), preset: code }; this.applySkin(); this.scheduleSave(); },
+        setSkin(code) { this.survey.skin = { ...(this.survey.skin || {}), preset: code }; this.applySkin(); this.markDirty(); },
         applySkin() { const skin = window.SURVEYONE_CONFIG.skinPresets.find((item) => item.code === this.survey.skin?.preset) || window.SURVEYONE_CONFIG.skinPresets[0]; this.root.querySelector("[data-builder-shell]").style.setProperty("--survey-primary", skin.primary); this.root.querySelectorAll("[data-skin-code]").forEach((button) => button.classList.toggle("is-active", button.dataset.skinCode === skin.code)); },
         applyExcludedSource(question, sourceId, copyOptions = false) {
             const source = sourceId ? this.question(sourceId) : null;
@@ -1246,7 +1879,7 @@
                 if (question.settings?.choiceInput === "codes") this.ensureOptionCodes(question);
             }
             question.settings = { ...(question.settings || {}), excludeSelectedFrom: sourceId || null };
-            this.renderQuestions(); this.openProperties(question.id); this.scheduleSave();
+            this.renderQuestions(); this.openProperties(question.id); this.markDirty();
         },
         chooseExcludedSource(question, sourceId, forceCopy = false) {
             const source = sourceId ? this.question(sourceId) : null;
@@ -1260,16 +1893,20 @@
         async editNoticeContent(preset = "") {
             const question = this.question(this.activeId);
             if (!question || question.type !== "notice") return;
-            const existing = question.settings?.contentHtml || "";
+            const existing = question.settings?.contentHtml || (question.description ? `<p>${Common.escapeHtml(question.description)}</p>` : "");
             const html = preset ? existing + "\n" + (window.SurveyContent.presets[preset] || "") : existing;
+            const customCode = window.SurveyCodeEditor.normalize(this.survey.skin?.customCode);
             await window.SurveyCodeEditor.open({
                 context: this.context, title: "안내문·표 서식 편집",
-                description: "문단·강조·목록·표를 편집합니다. 표지 예제와 안내 표를 넣은 뒤 내용을 바꿔 주세요. 안내 서식은 원문 공통으로 표시됩니다.",
-                tabs: ["html"], allowEnable: false, allowPlacement: false, email: true,
-                sources: { html, enabled: true },
+                description: "HTML은 선택한 안내문에 적용합니다. CSS·JavaScript는 설문 전체가 공유하는 기존 코드를 편집합니다. JavaScript는 설문 공통 HTML의 격리 영역에서 실행되며 안내문·응답 입력란을 직접 수정하지 않습니다.",
+                richHtml: true, noticeId: question.id, sharedHtml: customCode.html,
+                allowPlacement: false, sources: { ...customCode, html },
                 onApply: (source) => {
-                    question.settings = { ...(question.settings || {}), contentHtml: window.SurveyContent.validate(source.html) };
-                    this.renderQuestions(); this.scheduleSave();
+                    const contentHtml = window.SurveyContent.validate(source.html);
+                    const updatedCode = window.SurveyCodeEditor.validate({ ...customCode, css: source.css, javascript: source.javascript, enabled: source.enabled });
+                    question.settings = { ...(question.settings || {}), contentHtml };
+                    this.survey.skin = { ...(this.survey.skin || {}), customCode: updatedCode };
+                    this.renderQuestions(); this.markDirty();
                 }
             });
         },
@@ -1291,7 +1928,7 @@
         editAudiences() {
             const routes = structuredClone(this.survey.settings?.audienceRoutes || []);
             let defaultIndex = routes.findIndex(route => route.code === this.survey.settings.defaultAudience);
-            const dialog = this.context.openModal(`<section class="audience-editor"><h2>URL별 대상·섹션 분기</h2><p>표시할 섹션을 선택하세요. 연결된 선행 문항도 같은 대상에 포함해야 합니다. 구분자 없는 URL은 기본 대상에 연결됩니다.</p><div data-audience-rows></div><button class="button button-function" type="button" data-audience-add>대상 추가</button><p data-audience-error role="alert"></p><button class="button button-save" type="button" data-audience-apply>분기 설정 저장</button></section>`, {label:"URL별 대상 분기", wide:true, initialFocus:"[data-audience-add]"});
+            const dialog = this.context.openModal(`<section class="audience-editor"><h2>URL별 대상·섹션 분기</h2><p>표시할 섹션을 선택하세요. 연결된 선행 문항도 같은 대상에 포함해야 합니다. 구분자 없는 URL은 기본 대상에 연결됩니다.</p><div data-audience-rows></div><button class="button button-function" type="button" data-audience-add>대상 추가</button><p data-audience-error role="alert"></p><button class="button button-save" type="button" data-audience-apply>편집기에 적용</button></section>`, {label:"URL별 대상 분기", wide:true, initialFocus:"[data-audience-add]"});
             const host = dialog.querySelector("[data-audience-rows]");
             const render = () => {
                 host.innerHTML = routes.map((route, index) => `<fieldset data-audience-index="${index}"><legend>대상 ${index + 1}</legend><div class="audience-fields"><label>구분자<input data-audience-code maxlength="40" value="${Common.escapeHtml(route.code)}" pattern="[a-z0-9][a-z0-9_-]{0,39}"></label><label>대상 이름<input data-audience-label maxlength="100" value="${Common.escapeHtml(route.label)}"></label><label class="audience-check"><input type="radio" name="audience-default" data-audience-default ${defaultIndex === index ? "checked" : ""}>기본 대상</label><button class="button button-delete" type="button" data-audience-remove>대상 삭제</button></div><div class="audience-sections">${this.survey.sections.map(section => `<label><input type="checkbox" data-audience-section value="${Common.escapeHtml(section.id)}" ${route.sectionIds.includes(section.id) ? "checked" : ""}>${Common.escapeHtml(section.title)}</label>`).join("")}</div><small>?audience=${Common.escapeHtml(route.code)}</small></fieldset>`).join("");
@@ -1323,20 +1960,19 @@
                 const error = dialog.querySelector("[data-audience-error]");
                 if (routes.some(route => !/^[a-z0-9][a-z0-9_-]{0,39}$/.test(route.code) || !route.label || !route.sectionIds.length) || new Set(routes.map(route => route.code)).size !== routes.length) { error.textContent = "구분자는 중복 없이 영문 소문자·숫자·밑줄·하이픈으로 입력하고 이름과 섹션을 지정해 주세요."; return; }
                 event.target.disabled = true;
-                const previous = structuredClone(this.survey.settings);
-                try {
-                    await this.flushSave();
-                    this.survey.settings.audienceRoutes = routes;
-                    this.survey.settings.defaultAudience = routes[defaultIndex]?.code || null;
-                    this.dirty = true;
-                    if (!await this.saveExplicit({notify:false})) throw new Error("설정을 저장하지 못했습니다. 선행 문항이 같은 대상에 포함되는지 확인하세요.");
-                    this.renderAudienceSummary(); dialog.close();
-                } catch (failure) { this.survey.settings = previous; this.dirty = false; error.textContent = failure.message; event.target.disabled = false; }
+                this.survey.settings.audienceRoutes = routes;
+                this.survey.settings.defaultAudience = routes[defaultIndex]?.code || null;
+                this.renderAudienceSummary();
+                this.markDirty();
+                dialog.close();
+                this.context.toast("대상·섹션 분기를 적용했습니다. 상단 저장으로 보관하세요.", "success");
             });
             render();
         },
         exportDraftPackage() {
-            const draft = this.savePayload();
+            let draft;
+            try { draft = this.savePayload(); }
+            catch (error) { return this.context.toast(error.message, "error"); }
             delete draft.expectedRevision;
             delete draft.sourceLocalePromotionFrom;
             const blob = new Blob([JSON.stringify({ format: "in-surveyone.draft", formatVersion: 1, draft }, null, 2)], { type: "application/json" });
@@ -1366,7 +2002,7 @@
                 if (packageData.format !== "in-surveyone.draft" || packageData.formatVersion !== 1 || !Array.isArray(packageData.draft?.sections)) throw new Error("IN-SURVEYONE 설계 파일 형식 또는 버전을 확인해 주세요.");
                 const source = packageData.draft;
                 const count = source.sections.reduce((sum, section) => sum + (Array.isArray(section.questions) ? section.questions.length : 0), 0);
-                const dialog = this.context.openModal(`<section class="draft-import-review"><h2>설계 파일 불러오기</h2><p><strong>${Common.escapeHtml(source.title || "제목 없는 설문")}</strong> · ${source.sections.length}개 섹션 · ${count}개 문항</p><p>이 프로젝트의 편집 초안 내용을 파일의 설계로 교체합니다. 프로젝트 식별자·공개 주소·조사 기간·응답 운영 정책은 유지됩니다. 현재 초안이 필요하면 취소 후 설계 파일로 내보내세요.</p><button class="button button-save" type="button" data-import-confirm>초안에 불러오기</button><output data-import-status role="status"></output></section>`, { label: "설계 파일 불러오기 확인", initialFocus: "[data-import-confirm]" });
+                const dialog = this.context.openModal(`<section class="draft-import-review"><h2>설계 파일 불러오기</h2><p><strong>${Common.escapeHtml(source.title || "제목 없는 설문")}</strong> · ${source.sections.length}개 섹션 · ${count}개 문항</p><p>이 프로젝트의 편집 초안 내용을 파일의 설계로 교체합니다. 프로젝트 식별자·공개 주소·조사 기간·응답 운영 정책은 유지됩니다. 현재 초안이 필요하면 취소 후 설계 파일로 내보내세요.</p><button class="button button-save" type="button" data-import-confirm>불러오고 저장</button><output data-import-status role="status"></output></section>`, { label: "설계 파일 불러오기 확인", initialFocus: "[data-import-confirm]" });
                 dialog.querySelector("[data-import-confirm]").addEventListener("click", async (event) => {
                     event.target.disabled = true;
                     const status = dialog.querySelector("[data-import-status]");
@@ -1390,30 +2026,60 @@
                 sources: this.survey.skin?.customCode,
                 onApply: (source) => {
                     this.survey.skin = { ...(this.survey.skin || {}), customCode: source };
-                    this.scheduleSave();
-                    this.context.toast("사용자 코드를 편집 초안에 반영했습니다. 자동 저장 후 다음 확정 버전부터 적용됩니다.", "success");
+                    this.markDirty();
+                    this.context.toast("사용자 코드를 편집 초안에 반영했습니다. 상단 저장을 누른 뒤 다시 확정하면 공개 설문에 적용됩니다.", "success");
                 }
             });
+        },
+        draftSnapshot(source = this.survey) {
+            return Object.fromEntries(draftFields.filter(key => Object.hasOwn(source || {}, key)).map(key => [key, structuredClone(source[key])]));
+        },
+        updateSaveControls() {
+            if (!this.root || this.destroyed) return;
+            const busy = Boolean(this.savePromise || this.savingExplicit || this.publishing);
+            const save = this.root.querySelector("[data-builder-save]");
+            const discard = this.root.querySelector("[data-builder-discard]");
+            if (save) { save.disabled = !this.survey || busy; save.setAttribute("aria-busy", String(Boolean(this.savePromise || this.savingExplicit))); }
+            if (discard) discard.disabled = !this.savedDraft || !this.dirty || busy;
         },
         setSaveLabel(message) {
             if (!this.destroyed && this.root?.isConnected) {
                 const label = this.root.querySelector("[data-builder-save-label]");
-                if (label) label.textContent = message;
+                if (label) {
+                    label.textContent = message;
+                    label.dataset.saveState = message.includes("실패") ? "error" : message === "저장됨" ? "saved" : message === "저장 중…" ? "saving" : "pending";
+                }
+                this.updateSaveControls();
             }
         },
-        scheduleSave() {
+        markDirty() {
             this.dirty = true;
-            clearTimeout(this.saveTimer);
-            this.setSaveLabel("저장 대기");
-            this.saveTimer = setTimeout(() => {
-                this.saveTimer = null;
-                this.flushSave().catch((error) => {
-                    this.setSaveLabel("저장 실패");
-                    if (!this.destroyed) this.context.toast(error.message, "error");
-                });
-            }, 700);
+            this.setSaveLabel("저장 안 됨");
+        },
+        restoreSavedDraft() {
+            if (!this.savedDraft || this.savePromise || this.savingExplicit) return false;
+            const inspectorOpen = this.root.querySelector(".builder-properties")?.classList.contains("is-open");
+            draftFields.forEach(key => { delete this.survey[key]; });
+            Object.assign(this.survey, structuredClone(this.savedDraft));
+            this.normalizeSurvey();
+            this.dirty = false;
+            this.addedQuestionId = null;
+            this.renderSurvey();
+            if (this.activeId && this.question(this.activeId)) {
+                this.openProperties(this.activeId);
+                if (!inspectorOpen) this.closeProperties();
+            } else this.selectSection(this.activeSectionId);
+            this.setSaveLabel("저장됨");
+            return true;
+        },
+        async confirmDiscardChanges() {
+            if (!this.dirty || !this.savedDraft || this.savePromise || this.savingExplicit) return;
+            const confirmed = await this.context.confirmMessage("마지막 저장 후 수정한 제목·문항·보기·설정·코드를 모두 취소하고 마지막 저장 상태로 돌아갈까요?", { title: "변경 취소", confirmLabel: "변경 취소", cancelLabel: "계속 편집", destructive: true });
+            if (confirmed && !this.destroyed && this.restoreSavedDraft()) this.context.toast("마지막 저장 상태로 되돌렸습니다.", "success");
         },
         savePayload() {
+            const codeProblem = this.resultCodeProblem();
+            if (codeProblem) throw new Error(codeProblem);
             this.survey.sections.forEach((section) => section.questions.forEach((question) => this.syncQuestionCompatibility(question)));
             const settings = structuredClone(this.survey.settings || {});
             settings.showProgressBar = Boolean(settings.showProgressBar ?? settings.showProgress);
@@ -1447,20 +2113,21 @@
             if (!this.survey || !this.dirty) return true;
             if (this.savePromise) await this.savePromise;
             if (!this.dirty) return true;
-            clearTimeout(this.saveTimer);
-            this.saveTimer = null;
             const payload = this.savePayload();
+            const savedDraft = this.draftSnapshot(payload);
             this.dirty = false;
             if (updateUi) this.setSaveLabel("저장 중…");
             const request = this.context.api.put(`/api/surveys/${encodeURIComponent(this.survey.id)}`, payload);
             this.savePromise = request;
+            this.updateSaveControls();
             try {
                 const response = await request;
                 const saved = response.survey || response;
                 this.survey.revision = saved.revision ?? this.survey.revision;
                 this.survey.updatedAt = saved.updatedAt ?? this.survey.updatedAt;
-                this.persistedSourceLocale = saved.languages?.sourceLocale || this.survey.languages.sourceLocale;
-                if (updateUi) this.setSaveLabel(this.dirty ? "저장 대기" : "저장됨");
+                this.persistedSourceLocale = savedDraft.languages?.sourceLocale || this.survey.languages.sourceLocale;
+                this.savedDraft = Array.isArray(saved.sections) ? this.draftSnapshot(saved) : savedDraft;
+                if (updateUi) this.setSaveLabel(this.dirty ? "저장 안 됨" : "저장됨");
                 return true;
             } catch (error) {
                 this.dirty = true;
@@ -1468,44 +2135,40 @@
                 throw error;
             } finally {
                 if (this.savePromise === request) this.savePromise = null;
+                this.updateSaveControls();
             }
         },
         async flushSave(options = {}) {
-            clearTimeout(this.saveTimer);
-            this.saveTimer = null;
-            while (this.savePromise || this.dirty) {
-                if (this.savePromise) await this.savePromise;
-                if (this.dirty) await this.save(options);
-            }
+            if (this.savePromise) await this.savePromise;
+            if (this.dirty) await this.save(options);
             return true;
         },
         async saveExplicit({ notify = true } = {}) {
-            if (!this.survey) return false;
+            if (!this.survey || this.savingExplicit) return false;
+            this.savingExplicit = true;
             this.dirty = true;
             this.setSaveLabel("저장 중…");
             try {
                 await this.flushSave();
-                if (notify && !this.destroyed) this.context.toast("설문 초안을 저장했습니다.", "success");
-                return true;
+                if (notify && !this.destroyed) this.context.toast(this.dirty ? "저장 시점의 초안을 보관했습니다. 저장 중 추가한 수정은 아직 저장되지 않았습니다." : "설문 초안을 저장했습니다.", "success");
+                return !this.dirty;
             } catch (error) {
                 this.setSaveLabel("저장 실패");
                 if (!this.destroyed) this.context.toast(`설문 초안을 저장하지 못했습니다. ${error.message}`, "error");
                 return false;
+            } finally {
+                this.savingExplicit = false;
+                this.updateSaveControls();
             }
         },
         async openTemplateLibrary() {
             if (this.templateAdmin || !this.survey) return;
-            try {
-                await this.flushSave();
-            } catch (error) {
-                return this.context.toast(`저장하지 못해 템플릿 선택을 열 수 없습니다. ${error.message}`, "error");
-            }
             this.context.openModal(`<div class="page-loading" role="status"><span class="spinner"></span><strong>템플릿을 불러오고 있습니다.</strong></div>`, { label: "템플릿 선택", wide: true, templateLibrary: true });
             try {
                 const payload = await this.context.api.get("/api/templates");
                 this.templateItems = payload?.items || payload?.templates || payload || [];
                 const categories = ["전체", ...new Set(this.templateItems.map((item) => item.category || "일반"))];
-            const dialog = this.context.openModal(`<section class="editor-template-layer"><header><div><span class="eyebrow">TEMPLATE LIBRARY</span><h2>설문 구조 템플릿 선택</h2><p>템플릿은 시작 구조입니다. 적용 후 STEP 04에서 자유롭게 수정할 수 있습니다.</p></div><button class="button button-function" type="button" data-editor-template-blank>빈 설문</button></header><div class="editor-template-toolbar"><div class="editor-template-categories" data-editor-template-categories>${categories.map((category, index) => `<button type="button" data-editor-template-category="${Common.escapeHtml(category)}" aria-pressed="${index === 0}">${Common.escapeHtml(category)}</button>`).join("")}</div><label class="search-field"><span class="sr-only">템플릿 검색</span><input type="search" data-editor-template-search placeholder="템플릿 이름 또는 설명 검색"></label></div><div class="editor-template-grid" data-editor-template-grid></div><aside class="editor-template-confirm" data-editor-template-confirm hidden><div><strong data-editor-template-confirm-title>템플릿 적용 확인</strong><p>현재 문항·동적 조건·섹션 분기·번역이 새 구조로 교체됩니다. 기본정보·스킨·응답 UI는 유지됩니다.</p></div><button class="button button-function" type="button" data-editor-template-confirm-cancel>취소</button><button class="button button-function button-important" type="button" data-editor-template-confirm-apply>구조 교체</button></aside></section>`, { label: "설문 구조 템플릿 선택", wide: true, templateLibrary: true, initialFocus: "[data-editor-template-search]" });
+            const dialog = this.context.openModal(`<section class="editor-template-layer"><header><div><span class="eyebrow">TEMPLATE LIBRARY</span><h2>설문 구조 템플릿 선택</h2><p>템플릿은 시작 구조입니다. 적용 후 STEP 04에서 자유롭게 수정할 수 있습니다.</p></div><button class="button button-function" type="button" data-editor-template-blank>빈 설문</button></header><div class="editor-template-toolbar"><div class="editor-template-categories" data-editor-template-categories>${categories.map((category, index) => `<button type="button" data-editor-template-category="${Common.escapeHtml(category)}" aria-pressed="${index === 0}">${Common.escapeHtml(category)}</button>`).join("")}</div><label class="search-field"><span class="sr-only">템플릿 검색</span><input type="search" data-editor-template-search placeholder="템플릿 이름 또는 설명 검색"></label></div><div class="editor-template-grid" data-editor-template-grid></div><aside class="editor-template-confirm" data-editor-template-confirm hidden><div><strong data-editor-template-confirm-title>템플릿 적용 확인</strong><p>현재 문항·동적 조건·섹션 분기·번역이 새 구조로 교체됩니다. 기본정보·스킨·응답 UI는 유지됩니다.</p></div><button class="button button-function" type="button" data-editor-template-confirm-cancel>취소</button><button class="button button-function button-important" type="button" data-editor-template-confirm-apply>저장하고 구조 교체</button></aside></section>`, { label: "설문 구조 템플릿 선택", wide: true, templateLibrary: true, initialFocus: "[data-editor-template-search]" });
                 this.templateCategory = "전체";
                 this.renderTemplateLibrary(dialog);
                 dialog.querySelector("[data-editor-template-search]")?.addEventListener("input", () => this.renderTemplateLibrary(dialog));
@@ -1545,6 +2208,7 @@
             const apply = dialog.querySelector("[data-editor-template-confirm-apply]");
             apply.disabled = true;
             try {
+                await this.flushSave();
                 const endpoint = this.pendingTemplateCode ? "template" : "template/reset";
                 const body = this.pendingTemplateCode ? { templateCode: this.pendingTemplateCode, expectedRevision: this.survey.revision } : { expectedRevision: this.survey.revision };
                 const payload = await this.context.api.post(`/api/surveys/${encodeURIComponent(this.survey.id)}/${endpoint}`, body);
@@ -1553,6 +2217,8 @@
                 this.persistedSourceLocale = this.survey.languages.sourceLocale;
                 this.dirty = false;
                 this.renderSurvey();
+                this.savedDraft = this.draftSnapshot();
+                this.setSaveLabel("저장됨");
                 this.recommendedTemplateId = null;
                 dialog.close();
                 this.context.toast(this.pendingTemplateCode ? "템플릿 구조를 적용했습니다." : "빈 설문 구조를 적용했습니다.", "success");
@@ -1562,11 +2228,13 @@
             }
         },
         preview() {
+            let snapshot;
+            try { snapshot = this.savePayload(); }
+            catch (error) { return this.context.toast(error.message, "error"); }
             const token = globalThis.crypto.randomUUID();
             const deviceOptions = `${previewDevices.map((device) => `<option value="${device.code}" ${device.code === "mobile-390" ? "selected" : ""}>${device.label}</option>`).join("")}<option value="custom">직접 입력</option>`;
-            const dialog = this.context.openModal(`<section class="builder-preview-simulator"><header class="builder-preview-toolbar"><div class="builder-preview-toolbar-copy"><span class="eyebrow">LIVE RESPONDENT RENDERER</span><h2>실제 응답 화면 미리보기</h2><p>현재 편집 초안을 표시합니다. 미리보기 응답은 저장·제출되지 않습니다.</p></div><div class="builder-preview-size-controls"><label>화면 해상도<select data-preview-device-size>${deviceOptions}</select></label><div class="builder-preview-custom-size" data-preview-custom-size hidden><label>가로(px)<input type="number" min="240" max="5120" value="390" data-preview-custom-width></label><span>×</span><label>세로(px)<input type="number" min="320" max="2880" value="844" data-preview-custom-height></label></div></div><output data-preview-size-status></output></header><div class="builder-preview-stage" data-preview-stage><div class="builder-preview-device-holder" data-preview-device-holder><div class="builder-preview-viewport" data-preview-viewport><iframe class="builder-public-preview" data-interactive-preview title="실제 공개 설문 미리보기" sandbox="allow-scripts"></iframe></div></div></div></section>`, { label: "실제 공개 설문 미리보기", wide: true, previewSimulator: true, initialFocus: "[data-preview-device-size]" });
+            const dialog = this.context.openModal(`<section class="builder-preview-simulator"><header class="builder-preview-toolbar"><div class="builder-preview-toolbar-copy"><span class="eyebrow">LIVE RESPONDENT RENDERER</span><h2>실제 응답 화면 미리보기</h2><p>100% 원본 크기로 표시합니다. 큰 화면은 안쪽 스크롤로 확인하세요. 미리보기 응답은 저장·제출되지 않습니다.</p></div><div class="builder-preview-size-controls"><label>보기 배율<select data-preview-scale><option value="actual" selected>100% · 원본 크기</option><option value="fit">화면 맞춤 · 전체 보기</option></select></label><label>화면 해상도<select data-preview-device-size>${deviceOptions}</select></label><div class="builder-preview-custom-size" data-preview-custom-size hidden><label>가로(px)<input type="number" min="240" max="5120" value="390" data-preview-custom-width></label><span>×</span><label>세로(px)<input type="number" min="320" max="2880" value="844" data-preview-custom-height></label></div></div><output data-preview-size-status></output></header><div class="builder-preview-stage" data-preview-stage tabindex="0" role="region" aria-label="설문 미리보기 · 가로 및 세로 스크롤 가능"><div class="builder-preview-device-holder" data-preview-device-holder><div class="builder-preview-viewport" data-preview-viewport><iframe class="builder-public-preview" data-interactive-preview title="실제 공개 설문 미리보기" sandbox="allow-scripts"></iframe></div></div></div></section>`, { label: "실제 공개 설문 미리보기", wide: true, previewSimulator: true, initialFocus: "[data-preview-device-size]" });
             const frame = dialog.querySelector("[data-interactive-preview]");
-            const snapshot = this.savePayload();
             const routes = snapshot.settings?.audienceRoutes || [];
             if (routes.length) dialog.querySelector(".builder-preview-size-controls").insertAdjacentHTML("afterbegin", `<label>설문 대상<select data-preview-audience>${routes.map(route => `<option value="${Common.escapeHtml(route.code)}" ${route.code === snapshot.settings.defaultAudience ? "selected" : ""}>${Common.escapeHtml(route.label)}</option>`).join("")}</select></label>`);
             delete snapshot.expectedRevision;
@@ -1581,8 +2249,11 @@
             loadPreview();
             const select = dialog.querySelector("[data-preview-device-size]");
             const customSize = dialog.querySelector("[data-preview-custom-size]");
+            const scaleSelect = dialog.querySelector("[data-preview-scale]");
             const refresh = () => this.applyPreviewDevice(dialog, select.value);
-            select.addEventListener("change", () => { customSize.hidden = select.value !== "custom"; refresh(); });
+            const stageScrollToStart = () => dialog.querySelector("[data-preview-stage]").scrollTo({ left: 0, top: 0, behavior: "instant" });
+            select.addEventListener("change", () => { customSize.hidden = select.value !== "custom"; refresh(); stageScrollToStart(); });
+            scaleSelect.addEventListener("change", () => { refresh(); stageScrollToStart(); });
             customSize.querySelectorAll("input").forEach((input) => input.addEventListener("input", refresh));
             const observer = new ResizeObserver(refresh);
             observer.observe(dialog.querySelector("[data-preview-stage]"));
@@ -1602,20 +2273,33 @@
             const holder = dialog.querySelector("[data-preview-device-holder]");
             const viewport = dialog.querySelector("[data-preview-viewport]");
             if (!stage.clientWidth || !stage.clientHeight) return;
-            const scale = Math.min(1, (stage.clientWidth - 24) / device.width, (stage.clientHeight - 24) / device.height);
+            const fit = dialog.querySelector("[data-preview-scale]")?.value === "fit";
+            const scale = fit ? Math.max(0.01, Math.min(1, (stage.clientWidth - 24) / device.width, (stage.clientHeight - 24) / device.height)) : 1;
             viewport.style.width = `${device.width}px`;
             viewport.style.height = `${device.height}px`;
-            viewport.style.transform = `scale(${scale})`;
+            viewport.style.transform = scale === 1 ? "none" : `scale(${scale})`;
             holder.style.width = `${Math.round(device.width * scale)}px`;
             holder.style.height = `${Math.round(device.height * scale)}px`;
-            dialog.querySelector("[data-preview-size-status]").textContent = `${device.width} × ${device.height} · ${Math.round(scale * 100)}%`;
+            dialog.querySelector("[data-preview-size-status]").textContent = `${device.width} × ${device.height} · ${Math.round(scale * 100)}%${fit ? " · 화면 맞춤" : " · 원본 크기"}`;
         },
         async prepareDistribution() {
+            if (this.publishing) return;
+            if (!this.hasPublishedUrl()) {
+                this.context.toast("먼저 저장·확정 및 URL 발급을 완료하고 대상별 URL을 확인해 주세요.", "warning");
+                this.root.querySelector("[data-builder-publish]")?.focus();
+                return;
+            }
             if (!this.survey.questions.some((question) => question.type !== "notice")) return this.context.toast("배포하려면 응답 가능한 문항을 한 개 이상 추가하세요.", "error");
-            const saved = await this.saveExplicit({ notify: false });
-            if (!saved || this.destroyed) return;
-            this.context.toast("초안을 저장했습니다. 배포 설정으로 이동합니다.", "success");
-            this.context.navigate("M03001", { surveyId: this.survey.id });
+            try {
+                const payload = await this.context.api.get(`/api/surveys/${encodeURIComponent(this.survey.id)}/public-links`);
+                const view = payload?.data || payload;
+                if (!view?.links?.length) throw new Error("확정된 URL이 없습니다. 설문을 먼저 확정해 주세요.");
+                if (this.destroyed) return;
+                this.context.toast("확정된 버전과 URL로 발송을 준비합니다. 초안 변경은 재확정 후 공개됩니다.", "success");
+                this.context.navigate("M03001", { surveyId: this.survey.id });
+            } catch (error) {
+                if (!this.destroyed) this.context.toast(`확정 URL을 확인하지 못해 이동을 중단했습니다. ${error.message}`, "error");
+            }
         },
         openAdminTemplatePublish() {
             if (!this.templateAdmin || this.publishing) return;
@@ -1675,12 +2359,24 @@
                 this.publishing = false;
             }
         },
+        hasPublishedUrl() {
+            return !this.templateAdmin && ["published", "active"].includes(this.survey?.status) && Boolean(this.survey.slug || this.survey.publicUrl);
+        },
         updatePublishActions() {
-            const published = !this.templateAdmin && ["published", "active"].includes(this.survey.status) && Boolean(this.survey.slug || this.survey.publicUrl);
+            this.updateSaveControls();
+            const published = this.hasPublishedUrl();
+            this.root.querySelectorAll("[data-builder-distribute]").forEach(button => {
+                button.disabled = !published || this.publishing;
+                button.title = published ? "현재 확정된 버전과 URL로 발송을 준비합니다." : "먼저 저장·확정 및 URL 발급을 완료하세요.";
+                button.textContent = "발송 준비";
+            });
             this.root.querySelectorAll("[data-builder-public-links]").forEach(button => { button.hidden = !published; });
-            const publish = this.root.querySelector("[data-builder-publish]");
-            publish.textContent = published ? "재확정 · 기존 URL 유지" : "저장·확정 및 URL 발급";
-            publish.title = "저장만으로는 공개되지 않습니다. 확정 후 대상별 URL을 확인할 수 있습니다.";
+            this.root.querySelectorAll("[data-builder-publish]").forEach(publish => {
+                publish.hidden = this.templateAdmin;
+                publish.disabled = this.publishing;
+                publish.textContent = published ? "재확정 · 기존 URL 유지" : "저장·확정 및 URL 발급";
+                publish.title = "저장만으로는 공개되지 않습니다. 확정 후 대상별 URL을 확인할 수 있습니다.";
+            });
         },
         async openPublicLinks() {
             try {
@@ -1696,13 +2392,12 @@
         async publishSurvey() {
             if (this.publishing) return;
             if (!this.survey.questions.some((question) => question.type !== "notice")) return this.context.toast("확정하려면 응답 가능한 문항을 한 개 이상 추가하세요.", "error");
-            const button = this.root.querySelector("[data-builder-publish]");
             this.publishing = true;
-            button.disabled = true;
+            this.updatePublishActions();
             const saved = await this.saveExplicit({ notify: false });
             if (!saved || this.destroyed) {
                 this.publishing = false;
-                if (!this.destroyed) button.disabled = false;
+                if (!this.destroyed) this.updatePublishActions();
                 return;
             }
             try {
@@ -1720,31 +2415,58 @@
                 this.context.toast(error.message, "error");
             } finally {
                 this.publishing = false;
-                if (!this.destroyed) button.disabled = false;
+                if (!this.destroyed) this.updatePublishActions();
             }
         },
+        hasUnsavedChanges() { return Boolean(this.dirty || this.savePromise); },
+        beforeLeave() { return this.beforeRefresh(); },
         async beforeRefresh() {
-            if (!this.survey || (!this.dirty && !this.savePromise)) return true;
-            try {
-                await this.flushSave();
-                return true;
-            } catch (error) {
-                if (!this.destroyed) this.context.toast(`저장하지 못해 화면을 새로고침하지 않았습니다. ${error.message}`, "error");
-                return false;
+            if (this.savePromise) {
+                try { await this.savePromise; }
+                catch { /* The edit remains available for save retry or explicit discard. */ }
             }
+            if (!this.survey || !this.dirty) return true;
+            if (this.leavePromise) return this.leavePromise;
+            const dialog = this.context.openModal(`<section class="builder-unsaved-dialog"><h2>저장하지 않은 변경사항</h2><p>제목·문항·설정의 수정 내용이 아직 저장되지 않았습니다. 이동 또는 새로고침 전에 처리 방법을 선택하세요.</p><output data-builder-leave-error role="alert"></output><div class="builder-unsaved-actions"><button class="button button-function" type="button" data-builder-leave-stay>계속 편집</button><button class="button button-delete" type="button" data-builder-leave-discard>저장 안 하고 이동</button><button class="button button-save" type="button" data-builder-leave-save>저장 후 이동</button></div></section>`, { label: "미저장 변경사항", initialFocus: "[data-builder-leave-stay]" });
+            this.leavePromise = new Promise(resolve => {
+                let approved = false;
+                dialog.addEventListener("close", () => { this.leavePromise = null; resolve(approved); }, { once: true });
+                dialog.querySelector("[data-builder-leave-stay]").addEventListener("click", () => dialog.close());
+                dialog.querySelector("[data-builder-leave-discard]").addEventListener("click", () => {
+                    if (this.restoreSavedDraft()) { approved = true; dialog.close(); }
+                });
+                dialog.querySelector("[data-builder-leave-save]").addEventListener("click", async () => {
+                    const buttons = [...dialog.querySelectorAll("button")];
+                    buttons.forEach(button => { button.disabled = true; });
+                    const saved = await this.saveExplicit({notify:false});
+                    if (!dialog.open || this.destroyed) return;
+                    if (saved) { approved = true; dialog.close(); }
+                    else {
+                        dialog.querySelector("[data-builder-leave-error]").textContent = "저장하지 못했습니다. 편집 내용은 유지됩니다. 다시 시도하거나 계속 편집을 선택하세요.";
+                        buttons.forEach(button => { button.disabled = false; });
+                    }
+                });
+            });
+            return this.leavePromise;
         },
         async destroy() {
             this.choiceLayoutCleanup?.();
             this.choiceLayoutCleanup = null;
-            clearTimeout(this.saveTimer);
-            this.saveTimer = null;
-            try {
-                if (this.dirty || this.savePromise) await this.flushSave({ updateUi: false });
-            } catch (error) {
-                console.error("IN-SURVEYONE autosave flush failed", error);
-            }
+            this.toolbarResizeObserver?.disconnect();
+            this.workspaceResizeObserver?.disconnect();
+            this.fileMenu?.removeEventListener("toggle", this.onFileMenuToggle);
+            document.removeEventListener("pointerdown", this.onToolbarPointerDown);
+            document.removeEventListener("scroll", this.onToolbarScroll, true);
+            window.removeEventListener("resize", this.onToolbarScroll);
+            this.root?.removeEventListener("keydown", this.onToolbarKeyDown);
+            // Teardown never persists edits; navigation/native unload guards own the decision.
             this.destroyed = true;
+            this.root?.removeEventListener("pointerdown", this.onSelectionPointerDown);
+            document.removeEventListener("pointerup", this.onSelectionPointerEnd);
+            document.removeEventListener("pointercancel", this.onSelectionPointerEnd);
+            this.root?.removeEventListener("focusin", this.onSelectionFocus);
             this.root?.removeEventListener("click", this.onClick);
+            this.root?.removeEventListener("dblclick", this.onToolDoubleClick);
             this.root?.removeEventListener("input", this.onInput);
             this.root?.removeEventListener("change", this.onChange);
             this.root?.removeEventListener("dragstart", this.onDragStart);

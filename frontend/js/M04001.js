@@ -582,12 +582,12 @@
                 const descriptors = this.analysisDescriptors(entries);
                 rows = [baseHeader.concat(descriptors.map((item) => item.label)), ...items.map((response) => this.csvMetadata(response).concat(descriptors.map((item) => item.value(response))))];
                 suffix = "analysis";
-            } else if (mode === "raw") {
+            } else if (mode === "raw" || mode === "codes") {
                 rows = [baseHeader.concat(entries.map((entry) => `Q${entry.number}. ${entry.question.title}`)), ...items.map((response) => this.csvMetadata(response).concat(entries.map((entry) => {
-                    const raw = this.rawAnswer(response, entry.question);
+                    const raw = mode === "codes" ? (response.codedAnswers?.[entry.id] ?? this.rawAnswer(response, entry.question)) : this.rawAnswer(response, entry.question);
                     return raw && typeof raw === "object" ? safeJson(raw) : (raw ?? "");
                 })))];
-                suffix = "raw";
+                suffix = mode;
             } else {
                 rows = [baseHeader.concat(entries.map((entry) => `Q${entry.number}. ${entry.question.title}`)), ...items.map((response) => this.csvMetadata(response).concat(entries.map((entry) => this.answerPresentation(response, entry.question).text.replaceAll(" | ", "\n"))))];
                 suffix = "view";
@@ -643,7 +643,7 @@
         },
         showExportOptions(format = "csv") {
             const label = format === "xlsx" ? "엑셀 (.xlsx)" : "CSV";
-            const dialog = this.context.openModal(`<div class="export-dialog"><p class="eyebrow">${label} EXPORT</p><h2>내보내기 형식 선택</h2><p>현재 검색·상태·기간 필터에 해당하는 전체 페이지의 응답을 내려받습니다. 세 형식에 동일하게 적용됩니다.</p><div class="export-options"><button type="button" data-export-mode="visible"><strong>현재 보기형</strong><span>화면에서 선택한 문항만 내보냅니다. 복수응답은 보기명으로 한 셀에 정리합니다.</span></button><button type="button" data-export-mode="analysis"><strong>분석형 · 권장</strong><span>전체 문항을 내보내고 복수응답과 복수 매트릭스를 보기별 1/0 열로 분리합니다.</span></button><button type="button" data-export-mode="raw"><strong>원본형</strong><span>전체 문항의 제출값을 보존합니다. 표·매트릭스 값은 JSON으로 제공합니다.</span></button></div><p class="export-count">대상 응답 ${Common.formatNumber(this.filtered().length)}건 · 전체 문항 ${Common.formatNumber(this.questionEntries.length)}개</p></div>`, { label: `${label} 내보내기 형식 선택` });
+            const dialog = this.context.openModal(`<div class="export-dialog"><p class="eyebrow">${label} EXPORT</p><h2>내보내기 형식 선택</h2><p>현재 검색·상태·기간 필터에 해당하는 전체 페이지의 응답을 내려받습니다. 모든 형식에 동일하게 적용됩니다.</p><div class="export-options"><button type="button" data-export-mode="visible"><strong>현재 보기형</strong><span>화면에서 선택한 문항만 내보냅니다. 복수응답은 보기명으로 한 셀에 정리합니다.</span></button><button type="button" data-export-mode="analysis"><strong>분석형 · 권장</strong><span>전체 문항을 내보내고 복수응답과 복수 매트릭스를 보기별 1/0 열로 분리합니다.</span></button><button type="button" data-export-mode="codes"><strong>결과 코드형</strong><span>응답 당시 확정한 표시 문구·결과 코드 설정을 사용합니다. 표·매트릭스는 행·열 코드로 구분합니다.</span></button><button type="button" data-export-mode="raw"><strong>원본형</strong><span>전체 문항의 제출값을 보존합니다. 표·매트릭스 값은 JSON으로 제공합니다.</span></button></div><p class="export-count">대상 응답 ${Common.formatNumber(this.filtered().length)}건 · 전체 문항 ${Common.formatNumber(this.questionEntries.length)}개</p></div>`, { label: `${label} 내보내기 형식 선택` });
             dialog.querySelector(".export-options").addEventListener("click", (event) => {
                 const button = event.target.closest("[data-export-mode]");
                 if (!button) return;

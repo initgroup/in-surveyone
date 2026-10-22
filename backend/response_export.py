@@ -86,7 +86,7 @@ def _columns(survey: SurveyDetail, request: ResponseWorkbookRequest) -> list[Exp
             def add(label: str, extract: Callable[[Any], Any], question: Question = q) -> None:
                 columns.append(ExportColumn(label, str(question.id), section.title, question.title,
                     lambda answers, question=question, extract=extract: extract(answers.get(str(question.id)))))
-            if request.mode == "raw":
+            if request.mode in {"raw", "codes"}:
                 add(prefix, lambda value: _json(value) if isinstance(value, (dict, list)) else (value if value is not None else ""))
             elif request.mode == "analysis" and q.type.value in {"multiple", "multiple_choice"}:
                 for option in q.options:
@@ -152,7 +152,7 @@ def render_response_workbook(store: SurveyStore, user: UserRecord, survey_id: st
     sheet.title = "응답 데이터"
     _write(sheet, ["응답ID", "상태", "제출시각(UTC)", "소요시간(초)", "설문버전"] + [column.label for column in columns])
     for response in responses:
-        answers = {str(item.question_id): item.value for item in response.answers}
+        answers = ({str(item.question_id): response.coded_answers.get(str(item.question_id), item.value) for item in response.answers} if request.mode == "codes" else {str(item.question_id): item.value for item in response.answers})
         _write(sheet, [response.id, "완료", response.submitted_at.astimezone(timezone.utc).isoformat(), "", response.survey_version] + [column.value(answers) for column in columns])
     sheet.freeze_panes = "F2"
     sheet.auto_filter.ref = sheet.dimensions

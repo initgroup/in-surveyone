@@ -198,5 +198,32 @@
         return [];
     }
 
-    window.Common = { api, request, icon, escapeHtml, formatNumber, formatDate, debounce, copyText, downloadCsv, questionsOf };
+    const preferenceDefaults = Object.freeze({ density: "comfortable", motion: "system", startPage: "M01001" });
+    function normalizePreferences(value) {
+        const source = value && typeof value === "object" ? value : {};
+        return {
+            density: source.density === "compact" ? "compact" : "comfortable",
+            motion: source.motion === "reduced" ? "reduced" : "system",
+            startPage: source.startPage === "M02001" ? "M02001" : "M01001"
+        };
+    }
+    const preferences = Object.freeze({
+        read() {
+            try { return normalizePreferences(JSON.parse(localStorage.getItem("surveyone-system-preferences") || "{}")); }
+            catch { return { ...preferenceDefaults }; }
+        },
+        apply(value) {
+            const normalized = normalizePreferences(value);
+            document.documentElement.dataset.uiDensity = normalized.density;
+            document.documentElement.dataset.uiMotion = normalized.motion;
+            return normalized;
+        },
+        save(value) {
+            const normalized = normalizePreferences(value);
+            localStorage.setItem("surveyone-system-preferences", JSON.stringify(normalized));
+            return this.apply(normalized);
+        }
+    });
+
+    window.Common = { preferences, api, request, icon, escapeHtml, formatNumber, formatDate, debounce, copyText, downloadCsv, questionsOf };
 })();

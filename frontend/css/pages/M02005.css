@@ -3,7 +3,7 @@
 .skin-heading p { max-width: 720px; margin: 0; color: var(--muted); }
 .skin-heading label { display: grid; gap: 5px; }
 .skin-project-selector { display: grid; gap: 8px; justify-items: end; text-align: right; }
-.skin-project-id { overflow: hidden; color: var(--blue-strong); font-family: ui-monospace, monospace; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.skin-project-id { overflow: hidden; color: var(--blue-strong); font-family: ui-monospace, monospace; font-size: var(--text-ui); text-overflow: ellipsis; white-space: nowrap; }
 .skin-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(360px,.62fr); gap: 18px; align-items: start; width: 100%; }
 .skin-controls { display: grid; gap: 14px; }
 .skin-preset-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 9px; }
@@ -13,20 +13,20 @@
 .skin-preset-swatch i { display: block; width: 55%; height: 7px; margin-bottom: 6px; background: var(--skin-primary); border-radius: 9px; }
 .skin-preset-swatch i:nth-child(2) { width: 78%; height: 16px; background: #fff; }
 .skin-preset > span:last-child { display: grid; }
-.skin-preset small { color: var(--muted); font-size: 8px; }
+.skin-preset small { color: var(--muted); font-size: var(--text-ui); }
 .color-field { display: grid; grid-template-columns: 48px 1fr; gap: 6px; }
 .color-field input[type="color"] { padding: 4px; }
 .slug-field { display: grid; grid-template-columns: auto 1fr; align-items: center; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 9px; }
 .slug-field > span { align-self: stretch; display: grid; place-items: center; padding: 0 11px; color: var(--muted); background: #f1f4f8; }
 .slug-field input { border: 0; border-radius: 0; }
-.skin-code-card .card-header p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.skin-code-card .card-header p { margin: 4px 0 0; color: var(--muted); font-size: var(--text-ui); }
 .skin-code-body { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; align-items: center; }
-.skin-code-body p { max-width: 720px; margin: 5px 0 8px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.skin-code-body small { color: var(--blue-strong); font-size: 10px; font-weight: 750; }
+.skin-code-body p { max-width: 720px; margin: 5px 0 8px; color: var(--muted); font-size: var(--text-ui); line-height: 1.6; }
+.skin-code-body small { color: var(--blue-strong); font-size: var(--text-ui); font-weight: 750; }
 .skin-code-body .button { min-width: 190px; }
 .skin-save-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 14px 16px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
 .skin-save-row > div { display: flex; gap: 8px; flex: 0 0 auto; }
-.skin-save-row span { color: var(--muted); font-size: 10px; }
+.skin-save-row span { color: var(--muted); font-size: var(--text-ui); }
 @media (max-width: 50rem) { .skin-save-row { align-items: stretch; flex-direction: column; } .skin-save-row > div { display: grid; grid-template-columns: 1fr; } }
 .skin-preview-column { position: sticky; top: calc(var(--header-height) + 18px); }
 .preview-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -43,19 +43,19 @@
 .skin-preview-progress { height: 4px; background: color-mix(in srgb,var(--preview-primary) 12%,#fff); }
 .skin-preview-progress i { display: block; width: 32%; height: 100%; background: var(--preview-accent); }
 .skin-preview-cover, .skin-preview-question { margin: 12px; padding: 17px; background: #fff; border-radius: var(--preview-radius); box-shadow: 0 3px 10px rgba(15,34,68,.07); }
-.skin-preview-cover > span { color: var(--preview-primary); font-size: 8px; font-weight: 850; }
+.skin-preview-cover > span { color: var(--preview-primary); font-size: var(--text-ui); font-weight: 850; }
 .skin-preview-cover h3 { margin: 4px 0; font-size: 20px; letter-spacing: -.04em; }
-.skin-preview-cover p { margin: 0 0 9px; color: #6d7889; font-size: 9px; }
-.skin-preview-cover small { color: #8792a2; font-size: 8px; }
+.skin-preview-cover p { margin: 0 0 9px; color: #6d7889; font-size: var(--text-ui); }
+.skin-preview-cover small { color: #8792a2; font-size: var(--text-ui); }
 .skin-preview-question { display: grid; gap: 8px; }
-.skin-preview-question > span { color: var(--preview-primary); font-size: 8px; font-weight: 800; }
-.skin-preview-question > strong { margin-bottom: 5px; font-size: 12px; }
+.skin-preview-question > span { color: var(--preview-primary); font-size: var(--text-ui); font-weight: 800; }
+.skin-preview-question > strong { margin-bottom: 5px; font-size: var(--text-ui); }
 .skin-preview-question strong i { color: #d74455; font-style: normal; }
-.skin-preview-question label { display: flex; gap: 7px; align-items: center; min-height: 32px; padding: 6px 8px; background: #fafbfd; border: 1px solid #e1e6ed; border-radius: 8px; font-size: 9px; }
+.skin-preview-question label { display: flex; gap: 7px; align-items: center; min-height: 32px; padding: 6px 8px; background: #fafbfd; border: 1px solid #e1e6ed; border-radius: 8px; font-size: var(--text-ui); }
 .skin-preview-question input { width: 14px; min-height: 14px; accent-color: var(--preview-primary); }
-.skin-preview-question button { min-height: 33px; margin-top: 5px; color: #fff; background: var(--preview-primary); border: 0; border-radius: calc(var(--preview-radius) * .55); font-size: 9px; font-weight: 800; }
+.skin-preview-question button { min-height: 33px; margin-top: 5px; color: #fff; background: var(--preview-primary); border: 0; border-radius: calc(var(--preview-radius) * .55); font-size: var(--text-ui); font-weight: 800; }
 .skin-survey-preview.high-contrast { filter: contrast(1.13); }
-.preview-note { color: var(--muted); font-size: 9px; text-align: center; }
+.preview-note { color: var(--muted); font-size: var(--text-ui); text-align: center; }
 @media (max-width: 76rem) { .skin-layout { grid-template-columns: 1fr; } .skin-preview-column { position: static; } .device-stage { min-height: 600px; } }
 @media (max-width: 50rem) {
     .skin-heading { grid-template-columns: 1fr; padding: 21px; }

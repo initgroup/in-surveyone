@@ -25,6 +25,7 @@ from backend.delivery_security import (
     recipient_access_token,
     recipient_access_claims,
 )
+from backend.answer_codes import coded_answers
 from backend.errors import (
     AuthenticationError,
     ConflictError,
@@ -2209,6 +2210,10 @@ class OracleStore(MemoryStore):
                     "limit": limit,
                 },
             )
+            snapshots = {}
+            for version_no in {int(row["survey_version_no"]) for row in response_rows}:
+                version = self.crud.fetch_one(connection, "SURVEY_VERSION_BY_NO", {"tenantId": user.tenant_id, "surveyId": survey_id, "versionNo": version_no})
+                snapshots[version_no] = _public_snapshot(version["snapshot_json"]) if version else None
         answers: dict[str, list[AnswerItem]] = defaultdict(list)
         selected_ids = {str(row["response_id"]) for row in response_rows}
         for row in answer_rows:
@@ -2226,6 +2231,7 @@ class OracleStore(MemoryStore):
                 survey_id=str(row["survey_id"]),
                 survey_version=int(row["survey_version_no"]),
                 answers=answers[str(row["response_id"])],
+                coded_answers=coded_answers(snapshots.get(int(row["survey_version_no"])), answers[str(row["response_id"])]),
                 respondent_key=None,
                 metadata=_json_load(row.get("metadata_json"), {}),
                 submitted_at=_as_aware(row.get("submitted_at")) or utcnow(),

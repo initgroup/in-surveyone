@@ -90,8 +90,10 @@ def test_refresh_warns_before_discarding_known_unsaved_work() -> None:
     assert "저장하지 않은 맞춤형 보고서 변경사항" in custom_report
 
 
-def test_builder_flushes_pending_save_before_explicit_refresh() -> None:
+def test_builder_asks_before_saving_or_discarding_on_explicit_refresh() -> None:
     builder = _read("frontend/js/M02003.js")
 
     assert "async beforeRefresh()" in builder
-    assert "await this.flushSave()" in builder
+    assert "data-builder-leave-stay" in builder
+    assert "data-builder-leave-discard" in builder
+    assert "data-builder-leave-save" in builder

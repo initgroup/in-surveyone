@@ -35,7 +35,7 @@ def test_project_card_and_publish_use_the_same_audience_url_manager() -> None:
 const page=Object.create(Pages.M02001);
 const item={id:"survey-a",title:"URL test",status:"published",slug:"old",publicUrl:"/s/old"};
 const other={id:"survey-b",title:"Other",status:"published",slug:"other",publicUrl:"/s/other"};
-page.items=[item,other]; page.root={};
+page.items=[item,other]; page.root={}; page.publicBaseUrl="https://www.insurveyone.com";
 let renders=0, opened;
 page.render=()=>renders++;
 page.context={isCurrentRoute:()=>true, toast(){throw new Error("Unexpected error toast");}};
@@ -109,4 +109,48 @@ window.SurveyOneApp={queryParams:()=>new URLSearchParams("urlId=other")};
 page.bind=()=>{};page.load=async()=>{};page.openPublicLinks=async()=>{throw new Error("Cancelled route must not open a dialog");};
 await page.init({root:{},user:{role:"member"},isCurrentRoute:()=>false});
 assert.equal(location.href,"https://survey.example/#/M02001?urlId=other");
+""")
+
+
+
+def test_project_list_reloads_public_base_and_stops_on_configuration_failure() -> None:
+    run_node(r"""
+const page=Object.create(Pages.M02001),errors=[];
+const nodes={
+ '[data-project-search]':{value:''},'[data-project-sort]':{value:'updated-desc'},
+ '[data-project-content]':{setAttribute(){},removeAttribute(){}},'[data-count-all]':{}
+};
+page.root={querySelector:selector=>nodes[selector]};page.loadToken=0;page.pageSize=24;page.filter='all';
+page.render=error=>errors.push(error);
+let base='https://www.insurveyone.com', fail=false;
+page.context={api:{async get(url){
+ if(url==='/api/runtime-config'){if(fail)throw new Error('config unavailable');return {publicBaseUrl:base};}
+ return {items:[{id:'survey-a',publicUrl:'/s/current'}],page:1,total:1};
+}}};
+await page.loadPage(1);
+assert.equal(page.absolutePublicUrl(page.items[0].publicUrl),'https://www.insurveyone.com/s/current');
+base='https://new-domain.example.test';await page.loadPage(1);
+assert.equal(page.absolutePublicUrl(page.items[0].publicUrl),'https://new-domain.example.test/s/current');
+fail=true;await page.loadPage(1);
+assert.equal(page.items.length,0);assert.equal(errors.at(-1),'config unavailable');
+""")
+
+
+def test_publication_dialog_retries_configuration_without_using_admin_origin() -> None:
+    run_node(r"""
+eval(fs.readFileSync('frontend/js/publication-links.js','utf8'));
+const content={innerHTML:'',querySelectorAll(){return []}},status={},title={};
+let click,fail=true,configReads=0;
+const host={isConnected:true,querySelector(selector){return selector==='[data-publication-content]'?content:selector==='[data-publication-status]'?status:title;},addEventListener(type,callback){click=callback}};
+const dialog={open:true,querySelector(){return host}};
+const context={openModal(){return dialog},isCurrentRoute(){return true},api:{async get(url){
+ if(url==='/api/runtime-config'){configReads++;if(fail)throw new Error('config unavailable');return {publicBaseUrl:'https://www.insurveyone.com'};}
+ return {title:'Test',version:1,links:[{label:'All',url:'/s/current'}]};
+}}};
+await SurveyPublicationLinks.open({context,surveyId:'survey-a'});
+assert.equal(status.textContent,'config unavailable');assert(!content.innerHTML.includes(location.origin));
+assert(content.innerHTML.includes('data-publication-retry'));
+fail=false;await click({target:{closest(selector){return selector==='[data-publication-retry]'?{}:null}}});
+assert.equal(configReads,2);assert(content.innerHTML.includes('https://www.insurveyone.com/s/current'));
+assert(!content.innerHTML.includes(location.origin));
 """)

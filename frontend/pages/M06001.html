@@ -9,7 +9,7 @@
         <form class="card-body form-grid" data-system-settings-form>
             <label class="form-field">화면 밀도<select name="density"><option value="comfortable">여유 있게</option><option value="compact">간결하게</option></select></label>
             <label class="form-field">화면 움직임<select name="motion"><option value="system">운영체제 설정 따르기</option><option value="reduced">움직임 줄이기</option></select></label>
-            <label class="form-field">기본 시작 화면<select name="startPage"><option value="M01001">대시보드</option><option value="M02001">설문 프로젝트</option></select></label>
+            <label class="form-field">기본 시작 화면<select name="startPage"><option value="M01001">대시보드</option><option value="M02001">설문 프로젝트</option></select><span class="field-help">로그인 상태에서 메뉴 주소 없이 접속할 때 적용합니다. 직접 연 메뉴 주소는 유지합니다.</span></label>
             <div class="system-settings-actions"><span data-system-settings-state role="status">저장된 브라우저 설정을 불러왔습니다.</span><button class="button button-save button-important" type="submit">환경 설정 저장</button></div>
         </form>
     </section>
@@ -23,7 +23,7 @@
                 <div><dt>로그인 세션</dt><dd>HttpOnly 세션 쿠키</dd></div>
                 <div><dt>외부 발송</dt><dd>Provider 설정에 따라 제한</dd></div>
             </dl>
-            <p class="system-runtime-note">테넌트 권한, 데이터베이스 연결, 발송 Provider와 보안 정책은 서버 운영 설정이 기준이며 브라우저 설정으로 변경할 수 없습니다.</p>
+            <p class="system-runtime-note">화면 밀도·움직임·시작 화면은 현재 접속 주소의 브라우저에만 저장되며 다른 도메인과 공유되지 않습니다. 테넌트 권한, 데이터베이스 연결, 발송 Provider와 보안 정책은 서버 운영 설정이 기준이며 브라우저 설정으로 변경할 수 없습니다.</p>
         </div>
     </aside>
 </div>

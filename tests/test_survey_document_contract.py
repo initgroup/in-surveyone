@@ -17,7 +17,7 @@ from main import app
 
 
 SAFE_HTML = (
-    '<h2>Survey introduction</h2><p><strong>Purpose</strong> and <em>guidance</em>.</p>'
+    '<h2 data-svy-align="center">Survey introduction</h2><p><strong>Purpose</strong> and <span data-svy-size="24" data-svy-color="blue"><em>guidance</em></span>.</p>'
     '<table><caption>Evaluation</caption><thead><tr><th scope="col">Topic</th>'
     '<th scope="col">Meaning</th></tr></thead><tbody><tr><th scope="row">Quality</th>'
     '<td colspan="1">Clear criteria<br>and examples</td></tr></tbody></table>'
@@ -264,3 +264,12 @@ def test_numbering_exclusion_roundtrip_preserves_question_identity_and_source_ti
     assert restored.id == "profile"
     assert restored.title == "1. Original title"
     assert QuestionSettings().exclude_from_numbering is False
+
+
+@pytest.mark.parametrize("attribute,value", [
+    ("data-svy-align", "fixed"), ("data-svy-size", "999"),
+    ("data-svy-color", "url(https://example.test)"), ("data-svy-unknown", "x"),
+])
+def test_notice_format_tokens_reject_unapproved_values(attribute: str, value: str) -> None:
+    with pytest.raises(ValueError, match="contentHtml"):
+        QuestionSettings(contentHtml=f'<p {attribute}="{value}">Bad format</p>')

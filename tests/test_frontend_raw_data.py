@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -68,8 +69,16 @@ def test_frontend_assets_are_versioned_and_not_cached_in_local_or_test_mode() ->
         encoding="utf-8"
     )
 
-    assert 'assetVersion: "20261020.11"' in config
-    assert index.count("?v=20261020.11") >= 7
+    version_match = re.search(r'assetVersion: "(\d{8}\.\d+)"', config)
+    assert version_match
+    version = version_match.group(1)
+    public = (PROJECT_ROOT / "frontend" / "public.html").read_text(encoding="utf-8")
+    for document in (index, public):
+        for asset in ("config/app.config.js", "js/common.js", "js/code-editor.js"):
+            assert f'/frontend/{asset}?v={version}' in document
+    assert f'/frontend/css/app.css?v={version}' in index
+    assert f'/frontend/js/app.js?v={version}' in index
+    assert f'/frontend/js/public.js?v={version}' in public
     assert "function versionedAsset(src)" in app_script
     assert 'url.searchParams.set("v", runtimeAssetVersion)' in app_script
     assert "link.href = absoluteHref" in app_script

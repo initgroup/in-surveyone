@@ -5,7 +5,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_builder_explicit_save_precedes_distribution_navigation() -> None:
+def test_builder_explicit_save_precedes_publication_and_distribution_uses_navigation_guard() -> None:
     page = (PROJECT_ROOT / "frontend" / "pages" / "M02003.html").read_text(encoding="utf-8")
     script = (PROJECT_ROOT / "frontend" / "js" / "M02003.js").read_text(encoding="utf-8")
 
@@ -17,7 +17,8 @@ def test_builder_explicit_save_precedes_distribution_navigation() -> None:
     assert "async prepareDistribution" in script
     assert "async publishSurvey" in script
     assert "await this.saveExplicit({ notify: false })" in script
-    assert "if (!saved || this.destroyed) return;" in script
+    assert "async beforeRefresh()" in script
+    assert "data-builder-leave-save" in script
     assert 'this.context.navigate("M03001", { surveyId: this.survey.id });' in script
     assert '/publish`, {})' in script
 
@@ -79,7 +80,7 @@ def test_project_creation_is_a_single_menu_four_step_flow() -> None:
     assert 'this.context.navigate("M02003", { surveyId: survey.id, flow: "project", template: "1"' in project_script
     assert 'post("/api/surveys", { title: "제목 없는 설문" })' not in dashboard_script
     assert "async openTemplateLibrary()" in builder_script
-    assert builder_page.count("data-builder-template-library") == 3
+    assert builder_page.count("data-builder-template-library") == 2
     assert ".survey-flow { margin-bottom: 18px;" in app_css
     assert "overflow-x: auto; color: var(--muted);" in app_css
     assert "--content-gutter: 16px;" in app_css
@@ -183,7 +184,8 @@ def test_system_settings_is_separate_from_project_skin_step() -> None:
     assert "data-system-asset-version" in page
     assert "data-skin-presets" not in page
     assert "/api/surveys" not in script
-    assert 'const STORAGE_KEY = "surveyone-system-preferences";' in script
+    assert "Common.preferences.save(next)" in script
+    assert "Common.preferences.read()" in script
 
 
 def test_template_layer_locks_background_and_keeps_a_stable_scroll_area() -> None:
@@ -228,8 +230,9 @@ def test_mobile_builder_actions_and_template_dialog_do_not_clip_controls() -> No
     assert "height: calc(100dvh - 12px)" in app_css
     assert ".header-help, .header-page-refresh { width: 38px;" in app_css
     assert ".button, input, select, textarea { min-height: 44px; }" in app_css
-    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in builder_css
-    assert ".builder-canvas { padding: 12px 10px 190px; }" in builder_css
+    assert ".builder-primary-actions { grid-column: 1 / -1; display: flex;" in builder_css
+    assert "white-space: normal; word-break: keep-all;" in builder_css
+    assert ".builder-canvas { padding: 16px 12px 60px; }" in builder_css
     assert ".editor-template-card { grid-template-rows: 78px auto auto; }" in builder_css
 
 
@@ -361,7 +364,7 @@ def test_table_axes_are_configurable_and_previewed_by_question_semantics() -> No
     assert 'data-axis-list="columns"' in page
     assert 'data-axis-add="rows"' in page
     assert 'data-axis-add="columns"' in page
-    assert "addAxisItem(field)" in script
+    assert "addAxisItem(field, afterIndex = null)" in script
     assert "deleteAxisItem(field, index)" in script
     assert "moveAxisItem(field, index, direction)" in script
     assert 'if (question.type === "table") return this.axisTableMarkup(question, "text")' in script

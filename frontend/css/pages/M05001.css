@@ -1,6 +1,6 @@
 .survey-report-page {
     --report-ink: #17223b;
-    --report-muted: #68748a;
+    --report-muted: #53647b;
     --report-line: #dce4ef;
     --report-soft: #f4f7fb;
     --report-brand: #3158d5;
@@ -91,7 +91,7 @@
 .survey-report-page .report-section-kicker {
     margin: 0 0 8px;
     color: var(--report-brand);
-    font-size: 0.76rem;
+    font-size: var(--text-ui);
     font-weight: 800;
     letter-spacing: 0.14em;
 }
@@ -134,7 +134,7 @@
     border-radius: 999px;
     background: #fff;
     color: var(--report-brand);
-    font-size: 0.73rem;
+    font-size: var(--text-ui);
     font-weight: 800;
     letter-spacing: 0.04em;
 }
@@ -199,13 +199,13 @@
 }
 
 .survey-report-page .report-field > span {
-    font-size: 0.83rem;
+    font-size: var(--text-ui);
     font-weight: 750;
 }
 
 .survey-report-page .report-field small {
     color: var(--report-muted);
-    font-size: 0.74rem;
+    font-size: var(--text-ui);
 }
 
 .survey-report-page .report-field input,
@@ -235,7 +235,7 @@
 .survey-report-page .report-filter-actions p {
     margin: 0;
     color: var(--report-muted);
-    font-size: 0.84rem;
+    font-size: var(--text-ui);
 }
 
 .survey-report-page .report-button {
@@ -297,7 +297,7 @@
     border-radius: 4px;
     background: var(--report-soft);
     color: var(--report-brand);
-    font-size: 0.65rem;
+    font-size: var(--text-ui);
 }
 
 .survey-report-page .report-state {
@@ -370,7 +370,7 @@
 .survey-report-page .report-updated {
     margin: 0;
     color: var(--report-muted);
-    font-size: 0.8rem;
+    font-size: var(--text-ui);
 }
 
 .survey-report-page .report-kpi-grid {
@@ -408,7 +408,7 @@
     display: block;
     margin-bottom: 12px;
     color: var(--report-muted);
-    font-size: 0.82rem;
+    font-size: var(--text-ui);
     font-weight: 700;
 }
 
@@ -425,7 +425,7 @@
     min-height: 1.3em;
     margin-top: 9px;
     color: var(--report-muted);
-    font-size: 0.74rem;
+    font-size: var(--text-ui);
 }
 
 .survey-report-page .report-panel {
@@ -460,7 +460,7 @@
 .survey-report-page .report-chart-meta {
     margin-bottom: 14px;
     color: var(--report-muted);
-    font-size: 0.74rem;
+    font-size: var(--text-ui);
 }
 
 .survey-report-page .report-bar-list {
@@ -473,7 +473,7 @@
     grid-template-columns: minmax(80px, 0.8fr) minmax(110px, 1.7fr) auto;
     align-items: center;
     gap: 9px;
-    font-size: 0.76rem;
+    font-size: var(--text-ui);
 }
 
 .survey-report-page .report-bar-label {
@@ -518,7 +518,7 @@
     width: 100%;
     min-width: 760px;
     border-collapse: collapse;
-    font-size: 0.83rem;
+    font-size: var(--text-ui);
 }
 
 .survey-report-page .report-table th,
@@ -532,7 +532,7 @@
 .survey-report-page .report-table th {
     background: #f3f6fb;
     color: #44516a;
-    font-size: 0.74rem;
+    font-size: var(--text-ui);
     white-space: nowrap;
 }
 
@@ -564,7 +564,7 @@
 }
 
 .survey-report-page .report-export-card h2 { margin-bottom: 0; font-size: 1.12rem; }
-.survey-report-page .report-export-card p { margin: 8px 0 0; color: var(--report-muted); font-size: 0.82rem; }
+.survey-report-page .report-export-card p { margin: 8px 0 0; color: var(--report-muted); font-size: var(--text-ui); }
 .survey-report-page .report-export-actions { display: flex; flex: 0 0 auto; gap: 9px; }
 
 @media (max-width: 980px) {
@@ -636,7 +636,7 @@
     padding: 9px 0 9px 18px;
     border-left: 2px solid #c8d5e8;
     color: var(--report-muted);
-    font-size: 0.8rem;
+    font-size: var(--text-ui);
     line-height: 1.55;
 }
 
@@ -664,7 +664,7 @@
 }
 
 .survey-report-page .report-filter-intro strong { display: block; font-size: 0.94rem; }
-.survey-report-page .report-filter-intro p { margin: 3px 0 0; color: var(--report-muted); font-size: 0.77rem; }
+.survey-report-page .report-filter-intro p { margin: 3px 0 0; color: var(--report-muted); font-size: var(--text-ui); }
 
 .survey-report-page .report-step-number {
     display: grid;
@@ -676,7 +676,7 @@
     border-radius: 9px;
     background: var(--report-soft);
     color: var(--report-brand);
-    font-size: 0.75rem;
+    font-size: var(--text-ui);
     font-weight: 800;
 }
 
@@ -693,10 +693,11 @@
     padding-top: 13px;
     border-top: 1px solid #edf0f5;
     color: var(--report-muted);
-    font-size: 0.78rem;
+    font-size: var(--text-ui);
 }
 
-.survey-report-page .report-content { gap: 18px; }
+.survey-report-page .report-content { min-width: 0; gap: 18px; }
+.survey-report-page .report-content > * { min-width: 0; }
 
 .survey-report-page .report-workspace-head {
     display: flex;
@@ -711,14 +712,18 @@
 
 .survey-report-page .report-workspace-title { min-width: 0; }
 .survey-report-page .report-workspace-title h2 { margin: 0; overflow-wrap: anywhere; font-size: clamp(1.35rem, 2.3vw, 1.8rem); letter-spacing: -0.025em; }
-.survey-report-page .report-workspace-title > p:last-child { margin: 7px 0 0; color: var(--report-muted); font-size: 0.8rem; }
+.survey-report-page .report-workspace-title > p:last-child { margin: 7px 0 0; color: var(--report-muted); font-size: var(--text-ui); }
 
 .survey-report-page .report-workspace-actions {
     display: flex;
     align-items: center;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
     gap: 12px;
 }
+.survey-report-page .report-workspace-actions .report-updated { min-width: 0; overflow-wrap: anywhere; }
 
 .survey-report-page .report-overview-grid {
     display: grid;
@@ -741,7 +746,7 @@
 }
 
 .survey-report-page .report-card-heading h2 { margin: 0; font-size: 1.04rem; }
-.survey-report-page .report-card-heading > :is(span, strong) { color: var(--report-muted); font-size: 0.73rem; }
+.survey-report-page .report-card-heading > :is(span, strong) { color: var(--report-muted); font-size: var(--text-ui); }
 
 .survey-report-page .report-summary-panel .report-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -758,9 +763,9 @@
 }
 
 .survey-report-page .report-kpi-card::after { display: none; }
-.survey-report-page .report-summary-panel .report-kpi-label { margin-bottom: 8px; font-size: 0.75rem; }
+.survey-report-page .report-summary-panel .report-kpi-label { margin-bottom: 8px; font-size: var(--text-ui); }
 .survey-report-page .report-summary-panel .report-kpi-value { font-size: clamp(1.3rem, 2vw, 1.65rem); }
-.survey-report-page .report-summary-panel .report-kpi-note { margin-top: 6px; font-size: 0.68rem; }
+.survey-report-page .report-summary-panel .report-kpi-note { margin-top: 6px; font-size: var(--text-ui); }
 
 .survey-report-page .report-trend-chart { min-height: 157px; }
 .survey-report-page .report-trend-chart svg { display: block; width: 100%; height: 132px; overflow: visible; }
@@ -775,11 +780,11 @@
     gap: 2px;
     margin-top: -8px;
     color: var(--report-muted);
-    font-size: 0.64rem;
+    font-size: var(--text-ui);
     text-align: center;
 }
 
-.survey-report-page .report-chart-note { margin: 14px 0 0; color: var(--report-muted); font-size: 0.7rem; line-height: 1.5; }
+.survey-report-page .report-chart-note { margin: 14px 0 0; color: var(--report-muted); font-size: var(--text-ui); line-height: 1.5; }
 
 .survey-report-page .report-completion-body { display: grid; justify-items: center; gap: 22px; }
 
@@ -803,10 +808,10 @@
 }
 
 .survey-report-page .report-completion-ring strong { font-size: 1.65rem; letter-spacing: -0.04em; }
-.survey-report-page .report-completion-ring small { color: var(--report-muted); font-size: 0.7rem; }
+.survey-report-page .report-completion-ring small { color: var(--report-muted); font-size: var(--text-ui); }
 
 .survey-report-page .report-completion-legend { display: grid; width: 100%; gap: 9px; margin: 0; }
-.survey-report-page .report-completion-legend div { display: flex; justify-content: space-between; gap: 16px; font-size: 0.76rem; }
+.survey-report-page .report-completion-legend div { display: flex; justify-content: space-between; gap: 16px; font-size: var(--text-ui); }
 .survey-report-page .report-completion-legend dt { display: flex; align-items: center; gap: 7px; color: var(--report-muted); }
 .survey-report-page .report-completion-legend dd { margin: 0; font-weight: 750; }
 .survey-report-page .report-completion-legend i { width: 9px; height: 9px; border-radius: 3px; background: #dfe5ed; }

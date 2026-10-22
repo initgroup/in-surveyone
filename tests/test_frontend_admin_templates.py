@@ -50,11 +50,12 @@ def test_builder_admin_mode_registers_snapshot_and_hides_project_publish() -> No
     page = _read("frontend/pages/M02003.html")
     script = _read("frontend/js/M02003.js")
 
-    assert page.count("data-template-admin-publish") == 2
+    assert page.count("data-template-admin-publish") == 1
     assert 'params.get("templateAdmin") === "1"' in script
     assert "!context.user?.systemAdmin" in script
     assert 'querySelectorAll("[data-builder-distribute]")' in script
-    assert 'this.root.querySelector("[data-builder-publish]").hidden = this.templateAdmin' in script
+    assert 'querySelectorAll("[data-builder-publish]")' in script
+    assert 'button.hidden = this.templateAdmin' in script
     assert "openAdminTemplatePublish()" in script
     assert "async publishAdminTemplate(event, dialog)" in script
     assert "/api/admin/templates/${encodeURIComponent(code)}/publish" in script

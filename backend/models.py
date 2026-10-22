@@ -50,6 +50,12 @@ class _SurveyContentParser(HTMLParser):
         "td", "div", "span",
     }
 
+    format_values = {
+        "data-svy-align": {"left", "center", "right", "justify"},
+        "data-svy-size": {"12", "14", "16", "18", "20", "24", "28", "32"},
+        "data-svy-color": {"ink", "blue", "green", "red", "purple"},
+    }
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag not in self.tags:
             raise ValueError(f"contentHtml does not allow the {tag} element.")
@@ -58,7 +64,10 @@ class _SurveyContentParser(HTMLParser):
             if name in seen:
                 raise ValueError("contentHtml cannot contain duplicate attributes.")
             seen.add(name)
-            if name in {"colspan", "rowspan"} and tag in {"th", "td"}:
+            if name in self.format_values:
+                if value not in self.format_values[name]:
+                    raise ValueError(f"contentHtml {name} value is invalid.")
+            elif name in {"colspan", "rowspan"} and tag in {"th", "td"}:
                 if value is None or not re.fullmatch(r"(?:[1-9]|1[0-9]|20)", value):
                     raise ValueError("contentHtml table spans must be between 1 and 20.")
             elif name == "scope" and tag == "th":
@@ -409,7 +418,17 @@ class QuestionType(str, Enum):
     DATE = "date"
 
 
+ResultCode = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120, pattern=r"^[^\x00-\x1f\x7f]+$")]
+
+
+class ScalePoint(ApiModel):
+    score: int = Field(ge=0, le=10)
+    label: str = Field(default="", max_length=100)
+    result_code: ResultCode
+
+
 class QuestionOption(ApiModel):
+    result_code: ResultCode | None = None
     code: str | None = Field(default=None, pattern=r"^[1-9][0-9]{0,5}$")
     id: StableId = Field(default_factory=lambda: uuid4().hex[:12])
     label: str = Field(default="", max_length=500)
@@ -476,6 +495,7 @@ class QuestionSettings(ApiModel):
     columns: list[QuestionOption] = Field(default_factory=list, max_length=200)
     min_selections: int | None = Field(default=None, ge=1, le=200)
     max_selections: int | None = Field(default=None, ge=1)
+    scale_points: list[ScalePoint] = Field(default_factory=list, max_length=11)
     scale_order: Literal["ascending", "descending"] = "ascending"
     scale_display: Literal["buttons", "slider"] = "buttons"
     choice_input: Literal["options", "codes"] = "options"
@@ -515,6 +535,9 @@ class QuestionSettings(ApiModel):
             identifiers = [item.id for item in getattr(self, field_name)]
             if len(identifiers) != len(set(identifiers)):
                 raise ValueError(f"settings.{field_name} IDs must be unique.")
+            codes = [item.result_code if item.result_code is not None else item.id for item in getattr(self, field_name)]
+            if len(codes) != len(set(codes)):
+                raise ValueError(f"settings.{field_name} result codes must be unique.")
         return self
 
 
@@ -656,6 +679,19 @@ class Question(ApiModel):
                 raise ValueError("Number entry requires a unique code for every option.")
             if not self.settings.max_selections or self.settings.max_selections > 20:
                 raise ValueError("Number entry requires maxSelections between 1 and 20.")
+        codes = [option.result_code if option.result_code is not None else option.id for option in self.options]
+        if len(codes) != len(set(codes)):
+            raise ValueError("Question option result codes must be unique.")
+        if self.settings.scale_points:
+            points = self.settings.scale_points
+            scores = [point.score for point in points]
+            codes = [point.result_code for point in points]
+            minimum = self.min if self.min is not None else self.settings.min_value
+            maximum = self.max if self.max is not None else self.settings.max_value
+            if self.type != QuestionType.SCALE or len(scores) != len(set(scores)) or len(codes) != len(set(codes)):
+                raise ValueError("Scale points require unique scores and result codes on a scale question.")
+            if any(score < (minimum if minimum is not None else 1) or score > (maximum if maximum is not None else 5) for score in scores):
+                raise ValueError("Scale points must stay within the scale range.")
         identifiers = [option.id for option in self.options]
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("Question option IDs must be unique.")
@@ -1857,7 +1893,7 @@ class ResponseReceipt(ApiModel):
 
 
 class ResponseWorkbookRequest(ApiModel):
-    mode: Literal["visible", "analysis", "raw"] = "visible"
+    mode: Literal["visible", "analysis", "raw", "codes"] = "visible"
     question_ids: list[StableId] | None = Field(default=None, max_length=1000)
     response_ids: list[StableId] | None = Field(default=None, max_length=20000)
 
@@ -1870,6 +1906,7 @@ class ResponseWorkbookRequest(ApiModel):
 
 
 class SurveyResponseView(ApiModel):
+    coded_answers: dict[str, Any] = Field(default_factory=dict)
     id: str
     survey_id: str
     survey_version: int

@@ -149,7 +149,9 @@ const dependent = {id:"cooperation",type:"multiple",options:[{id:"old",label:"Ol
 page.survey = {sections:[{id:"s",questions:[source,dependent]}],translations:{}};
 page.renderQuestions = () => {};
 page.openProperties = () => {};
-page.scheduleSave = () => {};
+page.markDirty = () => {};
+global.matchMedia = () => ({matches:false});
+page.revealSelection = () => {};
 page.applyExcludedSource(dependent,"department",true);
 assert.deepEqual(dependent.options,source.options);
 assert.notEqual(dependent.options,source.options);
@@ -335,7 +337,7 @@ assert(html.includes('data-choice-layout="columns_3"'));
 assert.deepEqual([...html.matchAll(/value="([ab])"/g)].map(m=>m[1]),["a","b"]);
 assert.equal([...html.matchAll(/type="checkbox"/g)].length,2);
 eval(fs.readFileSync("frontend/js/M02003.js","utf8"));
-const page=Pages.M02003;page.localizedOptionLabel=(q,o)=>o.label;
+const page=Pages.M02003;page.survey={languages:{sourceLocale:"ko"}};page.editingLocale="ko";page.localizedOptionLabel=(q,o)=>o.label;
 assert(page.answerMarkup(q).includes('data-choice-layout="columns_3"'));
 q.type="single";assert(runtime.answerMarkup(q,{titleId:"title",describedBy:"error"}).includes('type="radio"'));
 q.type="multiple";q.settings.choiceInput="codes";q.settings.maxSelections=2;
@@ -365,8 +367,8 @@ const assert=require("node:assert/strict"),fs=require("node:fs");global.window=g
 eval(fs.readFileSync("frontend/js/M02003.js","utf8"));
 (async()=>{
  const page=Object.create(Pages.M02003),events=[],button={},status={},manage={};
- page.root={querySelector(selector){return selector==='[data-builder-publish]'?button:status},querySelectorAll(){return [manage]}};
- page.survey={id:'test',status:'draft',questions:[{type:'single'}]};page.publishing=false;page.destroyed=false;
+ page.root={querySelector(selector){return selector==='[data-builder-publish]'?button:status},querySelectorAll(selector){return selector==='[data-builder-publish]'?[button]:selector==='[data-builder-public-links]'?[manage]:[]}};
+ page.survey={id:'test',status:'draft',questions:[{type:'single'}]};page.publishing=false;page.destroyed=false;page.updateSaveControls=()=>{};
  page.saveExplicit=async()=>{events.push('save');return true};
  page.context={api:{post:async()=>{events.push('publish');return {version:1,slug:'same-url',publicUrl:'/s/same-url'}}},toast(){}};
  page.openPublicLinks=async()=>{events.push('links');assert.equal(page.survey.publishedVersion,1)};
@@ -455,4 +457,83 @@ const q=make("text","1. 원문");
 assert.equal(SurveyQuestionNumbering.title(q,{showQuestionNumbers:false},q.title),"1. 원문");
 for(const title of ["2026. 계획","1.5배 인상","제1항 내용"]){assert.equal(SurveyQuestionNumbering.title(q,{},title),title);}
 assert.equal(SurveyQuestionNumbering.title(q,{},"(24) 문항"),"문항");
+""")
+
+
+def test_distribution_requires_confirmed_url_and_rechecks_server_before_navigation() -> None:
+    _node(r"""
+const assert=require("node:assert/strict"),fs=require("node:fs");global.window=global;
+eval(fs.readFileSync("frontend/js/M02003.js","utf8"));
+(async()=>{
+ const page=Object.create(Pages.M02003),events=[],messages=[];
+ const publishButtons=[{},{}],distributionButtons=[{},{}],manageButtons=[{},{}];
+ page.root={querySelector(){return {focus(){events.push('focus')}}},querySelectorAll(selector){return selector==='[data-builder-publish]'?publishButtons:selector==='[data-builder-distribute]'?distributionButtons:manageButtons}};
+ page.context={toast(text){messages.push(text)},navigate(){events.push('navigate')},api:{get:async()=>{events.push('verify');return {links:[{url:'/s/confirmed'}]}}}};
+ page.survey={id:'test',status:'draft',questions:[{type:'single'}]};
+ page.publishing=false;page.destroyed=false;page.updateSaveControls=()=>{};page.saveExplicit=async()=>{events.push('save');return true};
+ page.updatePublishActions();assert(distributionButtons.every(button=>button.disabled));
+ await page.prepareDistribution();assert.deepEqual(events,['focus']);
+ assert(messages.some(text=>text.includes('URL 발급')));
+ for(const status of ['draft','closed']){
+  events.length=0;page.survey={...page.survey,status,slug:'old-url',publicUrl:'/s/old-url'};
+  await page.prepareDistribution();assert.deepEqual(events,['focus']);
+ }
+ page.survey.status='published';page.updatePublishActions();assert(distributionButtons.every(button=>!button.disabled));
+ assert(publishButtons.every(button=>button.textContent==='재확정 · 기존 URL 유지'));
+ events.length=0;await page.prepareDistribution();assert.deepEqual(events,['verify','navigate']);
+ events.length=0;page.context.api.get=async()=>{events.push('verify');throw new Error('not published')};
+ await page.prepareDistribution();assert.deepEqual(events,['verify']);
+ events.length=0;page.context.api.get=async()=>{events.push('verify');return {links:[]}};
+ await page.prepareDistribution();assert.deepEqual(events,['verify']);
+ events.length=0;page.saveExplicit=async()=>{events.push('save');return false};
+ await page.prepareDistribution();assert.deepEqual(events,['verify']);
+ events.length=0;page.publishing=true;page.updatePublishActions();
+ assert(distributionButtons.every(button=>button.disabled));assert(publishButtons.every(button=>button.disabled));
+ await page.prepareDistribution();assert.deepEqual(events,[]);
+})().catch(error=>{console.error(error);process.exit(1)});
+""")
+
+
+def test_project_and_distribution_urls_use_configured_domain_from_render_admin() -> None:
+    _node(r"""
+const assert=require("node:assert/strict"),fs=require("node:fs");global.window=global;
+global.location={origin:'https://in-surveyone.onrender.com'};
+for(const file of ['M02001','M03001','publication-links'])eval(fs.readFileSync(`frontend/js/${file}.js`,'utf8'));
+const project=Object.create(Pages.M02001),distribution=Object.create(Pages.M03001);
+for(const base of ['https://www.insurveyone.com','https://new-survey.example.test']){
+ project.publicBaseUrl=base;distribution.publicBaseUrl=base;
+ assert.equal(project.absolutePublicUrl('/s/confirmed'),base+'/s/confirmed');
+ assert.equal(distribution.publicUrlFor({publicUrl:'/s/confirmed'}),base+'/s/confirmed');
+ assert.equal(SurveyPublicationLinks.absoluteUrl('/s/new-slug?audience=all',base),base+'/s/new-slug?audience=all');
+}
+project.publicBaseUrl=undefined;assert.equal(project.absolutePublicUrl('/s/confirmed'),'');
+distribution.publicBaseUrl=null;assert.equal(distribution.publicUrlFor({publicUrl:'/s/confirmed'}),'');
+assert.throws(()=>SurveyPublicationLinks.absoluteUrl('/s/confirmed'));
+""")
+
+
+def test_result_code_csv_preserves_version_codes_and_raw_export_preserves_ids():
+    _node(r"""
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+global.window = global;
+let captured;
+global.Common = { formatNumber(value) {return String(value);}, downloadCsv(name, rows) { captured = rows; } };
+eval(fs.readFileSync("frontend/js/M04001.js", "utf8"));
+const page = Pages.M04001;
+const question = {id:"q",type:"single",title:"Question"};
+page.questionEntries = [{id:"q",number:1,question}];
+page.currentSurvey = {title:"Synthetic"};
+page.context = {toast(){}};
+page.filtered = () => [{id:"r1",surveyVersion:1,answers:[{questionId:"q",value:"stable-a"}],codedAnswers:{q:"VERSION-1"}}, {id:"r2",surveyVersion:2,answers:[{questionId:"q",value:"stable-a"}],codedAnswers:{q:"VERSION-2"}}];
+page.exportCsv("codes");
+assert.deepEqual(captured.slice(1).map(row=>row[4]), ["VERSION-1","VERSION-2"]);
+page.exportCsv("raw");
+assert.deepEqual(captured.slice(1).map(row=>row[4]), ["stable-a","stable-a"]);
+eval(fs.readFileSync("frontend/js/M02003.js", "utf8"));
+const builder=Pages.M02003;
+const scale={type:"scale",min:0,max:3,settings:{scalePoints:[{score:1,label:"One",resultCode:"0"},{score:2,label:"Two",resultCode:"2"},{score:3,label:"Three",resultCode:"3"}]}};
+builder.ensureScalePoints(scale);
+assert.equal(scale.settings.scalePoints.find(point=>point.score===1).resultCode,"0");
+assert.equal(new Set(scale.settings.scalePoints.map(point=>point.resultCode)).size,4);
 """)

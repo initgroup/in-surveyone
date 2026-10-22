@@ -10,6 +10,8 @@
             this.surveyId = window.SurveyOneApp.queryParams().get("surveyId");
             this.recommendedTemplateId = window.SurveyOneApp.queryParams().get("templateId");
             this.mode = "scroll";
+            this.savedSettings = null;
+            this.saving = false;
             this.skin = { preset: "ocean" };
             if (!this.surveyId) {
                 context.toast("STEP 01에서 프로젝트 기본정보를 먼저 저장해 주세요.", "error");
@@ -52,7 +54,9 @@
                 this.renderSkins();
                 this.selectSkin(this.skin.preset, { updateSkin: false });
                 this.select(this.mode);
+                this.savedSettings = this.settingsSnapshot();
             } catch (error) {
+                this.saving = false;
                 errorBox.textContent = error.message;
                 errorBox.hidden = false;
                 errorBox.focus();
@@ -81,7 +85,8 @@
             this.root.querySelectorAll("[data-experience-skin-preset]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.experienceSkinPreset === preset.code)));
         },
         async saveAndContinue() {
-            if (!this.survey) return;
+            if (!this.survey || this.saving) return;
+            this.saving = true;
             const button = this.root.querySelector("[data-experience-next]");
             const errorBox = this.root.querySelector("[data-experience-error]");
             button.disabled = true;
@@ -91,16 +96,33 @@
                 delete settings.showProgress;
                 delete settings.oneResponse;
                 delete settings.allowEdit;
-                await this.context.api.patch(`/api/surveys/${encodeURIComponent(this.surveyId)}`, { settings, skin: this.skin, expectedRevision: this.survey.revision });
+                const submitted = this.settingsSnapshot();
+                const payload = await this.context.api.patch(`/api/surveys/${encodeURIComponent(this.surveyId)}`, { settings, skin: this.skin, expectedRevision: this.survey.revision });
+                this.survey = { ...this.survey, ...(payload.survey || payload) };
+                this.savedSettings = submitted;
+                this.saving = false;
+                if (this.hasUnsavedChanges()) {
+                    button.disabled = false;
+                    this.context.toast("저장 중 추가한 변경사항을 다시 저장해 주세요.");
+                    return;
+                }
                 this.context.toast("STEP 03 응답 UI 방식을 저장했습니다.", "success");
                 this.context.navigate("M02003", { surveyId: this.surveyId, flow: "project", ...(this.recommendedTemplateId ? { templateId: this.recommendedTemplateId, template: "1" } : {}) });
             } catch (error) {
+                this.saving = false;
                 errorBox.textContent = error.message;
                 errorBox.hidden = false;
                 errorBox.focus();
                 button.disabled = false;
             }
         },
+        settingsSnapshot() { return JSON.stringify({ mode: this.mode, skin: this.skin }); },
+        hasUnsavedChanges() { return this.savedSettings !== null && (this.saving || this.savedSettings !== this.settingsSnapshot()); },
+        beforeLeave() {
+            if (this.saving) { this.context.toast("저장이 끝난 후 이동해 주세요."); return false; }
+            return !this.hasUnsavedChanges() || this.context.confirmMessage("저장하지 않은 응답 UI 변경사항이 있습니다. 변경사항을 버리고 이동할까요?", { title: "미저장 변경사항", confirmLabel: "변경사항 버리기" });
+        },
+        beforeRefresh() { return this.beforeLeave(); },
         destroy() {
             this.root?.removeEventListener("click", this.onClick);
             this.root?.removeEventListener("keydown", this.onKeydown);

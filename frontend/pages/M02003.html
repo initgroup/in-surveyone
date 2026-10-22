@@ -7,109 +7,140 @@
     </ol>
 </nav>
 
-<section class="builder-shell" data-builder-shell>
-    <header class="builder-topbar">
-        <div class="builder-title-group">
-            <div>
-                <span class="builder-state"><i></i><span data-builder-status>작성 중</span></span>
+<section class="builder-shell" data-builder-shell data-editor-mode="questions">
+    <header class="builder-topbar" aria-label="설문 편집 도구 모음">
+        <div class="builder-project-row">
+            <button class="button workspace-list-button" type="button" data-builder-back aria-label="프로젝트 목록으로 돌아가기" title="프로젝트 목록"><span class="workspace-list-button-icon" aria-hidden="true">←</span><span class="workspace-list-button-label" data-builder-back-label>프로젝트 목록</span></button>
+            <div class="builder-title-group">
+                <div class="builder-title-meta"><span class="builder-editor-label">SURVEY EDITOR</span><span class="builder-state"><i aria-hidden="true"></i><span data-builder-status>작성 중</span></span><span class="builder-save-label" data-builder-save-label role="status" aria-live="polite">저장됨</span><span class="builder-save-mode" title="편집 내용은 저장 버튼을 눌러야 보관됩니다">수동 저장</span></div>
                 <input class="builder-title-input" type="text" value="제목 없는 설문" aria-label="설문 제목" data-builder-title>
             </div>
+            <div class="builder-primary-actions builder-actions" role="group" aria-label="저장 및 공개 작업">
+                <button class="button button-small button-save" type="button" data-builder-save disabled>저장</button>
+                <button class="button button-small button-function builder-discard-button" type="button" data-builder-discard title="마지막 저장 이후의 모든 변경을 취소합니다" disabled>변경 취소</button>
+                <button class="button button-small button-layer" type="button" data-builder-preview>미리보기</button>
+                <button class="button button-small button-batch button-important" type="button" data-builder-publish>저장·확정 및 URL 발급</button>
+                <button class="button button-small button-save button-important builder-template-register" type="button" data-template-admin-publish hidden>공용 템플릿 등록</button>
+            </div>
         </div>
-        <div class="builder-mode-tabs" role="tablist" aria-label="편집 모드">
-            <button type="button" role="tab" aria-selected="true" data-builder-mode="questions">문항</button>
-            <button type="button" role="tab" aria-selected="false" data-builder-mode="logic">분기</button>
-            <button type="button" role="tab" aria-selected="false" data-builder-mode="settings">설정</button>
-        </div>
-        <div class="builder-actions">
-            <button class="button button-small button-layer builder-template-button" type="button" data-builder-template-library>템플릿으로 시작</button>
-            <button class="button button-small button-layer" type="button" data-import-draft>설계 불러오기</button>
-            <button class="button button-small button-layer" type="button" data-export-draft>설계 내보내기</button>
-            <input type="file" accept=".json,application/json" data-import-draft-file hidden>
-            <button class="button button-small button-layer builder-code-button" type="button" data-builder-code>HTML·CSS·JS</button>
-            <label class="builder-edit-language">
-                <span>편집 언어</span>
-                <select data-edit-locale aria-describedby="builderLanguageStatus"></select>
-            </label>
-            <span class="builder-language-status" id="builderLanguageStatus" data-language-status aria-live="polite"></span>
-            <span class="builder-save-label" data-builder-save-label role="status" aria-live="polite">저장됨</span>
-            <button class="button button-small button-save" type="button" data-builder-save>저장</button>
-            <button class="button button-small button-layer" type="button" data-builder-preview>미리보기</button>
-            <button class="button button-small button-navigation" type="button" data-builder-distribute>배포 준비</button>
-            <button class="button button-small button-save button-important builder-template-register" type="button" data-template-admin-publish hidden>공용 템플릿 등록</button>
-            <button class="button button-small button-layer" type="button" data-builder-public-links hidden>대상별 URL · 관리</button>
-            <button class="button button-small button-batch button-important" type="button" data-builder-publish>저장·확정 및 URL 발급</button>
-            <button class="button workspace-list-button" type="button" data-builder-back aria-label="프로젝트 목록으로 돌아가기" title="프로젝트 목록"><span class="workspace-list-button-icon" aria-hidden="true">←</span><span class="workspace-list-button-label" data-builder-back-label>프로젝트 목록</span></button>
+        <div class="builder-command-row">
+            <div class="builder-document-tools" role="group" aria-label="설계 파일 및 사용자 코드">
+                <details class="builder-file-menu" data-builder-file-menu>
+                    <summary>파일<span aria-hidden="true">⌄</span></summary>
+                    <div class="builder-file-menu-panel" role="group" aria-label="설계 파일 작업">
+                        <strong>설계 파일</strong>
+                        <button class="button button-small button-layer builder-template-button" type="button" data-builder-template-library>템플릿으로 시작</button>
+                        <button class="button button-small button-layer" type="button" data-import-draft>설계 불러오기</button>
+                        <button class="button button-small button-layer" type="button" data-export-draft>설계 내보내기</button>
+                    </div>
+                </details>
+                <input type="file" accept=".json,application/json" data-import-draft-file hidden>
+                <button class="button button-small button-layer builder-code-button" type="button" data-builder-code>HTML·CSS·JS</button>
+            </div>
+            <div class="builder-mode-tabs" role="tablist" aria-label="편집 모드">
+                <button type="button" role="tab" aria-selected="true" id="builder-tab-questions" aria-controls="builder-panel-questions" data-builder-mode="questions">문항 편집</button>
+                <button type="button" role="tab" aria-selected="false" tabindex="-1" id="builder-tab-logic" aria-controls="builder-panel-logic" data-builder-mode="logic">분기 설계</button>
+                <button type="button" role="tab" aria-selected="false" tabindex="-1" id="builder-tab-settings" aria-controls="builder-panel-settings" data-builder-mode="settings">설문 설정</button>
+            </div>
+            <div class="builder-context-tools" role="group" aria-label="편집 언어 및 배포 관리">
+                <label class="builder-edit-language"><span>언어</span><select data-edit-locale aria-label="편집 언어" aria-describedby="builderLanguageStatus"></select></label>
+                <button class="button button-small button-layer" type="button" data-builder-public-links hidden>대상별 URL · 관리</button>
+                <button class="button button-small button-navigation" type="button" data-builder-distribute disabled title="먼저 저장·확정 및 URL 발급을 완료하세요.">발송 준비</button>
+            </div>
         </div>
     </header>
 
+    <p class="builder-publication-guide" role="note"><strong>저장 → 미리보기 → 확정·URL 발급 → 발송 준비</strong><button class="builder-help-button" type="button" popovertarget="builderCanvasHelp" aria-label="저장과 설문 편집 도움말" title="저장·공개 반영 방법">?</button></p>
+
     <div class="builder-workspace">
         <aside class="builder-toolbox" aria-label="문항 도구">
-            <div class="toolbox-heading"><span class="eyebrow">QUESTION TOOLS</span><strong>문항 추가</strong><small>클릭하면 설문 끝에 추가됩니다.</small></div>
-            <div class="question-tool-list" data-question-tools></div>
-            <button class="section-tool" type="button" data-add-section>＋ 새 섹션</button>
+            <div class="toolbox-heading"><strong>문항 추가</strong><button class="section-tool" type="button" data-add-section>＋ 새 섹션</button></div>
+            <div class="builder-help-popover" id="builderPaletteHelp" popover><strong>문항 추가 방법</strong><p>유형을 한 번 클릭하면 선택만 바뀝니다. 추가 버튼·더블클릭·Ctrl+Enter로 선택한 위치에 넣습니다.</p><p>위치 목록에서 선택 문항의 위·아래, 현재 섹션 끝 또는 설문 맨 끝을 고릅니다. 본문 맨 아래 추가 버튼은 항상 설문 끝에 넣습니다.</p><button type="button" popovertarget="builderPaletteHelp" popovertargetaction="hide">닫기</button></div>
+            <div class="builder-insertion-guide"><label class="builder-insertion-choice"><span class="sr-only">추가할 위치</span><select data-insertion-position aria-label="새 문항을 추가할 위치" aria-describedby="builderInsertionStatus" title="문항 위·아래는 현재 선택한 문항을 기준으로 합니다"><option value="before">선택 문항 위</option><option value="after" selected>선택 문항 아래</option><option value="section-end">현재 섹션 끝</option><option value="survey-end">설문 맨 끝</option></select></label><button class="builder-help-button" type="button" popovertarget="builderPaletteHelp" aria-label="문항 추가 방법" title="문항 추가 방법">?</button><span id="builderInsertionStatus" data-insertion-status role="status" aria-live="polite"></span><div class="builder-tool-guide-actions"><button class="builder-tool-add-button" type="button" data-add-selected-question>＋ 객관식 추가</button><button type="button" data-scroll-selection aria-label="선택한 문항 위치로 이동" title="선택 문항으로 이동">◎</button></div></div>
+            <div class="question-tool-list" data-question-tools role="group" aria-label="추가할 문항 유형 · 한 번 클릭해 선택, 더블클릭 또는 추가 버튼으로 삽입"></div>
         </aside>
 
-        <section class="builder-canvas" aria-label="설문 편집 캔버스">
-            <aside class="builder-template-start" data-builder-template-start aria-labelledby="builderTemplateStartTitle" hidden>
-                <span class="builder-template-start-icon" aria-hidden="true">✦</span>
-                <div><strong id="builderTemplateStartTitle">템플릿으로 빠르게 시작하세요</strong><p>목적에 맞는 설문 구조를 선택한 뒤 문항과 문구를 자유롭게 수정할 수 있습니다.</p></div>
-                <button class="button button-layer button-important" type="button" data-builder-template-library>템플릿 둘러보기</button>
-            </aside>
-            <section class="survey-cover-card">
-                <div class="survey-cover-accent" data-cover-accent></div>
-                <div class="survey-cover-content">
-                    <span class="eyebrow">SURVEY INTRO</span>
-                    <input type="text" class="survey-heading-input" placeholder="설문 제목" data-survey-heading>
-                    <textarea rows="2" placeholder="응답자에게 설문 목적과 소요 시간을 안내하세요." data-survey-description></textarea>
-                    <div class="survey-cover-meta"><span>예상 소요 <strong data-estimated-time>1분</strong></span><span>문항 <strong data-question-count>0개</strong></span></div>
-                </div>
-            </section>
-
-            <div class="builder-mode-panel" data-mode-panel="questions">
-                <div class="question-canvas-list" data-question-list></div>
-                <button class="canvas-add-button" type="button" data-canvas-add>＋ 문항을 추가하세요</button>
-            </div>
-
-            <div class="builder-mode-panel" data-mode-panel="logic" hidden>
-                <section class="builder-feature-panel">
-                    <span class="feature-mark">↳</span>
-                    <div><span class="eyebrow">ANSWER-BASED ROUTING</span><h3>응답에 따라 다음 섹션을 연결하세요.</h3><p>단일선택·복수응답·드롭다운 문항을 기준으로 조건을 만들 수 있습니다. 배포 전 도달 불가능한 섹션과 순환 분기를 자동 점검합니다.</p></div>
-                    <button class="button button-function" type="button" data-add-rule>첫 분기 규칙 만들기</button>
-                </section>
-                <div class="logic-rule-list" data-logic-rules></div>
-            </div>
-
-            <div class="builder-mode-panel" data-mode-panel="settings" hidden>
-                <section class="settings-panel card">
-                    <header class="card-header"><div><span class="eyebrow">RESPONSE POLICY</span><h3>응답 설정</h3></div></header>
-                    <div class="card-body form-grid">
-                        <label class="setting-row"><span><strong>익명 응답</strong><small>이름과 로그인 정보를 자동 수집하지 않습니다.</small></span><input type="checkbox" data-setting="anonymous" checked></label>
-                        <label class="setting-row"><span><strong>한 사람당 1회 응답</strong><small>대상자 토큰 또는 인증 기준으로 중복 제출을 제한합니다.</small></span><input type="checkbox" data-setting="oneResponse"></label>
-                        <label class="setting-row"><span><strong>진행률 표시</strong><small>모바일 응답 화면 상단에 완료 정도를 표시합니다.</small></span><input type="checkbox" data-setting="showProgress" checked></label>
-                        <label class="setting-row"><span><strong>자동 문항 번호 표시</strong><small>켜면 섹션을 넘어 연속 번호를 표시하고 제목의 원문 번호는 중복 표시하지 않습니다. 끄면 원문 번호를 그대로 사용합니다.</small></span><input type="checkbox" data-setting="showQuestionNumbers" checked></label>
-                        <label class="form-field">응답 UI 방식<select data-setting="presentationMode"><option value="scroll">전체 문항 스크롤</option><option value="one_at_a_time">한 화면에 한 문항</option></select><small>편집 중 언제든 바꿀 수 있으며 다음 저장·확정 버전에 반영됩니다.</small></label>
-                        <label class="setting-row"><span><strong>응답 수정 허용</strong><small>제출 후 수정 기능은 후속 API 연동 예정입니다.</small></span><input type="checkbox" data-setting="allowEdit" disabled></label>
-                        <label class="form-field">완료 메시지<textarea data-setting="confirmationMessage">응답해 주셔서 감사합니다. 소중한 의견은 더 나은 서비스를 만드는 데 활용하겠습니다.</textarea></label>
-                    </div>
-                </section>
-                <section class="settings-panel card">
-                    <header class="card-header"><div><span class="eyebrow">URL AUDIENCE</span><h3>URL별 설문 대상</h3><p>대상별로 표시할 섹션과 기본 경로를 지정합니다.</p></div></header>
-                    <div class="card-body"><p data-audience-summary>모든 대상에게 전체 섹션을 표시합니다.</p><button class="button button-function" type="button" data-edit-audiences>대상·섹션 분기 편집</button><p class="field-help">공개 주소 뒤에 ?audience=구분자를 붙입니다. 대상 구분은 화면 분기용이며 응답자 인증을 대신하지 않습니다.</p></div>
-                </section>
-                <section class="settings-panel card builder-language-settings">
-                    <header class="card-header"><div><span class="eyebrow">MULTILINGUAL SURVEY</span><h3>다국어 설문</h3><p>응답 구조와 ID는 그대로 두고 응답자에게 보이는 문안만 번역합니다.</p></div></header>
-                    <div class="card-body form-grid">
-                        <div class="form-grid form-grid-two">
-                            <label class="form-field">원문 언어<select data-source-locale></select></label>
-                            <label class="form-field">기본 표시 언어<select data-default-locale></select></label>
+        <section class="builder-canvas" aria-label="설문 편집 작업 영역">
+            <header class="builder-canvas-heading"><div><strong data-canvas-title>설문 구성</strong><span data-canvas-guide>문항을 선택해 내용과 속성을 편집하세요.</span></div><span class="builder-language-status" id="builderLanguageStatus" data-language-status aria-live="polite"></span></header>
+            <nav class="builder-document-navigation" aria-label="편집 본문 이동">
+                <label data-question-navigation><span class="sr-only">이동할 섹션</span><select data-canvas-section aria-label="이동할 섹션"><option value="">섹션으로 이동</option></select></label>
+                <div class="builder-scroll-actions"><button type="button" data-builder-scroll="start" aria-label="편집 본문 맨 위로 이동" title="맨 위">↑</button><button type="button" data-builder-scroll="selection" data-question-navigation aria-label="선택한 문항으로 이동" title="선택한 문항으로 이동">선택</button><button type="button" data-builder-scroll="end" aria-label="편집 본문 맨 아래로 이동" title="맨 아래">↓</button></div>
+                <div class="builder-section-foldbar" data-question-navigation role="group" aria-label="섹션 접기와 펼치기"><span data-section-fold-status role="status" aria-live="polite"></span><button type="button" data-sections-fold="collapse" aria-label="전체 섹션 접기" title="전체 섹션 접기">접기</button><button type="button" data-sections-fold="expand" aria-label="전체 섹션 펼치기" title="전체 섹션 펼치기">펼치기</button></div>
+                <button class="builder-help-button" type="button" popovertarget="builderCanvasHelp" aria-label="설문 편집 도움말" title="설문 편집 도움말">?</button>
+            </nav>
+            <div class="builder-help-popover" id="builderCanvasHelp" popover><strong>설문 편집 도움말</strong><p>왼쪽 유형을 한 번 클릭하면 선택만 바뀝니다. 추가 버튼·더블클릭·Ctrl+Enter로 지정한 위치에 넣으며, 본문 맨 아래 추가는 설문 끝에 넣습니다.</p><p>섹션 목록으로 이동하고, 화살표로 본문의 맨 위·아래를 확인합니다. 접기·펼치기는 전체 섹션에 적용하며, 섹션별 버튼으로 개별 조절할 수 있습니다.</p><p>선택 문항의 위·아래 삽입 버튼으로 중간에 문항을 넣습니다. 문항 번호는 자동으로 정리됩니다.</p><p>보기의 표시 문구는 응답자에게 보이며, 결과 코드는 결과 코드형 내보내기에 사용됩니다. 입력 번호는 번호 선택 방식에서 사용하는 별도 번호입니다.</p><p>내용은 저장 버튼을 눌러야 보관됩니다. 변경 취소는 마지막 저장 상태로 되돌리며, 공개 반영은 다시 확정해야 합니다.</p><button type="button" popovertarget="builderCanvasHelp" popovertargetaction="hide">닫기</button></div>
+            <div class="builder-document-scroll" data-builder-document-scroll tabindex="0" role="region" aria-label="설문 편집 본문">
+                <div class="builder-mode-panel" id="builder-panel-questions" role="tabpanel" aria-labelledby="builder-tab-questions" data-mode-panel="questions">
+                    <aside class="builder-template-start" data-builder-template-start aria-labelledby="builderTemplateStartTitle" hidden>
+                        <span class="builder-template-start-icon" aria-hidden="true">✦</span>
+                        <div><strong id="builderTemplateStartTitle">템플릿으로 빠르게 시작하세요</strong><p>목적에 맞는 설문 구조를 선택한 뒤 문항과 문구를 자유롭게 수정할 수 있습니다.</p></div>
+                        <button class="button button-layer button-important" type="button" data-builder-template-library>템플릿 둘러보기</button>
+                    </aside>
+                    <section class="survey-cover-card">
+                        <div class="survey-cover-accent" data-cover-accent></div>
+                        <div class="survey-cover-content">
+                            <span class="eyebrow">SURVEY INTRO</span>
+                            <input type="text" class="survey-heading-input" placeholder="설문 제목" data-survey-heading>
+                            <textarea rows="2" placeholder="응답자에게 설문 목적과 소요 시간을 안내하세요." data-survey-description></textarea>
+                            <div class="survey-cover-meta"><span>예상 소요 <strong data-estimated-time>1분</strong></span><span>문항 <strong data-question-count>0개</strong></span></div>
                         </div>
-                        <fieldset class="builder-language-list">
-                            <legend>사용할 언어</legend>
-                            <div data-language-options></div>
-                        </fieldset>
-                        <p class="builder-language-guide" role="note">원문 언어가 아닌 언어를 선택하면 설문 제목, 설명, 섹션, 문항, 보기, 완료 메시지의 번역을 편집합니다. 비어 있는 번역은 원문으로 대체됩니다. 원문 언어를 바꾸면 선택 언어의 번역을 원문으로 승격하고 기존 원문은 이전 언어 번역으로 안전하게 보존합니다.</p>
+                    </section>
+
+                    <div class="question-canvas-list" data-question-list></div>
+                    <button class="canvas-add-button" type="button" data-canvas-add>＋ 객관식 · 설문 맨 끝에 추가</button>
+                </div>
+
+                <div class="builder-mode-panel" id="builder-panel-logic" role="tabpanel" aria-labelledby="builder-tab-logic" data-mode-panel="logic" hidden>
+                    <section class="builder-feature-panel">
+                        <span class="feature-mark">↳</span>
+                        <div><span class="eyebrow">ANSWER-BASED ROUTING</span><h3>응답에 따라 다음 섹션을 연결하세요.</h3><p>응답에 따른 이동 규칙과 URL 대상별 표시 섹션을 설계합니다. 문항별 필수·활성화 조건은 문항 편집의 세부 설정에서 지정합니다.</p></div>
+                        <button class="button button-function" type="button" data-add-rule>＋ 분기 규칙 추가</button>
+                    </section>
+                    <div class="logic-rule-list" data-logic-rules></div>
+                    <section class="settings-panel card">
+                        <header class="card-header"><div><span class="eyebrow">URL AUDIENCE</span><h3>URL별 설문 대상</h3><p>대상별로 표시할 섹션과 기본 경로를 지정합니다.</p></div></header>
+                        <div class="card-body"><p data-audience-summary>모든 대상에게 전체 섹션을 표시합니다.</p><button class="button button-function" type="button" data-edit-audiences>대상·섹션 분기 편집</button><p class="field-help">공개 주소 뒤에 ?audience=구분자를 붙입니다. 대상 구분은 화면 분기용이며 응답자 인증을 대신하지 않습니다.</p></div>
+                    </section>
+                </div>
+
+                <div class="builder-mode-panel" id="builder-panel-settings" role="tabpanel" aria-labelledby="builder-tab-settings" data-mode-panel="settings" hidden>
+                    <div class="builder-settings-grid">
+                        <section class="settings-panel card">
+                            <header class="card-header"><div><span class="eyebrow">RESPONSE POLICY</span><h3>응답 설정</h3></div></header>
+                            <div class="card-body form-grid">
+                                <label class="setting-row"><span><strong>익명 응답</strong><small>이름과 로그인 정보를 자동 수집하지 않습니다.</small></span><input type="checkbox" data-setting="anonymous" checked></label>
+                                <label class="setting-row"><span><strong>한 사람당 1회 응답</strong><small>대상자 토큰 또는 인증 기준으로 중복 제출을 제한합니다.</small></span><input type="checkbox" data-setting="oneResponse"></label>
+                                <label class="setting-row"><span><strong>진행률 표시</strong><small>모바일 응답 화면 상단에 완료 정도를 표시합니다.</small></span><input type="checkbox" data-setting="showProgress" checked></label>
+                                <label class="setting-row"><span><strong>자동 문항 번호 표시</strong><small>켜면 섹션을 넘어 연속 번호를 표시하고 제목의 원문 번호는 중복 표시하지 않습니다. 끄면 원문 번호를 그대로 사용합니다.</small></span><input type="checkbox" data-setting="showQuestionNumbers" checked></label>
+                                <label class="form-field">응답 UI 방식<select data-setting="presentationMode"><option value="scroll">전체 문항 스크롤</option><option value="one_at_a_time">한 화면에 한 문항</option></select><small>편집 중 언제든 바꿀 수 있으며 다음 저장·확정 버전에 반영됩니다.</small></label>
+                                <label class="setting-row"><span><strong>응답 수정 허용</strong><small>제출 후 수정 기능은 후속 API 연동 예정입니다.</small></span><input type="checkbox" data-setting="allowEdit" disabled></label>
+                                <label class="form-field">완료 메시지<textarea data-setting="confirmationMessage">응답해 주셔서 감사합니다. 소중한 의견은 더 나은 서비스를 만드는 데 활용하겠습니다.</textarea></label>
+                            </div>
+                        </section>
+                        <section class="settings-panel card builder-language-settings">
+                            <header class="card-header"><div><span class="eyebrow">MULTILINGUAL SURVEY</span><h3>다국어 설문</h3><p>응답 구조와 ID는 그대로 두고 응답자에게 보이는 문안만 번역합니다.</p></div></header>
+                            <div class="card-body form-grid">
+                                <div class="form-grid form-grid-two">
+                                    <label class="form-field">원문 언어<select data-source-locale></select></label>
+                                    <label class="form-field">기본 표시 언어<select data-default-locale></select></label>
+                                </div>
+                                <fieldset class="builder-language-list">
+                                    <legend>사용할 언어</legend>
+                                    <div data-language-options></div>
+                                </fieldset>
+                                <p class="builder-language-guide" role="note">원문 언어가 아닌 언어를 선택하면 설문 제목, 설명, 섹션, 문항, 보기, 완료 메시지의 번역을 편집합니다. 비어 있는 번역은 원문으로 대체됩니다. 원문 언어를 바꾸면 선택 언어의 번역을 원문으로 승격하고 기존 원문은 이전 언어 번역으로 안전하게 보존합니다.</p>
+                            </div>
+                        </section>
+                        <section class="settings-panel card builder-appearance-settings">
+                            <header class="card-header"><div><span class="eyebrow">PROJECT SKIN</span><h3>응답 화면 스타일</h3><p>설문 전체에 적용할 색상과 글꼴·배경을 설정합니다.</p></div></header>
+                            <div class="card-body builder-skin-quick">
+                                <div class="skin-dot-row" data-builder-skins></div>
+                                <button class="button button-layer" type="button" data-open-skins>스킨 상세 설정</button>
+                                <p class="field-help">빠른 색상 변경은 상단 저장 후 확정한 버전에 반영됩니다.</p>
+                            </div>
+                        </section>
                     </div>
-                </section>
+                </div>
             </div>
         </section>
 
@@ -118,7 +149,7 @@
                 <span>⌁</span><strong>문항을 선택하세요</strong><p>필수 응답, 설명, 보기, 검증 규칙을 설정할 수 있습니다.</p>
             </div>
             <div class="properties-panel" data-properties-panel hidden>
-                <div class="properties-heading"><div><span class="eyebrow">QUESTION SETTINGS</span><strong data-properties-type>객관식</strong></div><button class="icon-button" type="button" data-properties-close aria-label="속성 닫기">×</button></div>
+                <div class="properties-heading"><div><span class="eyebrow">INSPECTOR</span><strong data-properties-type>객관식</strong></div><button class="icon-button" type="button" data-properties-close aria-label="속성 닫기">×</button></div>
                 <div class="properties-form">
                     <label class="form-field">문항 성격<select data-prop-behavior><option value="fixed_required">고정필수문항</option><option value="fixed_optional">고정선택문항</option><option value="dynamic_required">동적필수문항</option><option value="dynamic_optional">동적선택문항</option></select><small>동적 문항은 선행 문항 조건이 충족될 때만 활성화됩니다.</small></label>
                     <section class="question-condition-builder" data-prop-condition-builder hidden>
@@ -134,6 +165,8 @@
                         <label class="form-field">최솟값<input type="number" data-prop-min></label>
                         <label class="form-field">최댓값<input type="number" data-prop-max></label>
                     </div>
+                    <section class="response-contract-note"><strong>응답값 저장 기준</strong><p data-response-contract></p></section>
+                    <section class="scale-point-settings" data-scale-points hidden><strong>점수별 표시·결과 코드</strong><p>범위를 바꾸면 해당 점수 목록이 갱신됩니다. 점수는 통계용 숫자이며 결과 코드는 별도로 설정할 수 있습니다.</p><div data-scale-point-list></div></section>
                     <label class="form-field" data-prop-scale-order-field hidden>척도 표시 순서<select data-prop-scale-order><option value="ascending">낮은 값 → 높은 값</option><option value="descending">높은 값 → 낮은 값</option></select></label>
                     <label class="form-field" data-prop-scale-display-field hidden>척도 응답 방식<select data-prop-scale-display><option value="slider">슬라이더 + 숫자 선택</option><option value="buttons">숫자 버튼</option></select><small>슬라이더는 숫자 눈금과 직접 선택을 함께 제공합니다. 조작 전에는 미응답으로 유지됩니다.</small></label>
                     <small data-prop-scale-range-help hidden>척도는 시작값 0 또는 1, 끝값 2~10의 정수로 설정합니다.</small>
@@ -171,29 +204,15 @@
                     <label class="form-field">응답 검증<select data-prop-validation><option value="none">사용 안 함</option><option value="email">이메일 형식</option><option value="phone">전화번호 형식</option><option value="minLength">최소 글자 수</option><option value="regex">정규식 패턴</option></select></label>
                 </div>
             </div>
-            <section class="builder-skin-quick">
-                <span class="eyebrow">PROJECT SKIN</span><strong>응답 화면 스타일</strong>
-                <div class="skin-dot-row" data-builder-skins></div>
-                <button class="button button-small button-navigation button-block" type="button" data-open-skins>스킨 상세 설정</button>
-            </section>
         </aside>
     </div>
 
-    <div class="builder-mobile-actions">
-        <button class="button button-function" type="button" data-mobile-tools>문항</button>
-        <button class="button button-layer" type="button" data-builder-template-library>템플릿</button>
-        <button class="button button-layer" type="button" data-builder-code>코드</button>
-        <button class="button button-save" type="button" data-builder-save>저장</button>
-        <button class="button button-layer" type="button" data-builder-preview>미리보기</button>
-        <button class="button button-layer" type="button" data-builder-public-links hidden>대상별 URL</button>
-        <button class="button button-navigation button-important" type="button" data-builder-distribute>배포 준비</button>
-        <button class="button button-save button-important builder-template-register" type="button" data-template-admin-publish hidden>템플릿 등록</button>
-    </div>
 </section>
 
 <template data-question-template>
     <article class="question-card" draggable="true">
         <div class="question-drag" aria-hidden="true">⠿</div>
+        <div class="question-selection-banner" data-question-selection hidden><strong>편집 중</strong><span data-insertion-hint>이 문항 위나 아래에 새 문항을 삽입할 수 있습니다.</span><div class="question-insert-actions" role="group" aria-label="이 문항을 기준으로 삽입"><button type="button" data-question-insert="before" aria-label="이 문항 위에 새 문항 삽입" title="이 문항 위에 삽입">＋ 위</button><button type="button" data-question-insert="after" aria-label="이 문항 아래에 새 문항 삽입" title="이 문항 아래에 삽입">＋ 아래</button></div></div>
         <header class="question-card-header">
             <span class="question-index"></span>
             <span class="question-type-badge"></span>
@@ -204,7 +223,7 @@
                 <button class="icon-button icon-button-delete" type="button" data-question-delete aria-label="문항 삭제">×</button>
             </div>
         </header>
-        <input class="question-title-input" type="text" placeholder="질문을 입력하세요" data-question-title>
+        <textarea class="question-title-input" rows="1" placeholder="질문을 입력하세요" aria-label="문항 제목" data-question-title></textarea>
         <div class="question-description-preview" data-question-description-preview hidden></div>
         <div class="question-answer-editor" data-answer-editor></div>
         <footer class="question-card-footer"><span data-required-label>선택 응답</span><button type="button" data-question-settings>세부 설정</button></footer>

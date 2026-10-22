@@ -19,6 +19,7 @@ from typing import Any, Iterable
 from uuid import uuid4
 
 from backend.config import Settings, get_settings
+from backend.answer_codes import coded_answers
 from backend.errors import (
     AuthenticationError,
     ConflictError,
@@ -2218,7 +2219,12 @@ class MemoryStore:
         with self._lock:
             survey = self._owned_survey_locked(user, survey_id)
             records = self._responses.get(survey.id, [])[offset : offset + limit]
-            return [self._response_view(record) for record in records]
+            needed_versions = {record.survey_version for record in records}
+            snapshots = {version.version: PublicSurvey.model_validate_json(version.snapshot_json) for version in survey.versions if version.version in needed_versions}
+            result = [self._response_view(record) for record in records]
+            for response in result:
+                response.coded_answers = coded_answers(snapshots.get(response.survey_version), response.answers)
+            return result
 
     def report(
         self,

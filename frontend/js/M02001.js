@@ -147,8 +147,13 @@
             const content = this.root.querySelector("[data-project-content]");
             content.setAttribute("aria-busy", "true");
             try {
-                const payload = await this.context.api.get(`/api/surveys/page?${params}`);
+                const [payload, runtime] = await Promise.all([
+                    this.context.api.get(`/api/surveys/page?${params}`),
+                    this.context.api.get("/api/runtime-config")
+                ]);
                 if (token !== this.loadToken) return;
+                if (!runtime?.publicBaseUrl) throw new Error("공개 주소 설정을 불러오지 못했습니다. 다시 시도해 주세요.");
+                this.publicBaseUrl = runtime.publicBaseUrl;
                 this.items = Array.isArray(payload.items) ? payload.items : [];
                 this.page = Number(payload.page || requestedPage);
                 this.total = Number(payload.total || 0);
@@ -384,7 +389,7 @@
         },
         absolutePublicUrl(value) {
             if (!value) return "";
-            try { return new URL(String(value), location.origin).href; }
+            try { return new URL(String(value), this.publicBaseUrl).href; }
             catch { return ""; }
         },
         async openPublicLinks(id) {

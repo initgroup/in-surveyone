@@ -1,3 +1,5 @@
+<aside class="distribution-provider-alert is-warning distribution-integration-notice" role="note" aria-label="실제 발송 연동 안내"><strong>현재 실제 이메일·문자 발송은 연동되어 있지 않습니다.</strong><span>이메일·문자·카카오·팩스는 대상자와 안내문 저장, 발송 작업 등록까지 가능합니다. 실제 전송하려면 추후 발송 서비스와 전송 처리 기능을 연계해야 합니다. 설문 URL은 복사하여 직접 공유할 수 있습니다.</span></aside>
+
 <div data-distribution-project-view>
     <section class="distribution-intro page-section">
         <div>
@@ -139,7 +141,7 @@
             <div class="card-body">
                 <div class="distribution-review" data-distribution-review></div>
                 <aside class="distribution-execute-note" data-execute-note role="note"></aside>
-                <aside class="distribution-queue-explanation" role="note"><strong>현재 실행 범위</strong><span>배포 계획을 저장하고 채널별 작업을 <code>QUEUED</code> 또는 <code>DISABLED</code>로 등록합니다. 실제 외부 전송은 운영 provider worker 연동 후 처리됩니다.</span></aside>
+                <aside class="distribution-queue-explanation" role="note"><strong>현재 실행 범위</strong><span>배포 계획 저장과 발송 작업 등록까지만 진행하며 실제 메일·문자는 전송되지 않습니다. 실제 전송은 추후 발송 서비스와 전송 처리 기능 연계가 필요합니다.</span></aside>
                 <div class="distribution-final-actions"><button class="button button-save" type="button" data-distribution-save>저장</button><button class="button button-batch button-important" type="button" data-distribution-execute>저장하고 발송 대기열 등록</button></div>
             </div>
         </section>

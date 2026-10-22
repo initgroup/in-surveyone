@@ -7,7 +7,7 @@
     <meta name="robots" content="noindex,nofollow">
     <title>설문 참여 | IN-SURVEYONE</title>
     <link rel="icon" href="/frontend/assets/images/surveyone-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/frontend/css/public.css?v=20261020.11">
+    <link rel="stylesheet" href="/frontend/css/public.css?v=20261022.22">
 </head>
 <body>
     <a class="public-skip" href="#surveyMain" data-public-i18n="skipToSurvey">설문 본문 바로가기</a>
@@ -25,10 +25,11 @@
     <main id="surveyMain" class="public-main" tabindex="-1">
         <div class="public-loading" data-public-loading role="status"><span></span><strong data-public-i18n="loadingTitle">설문을 불러오고 있습니다.</strong><p data-public-i18n="loadingMessage">잠시만 기다려 주세요.</p></div>
         <form class="public-form" data-public-form hidden novalidate>
+            <nav class="public-question-pager" data-public-pager hidden aria-label="문항 이동" data-public-i18n-aria-label="pagerAria"><button type="button" data-public-previous data-public-i18n="previous">이전</button><span data-public-page-status aria-live="polite">1 / 1</span><button type="button" data-public-next data-public-i18n="next">다음</button></nav>
+            <aside class="public-demo-banner" data-public-demo-banner hidden role="note"></aside>
             <section class="public-cover">
                 <div class="public-cover-image" data-public-cover-image></div>
                 <div class="public-cover-copy">
-                    <aside class="public-demo-banner" data-public-demo-banner hidden role="note"></aside>
                     <span class="public-kicker" data-public-category>ONLINE SURVEY</span>
                     <h1 data-public-title></h1>
                     <p data-public-description></p>
@@ -39,19 +40,18 @@
             <iframe class="public-custom-code" data-public-custom-code title="Custom survey content" sandbox="allow-scripts" hidden></iframe>
             <div class="public-question-list" data-public-question-list></div>
             <section class="public-validation-summary" data-validation-summary hidden role="alert"><strong data-public-i18n="validationTitle">확인이 필요한 문항이 있습니다.</strong><ul></ul></section>
-            <nav class="public-question-pager" data-public-pager hidden aria-label="문항 이동" data-public-i18n-aria-label="pagerAria"><button type="button" data-public-previous data-public-i18n="previous">이전</button><span data-public-page-status aria-live="polite">1 / 1</span><button type="button" data-public-next data-public-i18n="next">다음</button></nav>
             <footer class="public-submit-row"><div><span data-public-save-state data-public-i18n="draftLocal">이 탭에 임시 저장됩니다.</span><small data-public-i18n="notSentBeforeSubmit">제출 전에는 서버에 전송하지 않습니다.</small></div><button class="public-submit" type="submit" data-public-i18n="submit">응답 제출하기</button></footer>
         </form>
         <section class="public-state-card" data-public-state hidden></section>
     </main>
     <footer class="public-footer"><span>Powered by <strong>IN-SURVEYONE</strong></span><span>© inIT</span></footer>
     <div class="public-toast-stack" data-public-toast-stack aria-live="assertive" aria-atomic="false"></div>
-    <script src="/frontend/config/app.config.js?v=20261020.11"></script>
-    <script src="/frontend/js/common.js?v=20261020.11"></script>
-    <script src="/frontend/js/survey-content.js?v=20261020.1"></script>
-    <script src="/frontend/js/choice-layout.js?v=20261020.11"></script>
-    <script src="/frontend/js/question-numbering.js?v=20261020.11"></script>
-    <script src="/frontend/js/code-editor.js?v=20261020.11"></script>
-    <script src="/frontend/js/public.js?v=20261020.11"></script>
+    <script src="/frontend/config/app.config.js?v=20261022.22"></script>
+    <script src="/frontend/js/common.js?v=20261022.22"></script>
+    <script src="/frontend/js/survey-content.js?v=20261022.22"></script>
+    <script src="/frontend/js/choice-layout.js?v=20261022.22"></script>
+    <script src="/frontend/js/question-numbering.js?v=20261022.22"></script>
+    <script src="/frontend/js/code-editor.js?v=20261022.22"></script>
+    <script src="/frontend/js/public.js?v=20261022.22"></script>
 </body>
 </html>
