@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from conftest import signup_member
 
 from backend.errors import DomainValidationError
 from backend.memory_store import MemoryStore
@@ -47,13 +48,7 @@ def _department_questions(source_type: str = "single") -> list[dict]:
 
 def test_content_html_survives_draft_json_and_immutable_public_snapshot() -> None:
     with TestClient(app) as client:
-        provisioned = client.post("/api/auth/guest", json={"mode": "database"})
-        assert provisioned.status_code == 201, provisioned.text
-        credential = provisioned.json()["data"]["guestCredential"]
-        logged_in = client.post("/api/auth/login", json={
-            "loginId": credential["loginId"], "password": credential["initialPassword"],
-        })
-        assert logged_in.status_code == 200, logged_in.text
+        signup_member(client)
         created = client.post("/api/surveys", json={
             "title": "Document layout", "questions": [
                 {"id": "cover", "type": "notice", "title": "Introduction", "settings": {"contentHtml": SAFE_HTML}},
@@ -239,8 +234,7 @@ def test_choice_layout_rejects_unknown_values_and_keeps_legacy_default() -> None
 
 def test_choice_layout_draft_and_published_snapshot_are_independent() -> None:
     with TestClient(app) as client:
-        credential = client.post("/api/auth/guest", json={"mode": "database"}).json()["data"]["guestCredential"]
-        assert client.post("/api/auth/login", json={"loginId": credential["loginId"], "password": credential["initialPassword"]}).status_code == 200
+        signup_member(client)
         created = client.post("/api/surveys", json={"title": "Choice layouts", "questions": [
             {"id": "choices", "type": "single", "title": "Choose", "options": [{"id": "a", "label": "Alpha"}, {"id": "b", "label": "Beta"}], "settings": {"choiceLayout": "columns_3"}},
         ]})

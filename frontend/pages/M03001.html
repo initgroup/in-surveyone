@@ -1,14 +1,5 @@
-<aside class="distribution-provider-alert is-warning distribution-integration-notice" role="note" aria-label="실제 발송 연동 안내"><strong>현재 실제 이메일·문자 발송은 연동되어 있지 않습니다.</strong><span>이메일·문자·카카오·팩스는 대상자와 안내문 저장, 발송 작업 등록까지 가능합니다. 실제 전송하려면 추후 발송 서비스와 전송 처리 기능을 연계해야 합니다. 설문 URL은 복사하여 직접 공유할 수 있습니다.</span></aside>
-
 <div data-distribution-project-view>
-    <section class="distribution-intro page-section">
-        <div>
-            <span class="eyebrow">PUBLISH &amp; DISTRIBUTE</span>
-            <h2>확정된 설문을 대상자에게 안전하게 배포합니다.</h2>
-            <p>확정된 설문의 대상자·채널·언어별 안내문과 발송 작업을 관리합니다. URL 확인·복사·재발급은 설문 프로젝트에서 진행하세요.</p>
-        </div>
-        <span class="distribution-intro-note"><strong data-finalized-count>0</strong>개의 확정 프로젝트</span>
-    </section>
+    <section class="distribution-intro page-section"><div class="distribution-heading-label"><h2>발송 프로젝트</h2><details class="distribution-help"><summary aria-label="발송 프로젝트 도움말">?</summary><div class="distribution-help-content">확정 설문을 선택해 대상자·채널·문안을 준비합니다. 문자·카카오는 SOLAPI 설정 후 발송할 수 있습니다. 이메일·팩스는 별도 연동이 필요합니다. URL 발급·변경은 설문 프로젝트에서 관리하세요.</div></details></div><span class="distribution-intro-note">확정 <strong data-finalized-count>0</strong>개</span></section>
 
     <section class="toolbar distribution-toolbar" aria-label="배포 프로젝트 검색 및 필터">
         <div class="toolbar-group">
@@ -38,118 +29,119 @@
 </div>
 
 <section class="distribution-workflow" data-distribution-workflow hidden aria-labelledby="distributionWorkflowTitle">
-    <nav class="survey-flow distribution-flow" aria-label="설문 배포 단계">
-        <ol>
-            <li class="is-current" aria-current="step"><button type="button" data-distribution-step-target="1"><span>STEP 01</span><strong>대상자 정보</strong><small>국가·언어·연락수단</small></button></li>
-            <li><button type="button" data-distribution-step-target="2" disabled><span>STEP 02</span><strong>채널과 방식</strong><small>복수 채널·예약 설정</small></button></li>
-            <li><button type="button" data-distribution-step-target="3" disabled><span>STEP 03</span><strong>언어별 안내</strong><small>설문 URL·메시지</small></button></li>
-            <li><button type="button" data-distribution-step-target="4" disabled><span>STEP 04</span><strong>검토·대기열 등록</strong><small>저장·발송 작업 등록</small></button></li>
-        </ol>
-    </nav>
 
     <header class="distribution-workflow-head page-section">
         <div>
-            <span class="eyebrow" data-distribution-step-kicker>DISTRIBUTION · STEP 01</span>
-            <h2 id="distributionWorkflowTitle" data-distribution-title tabindex="-1">배포 대상자를 준비하세요.</h2>
-            <p><strong data-distribution-survey-title>-</strong><span>프로젝트 ID <code data-distribution-project-id>-</code></span><span>확정 버전 <b data-distribution-version>-</b></span></p>
+            <span class="sr-only" data-distribution-step-kicker>STEP 01</span>
+            <h2 class="sr-only" id="distributionWorkflowTitle" data-distribution-title tabindex="-1">대상자</h2>
+            <p><strong data-distribution-survey-title>-</strong><span class="sr-only">프로젝트 ID <code data-distribution-project-id>-</code></span><span>확정 버전 <b data-distribution-version>-</b></span></p>
         </div>
-        <div class="distribution-head-actions">
-            <button class="button button-navigation" type="button" data-project-url-management>프로젝트 URL 관리</button>
+    <nav class="survey-flow distribution-flow" aria-label="설문 배포 단계">
+        <ol>
+            <li class="is-current" aria-current="step"><button type="button" data-distribution-step-target="1"><span>01</span><strong>대상자</strong></button></li>
+            <li><button type="button" data-distribution-step-target="2"><span>02</span><strong>문안·발송</strong></button></li>
+        </ol>
+    </nav>
+        <div class="distribution-head-actions"><details class="distribution-help"><summary aria-label="배포 작업 도움말">?</summary><div class="distribution-help-content">단계 제목을 눌러 모든 기능을 미리 볼 수 있습니다. 단계 이동과 행 선택은 저장·발송하지 않습니다. 저장은 준비 내용을 보관하며 두 번째 단계에서 문안을 편집하고 대상별 미리보기·동의 확인 후 즉시 또는 예약 발송을 요청합니다.</div></details><button class="button button-function" type="button" data-open-delivery-history title="발송 이력">이력</button>
+            <button class="button button-navigation" type="button" data-project-url-management title="프로젝트 URL 관리">URL 관리</button>
             <span class="distribution-save-state" data-distribution-save-state role="status">저장 전</span>
-            <button class="button button-save" type="button" data-distribution-save>저장</button>
-            <button class="button workspace-list-button" type="button" data-distribution-project-back><span class="workspace-list-button-icon" aria-hidden="true">←</span><span>프로젝트 목록</span></button>
+            <button class="button button-save button-important" type="button" data-distribution-save>저장</button>
+            <button class="button workspace-list-button" type="button" data-distribution-project-back aria-label="프로젝트 목록" title="프로젝트 목록"><span class="workspace-list-button-icon" aria-hidden="true">←</span><span>목록</span></button>
         </div>
     </header>
 
-    <aside class="distribution-project-context" data-distribution-project-context aria-label="현재 배포 설문과 운영 상태" aria-live="polite">
-        <div class="distribution-context-identity">
-            <span>CURRENT SURVEY</span>
+    <div class="distribution-workspace-body">
+
+    <div class="distribution-statusbar">
+    <details class="distribution-project-context" data-distribution-project-context aria-label="현재 배포 설문과 운영 상태" aria-live="polite">
+        <summary class="distribution-context-summary"><div class="distribution-context-identity">
             <strong data-distribution-context-title>-</strong>
-            <small>현재 4단계 배포 작업에 적용되는 설문입니다.</small>
         </div>
         <div class="distribution-context-statuses" aria-label="설문 상태">
             <span data-distribution-context-survey-state>설문 상태 확인 중</span>
             <span data-distribution-context-response-state>응답 기간 확인 중</span>
-            <span data-distribution-context-period-sync>기간 반영 확인 중</span>
-            <span data-distribution-context-deployment-state>배포 상태 확인 중</span>
         </div>
+        <span class="distribution-context-toggle">설문 정보</span></summary>
         <dl class="distribution-context-meta">
             <div><dt>프로젝트 ID</dt><dd><code data-distribution-context-project-id>-</code></dd></div>
             <div><dt>확정 버전</dt><dd data-distribution-context-version>-</dd></div>
             <div><dt>응답 시작 <small>M02001 설정</small></dt><dd data-distribution-context-start>-</dd></div>
             <div><dt>응답 종료 <small>M02001 설정</small></dt><dd data-distribution-context-end>-</dd></div>
+            <div><dt>기간 반영</dt><dd data-distribution-context-period-sync>기간 반영 확인 중</dd></div>
+            <div><dt>배포</dt><dd data-distribution-context-deployment-state>배포 상태 확인 중</dd></div>
         </dl>
-    </aside>
+    </details>
 
     <aside class="distribution-provider-alert" data-provider-alert role="note"></aside>
-    <aside class="distribution-execution-result" data-execution-result role="status" tabindex="-1" hidden></aside>
+    </div>
 
     <div class="distribution-step-panel" data-distribution-step="1">
         <section class="card distribution-panel">
             <header class="card-header distribution-panel-head">
-                <div><span class="eyebrow">WHO WILL RECEIVE IT?</span><h3>응답자 정보와 전송 가능한 연락수단</h3><p>국가와 선호 언어는 분리해서 관리합니다. 한 명에게 여러 채널을 선택할 수 있습니다.</p></div>
+                <div class="distribution-recipient-heading"><h3 class="sr-only">대상자</h3><div class="recipient-selection-toolbar"><label><input type="checkbox" data-select-all-recipients> 전체 일괄 선택</label><span data-recipient-selection-count>등록 0명 · 발송 선택 0명</span><details class="distribution-help"><summary aria-label="발송 선택 도움말">?</summary><div class="distribution-help-content">엑셀 표를 복사해 시작 셀에 붙여넣으세요. 열 제목은 자동으로 인식합니다. Tab은 다음 셀, Enter는 아래 행으로 이동합니다. 행을 선택하면 하단에서 상세 정보를 수정합니다. 체크는 일괄 발송 명단입니다. 개별 수신자는 다음 단계에서 별도로 선택하며 체크를 해제해도 등록 정보는 유지됩니다.</div></details></div></div>
                 <div class="distribution-panel-actions">
                     <button class="button button-small button-function" type="button" data-download-recipient-sample>CSV 양식</button>
                     <button class="button button-small button-function" type="button" data-download-recipient-xlsx>Excel 양식</button>
                     <button class="button button-small button-function" type="button" data-import-recipient>파일 가져오기</button>
                     <input type="file" accept=".csv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-recipient-file hidden>
-                    <button class="button button-small button-function button-important" type="button" data-add-recipient>대상자 추가</button>
+                    <button class="button button-small button-function" type="button" data-add-recipient>행 추가</button><div class="recipient-grid-tools"><span class="sr-only" data-recipient-grid-status role="status">빈 셀에 입력하거나 엑셀 표를 붙여넣으세요.</span><button class="button button-small button-function" type="button" data-undo-recipient-paste hidden>붙여넣기 되돌리기</button></div><div class="distribution-privacy-note"><span>저장 후 연락처 마스킹</span><details class="distribution-help"><summary aria-label="개인정보 도움말">?</summary><div class="distribution-help-content">업로드 전 수신 동의와 보유 기간을 확인하세요. 서버에서 연락처를 암호화해 보관하며 저장 후 화면에서 마스킹합니다. 입력 중인 원본은 저장 전까지 표시됩니다.</div></details></div>
                 </div>
             </header>
             <div class="card-body">
+
+                <section class="recipient-import-review" data-import-review hidden aria-live="polite"></section>
                 <div class="recipient-import-progress" data-recipient-import-progress role="status" aria-live="polite" hidden><span data-recipient-import-label>파일을 가져오는 중입니다.</span><progress max="100" value="0" data-recipient-import-meter></progress></div>
-                <div class="recipient-list-heading" aria-hidden="true"><span>대상자·국가</span><span>선호 언어</span><span>연락 정보</span><span>전송 가능 채널</span><span></span></div>
-                <div class="distribution-recipient-list" data-recipient-list></div>
-                <nav class="recipient-pagination" data-recipient-pagination aria-label="대상자 목록 페이지" hidden></nav>
-                <p class="distribution-inline-error" data-recipient-error role="alert" tabindex="-1" hidden></p>
-                <aside class="distribution-data-note" role="note"><strong>개인정보 확인</strong><span>업로드 전 수신 동의와 보유 기간을 확인하세요. 연락처는 화면·로그에서 마스킹하고 서버에서 암호화 저장해야 합니다.</span></aside>
-            </div>
-        </section>
-    </div>
 
-    <div class="distribution-step-panel" data-distribution-step="2" hidden>
-        <section class="card distribution-panel">
-            <header class="card-header distribution-panel-head"><div><span class="eyebrow">HOW TO DELIVER</span><h3>사용할 채널을 복수로 선택하세요.</h3><p>대상자가 가진 연락정보와 여기서 선택한 채널이 모두 일치할 때 발송 대상이 됩니다.</p></div></header>
-            <div class="card-body">
-                <div class="distribution-channel-grid" data-channel-options></div>
-                <div class="distribution-method-grid">
-                    <fieldset class="distribution-choice-card"><legend>복수 채널 처리 방식</legend><label><input type="radio" name="deliveryStrategy" value="ALL_AVAILABLE" checked> <span><strong>선택한 모든 채널</strong><small>가능한 채널마다 각각 안내합니다.</small></span></label><label><input type="radio" name="deliveryStrategy" value="PRIORITY_FALLBACK"> <span><strong>우선순위·실패 시 대체</strong><small>우선 채널부터 시도하고 실패하면 다음 채널을 사용합니다.</small></span></label></fieldset>
-                    <fieldset class="distribution-choice-card"><legend>발송 시점</legend><label><input type="radio" name="scheduleMode" value="NOW" checked> <span><strong>검토 후 바로 요청</strong><small>STEP 04에서 실행을 확인합니다.</small></span></label><label><input type="radio" name="scheduleMode" value="SCHEDULED"> <span><strong>예약 발송</strong><small>기관 표준 시간대를 기준으로 예약합니다.</small></span></label><label class="distribution-schedule-field" data-schedule-field hidden>예약 시각<input type="datetime-local" data-scheduled-at></label></fieldset>
+                <div class="recipient-grid-scroll" tabindex="0" aria-label="대상자 입력 표. 가로로 스크롤할 수 있습니다." data-recipient-grid>
+                    <table class="recipient-grid"><caption class="sr-only">배포 대상자 목록. 이름, 휴대전화, 이메일을 직접 편집하고 행을 선택해 상세 정보를 수정합니다.</caption><thead><tr><th scope="col">일괄</th><th scope="col">행</th><th scope="col">이름·대상자 코드</th><th scope="col">휴대전화 <small>문자·카카오</small></th><th scope="col">이메일</th><th scope="col">대상·연락채널</th><th scope="col"><span class="sr-only">삭제</span></th></tr></thead><tbody data-recipient-list></tbody></table>
                 </div>
-                <p class="distribution-inline-error" data-channel-error role="alert" tabindex="-1" hidden></p>
+                <nav class="recipient-pagination" data-recipient-pagination aria-label="대상자 목록 페이지" hidden></nav>
+                <section class="recipient-detail-panel" id="recipientDetailPanel" data-recipient-detail aria-label="선택한 대상자 상세 수정"><p class="muted">표에서 행을 선택하면 이곳에서 언어·대상별 URL·채널을 수정할 수 있습니다.</p></section>
+                <p class="distribution-inline-error" data-recipient-error role="alert" tabindex="-1" hidden></p>
+
             </div>
         </section>
     </div>
 
-    <div class="distribution-step-panel" data-distribution-step="3" hidden>
-        <section class="card distribution-panel">
-            <header class="card-header distribution-panel-head">
-                <div><span class="eyebrow">LANGUAGE-SPECIFIC INVITATIONS</span><h3>응답자 언어별 URL과 안내문</h3><p>확정 버전에 포함된 언어만 사용할 수 있습니다. 각 URL의 <code>lang</code> 값으로 기본 설문 언어가 정해집니다.</p></div>
-                <button class="button button-small button-navigation" type="button" data-edit-survey-languages>설문 번역 확인</button>
-            </header>
-            <div class="card-body">
-                <div class="distribution-language-summary" data-language-summary></div>
-                <div class="distribution-message-list" data-message-list></div>
-                <p class="distribution-inline-error" data-message-error role="alert" tabindex="-1" hidden></p>
-            </div>
-        </section>
+    <div class="distribution-step-panel distribution-compose" data-distribution-step="2" hidden>
+        <div class="distribution-compose-layout">
+            <aside class="card distribution-compose-sidebar" aria-label="발송 설정">
+                <header class="card-header"><h3>발송 설정</h3><details class="distribution-help"><summary aria-label="발송 설정 도움말">?</summary><div class="distribution-help-content">일괄 발송은 1단계에서 선택한 명단을 사용합니다. 개별 발송은 한 사람과 수신 연락처를 별도로 선택합니다. 환경변수의 기본 발신번호는 서버 재시작 후 적용됩니다. 저장된 번호는 유지되며 기본값 버튼으로 서버 기본번호를 가져옵니다. 발송 후에도 번호·대상자·채널을 직접 수정할 수 있습니다. 수정한 내용은 미리보기·동의 확인 후 별도 요청으로 발송하며 이전 요청·예약은 그대로 보존됩니다. 문자는 SOLAPI에 등록한 발신번호, 카카오는 승인된 채널 ID를 입력하세요. 이메일은 작성·미리보기만 제공하며 실제 발송은 미연동입니다.</div></details></header>
+                <div class="card-body">
+
+                    <fieldset class="distribution-send-scope"><legend class="sr-only">발송 대상 범위</legend><label><input type="radio" name="sendScope" value="BULK" checked> 일괄 발송</label><label><input type="radio" name="sendScope" value="INDIVIDUAL"> 개별 발송</label></fieldset>
+                    <section class="distribution-bulk-summary" data-bulk-summary aria-live="polite"></section>
+                    <section data-individual-receiver hidden aria-label="개별 수신자 선택"><details class="distribution-direct-receiver"><summary>직접 입력</summary><label class="form-field">이름<input data-direct-receiver="name" maxlength="100" autocomplete="off"></label><label class="form-field">휴대전화<input type="tel" data-direct-receiver="mobile" placeholder="문자·카카오 수신번호" autocomplete="off"></label><label class="form-field">이메일<input type="email" data-direct-receiver="email" autocomplete="off"></label><button class="button button-function button-important" type="button" data-select-direct-receiver>입력한 수신자 선택</button></details><label class="form-field">수신자 검색<input type="search" data-individual-search placeholder="이름·연락처 끝자리" autocomplete="off"></label><div class="distribution-individual-list" data-individual-list></div><nav class="distribution-preview-recipient-pages" data-individual-pages aria-label="개별 수신자 페이지"></nav><fieldset class="distribution-individual-contact" data-individual-contact></fieldset></section>
+                    <button class="button button-small button-navigation" type="button" data-edit-receivers>대상자·연락처 수정</button>
+                    <div class="distribution-sender-settings"><div class="form-field" data-sender-for="SMS"><label for="distributionSenderNumber">발신번호</label><div class="distribution-sender-input"><input id="distributionSenderNumber" type="tel" data-delivery-option="senderNumber" placeholder="등록된 발신번호" autocomplete="off"><button class="button button-small button-function" type="button" data-apply-default-sender title="서버의 최신 기본 발신번호 적용" aria-label="서버 기본 발신번호 적용">기본값</button></div></div><label class="form-field" data-sender-for="KAKAO">카카오 채널 ID<input data-delivery-option="kakaoPfId" placeholder="SOLAPI 카카오 PFID" autocomplete="off"></label></div>
+                    <fieldset class="distribution-choice-card distribution-send-time"><legend>발송 시점</legend><div class="distribution-time-choices"><label><input type="radio" name="scheduleMode" value="NOW" checked> 바로 발송</label><label><input type="radio" name="scheduleMode" value="SCHEDULED"> 예약 발송</label></div><label class="distribution-schedule-field" data-schedule-field hidden>예약 시각 <span data-schedule-zone></span><input type="datetime-local" data-scheduled-at></label><p class="distribution-inline-error" data-schedule-error role="alert" tabindex="-1" hidden></p></fieldset>
+                    <p class="distribution-inline-error" data-recipient-scope-error role="alert" tabindex="-1" hidden></p>
+                </div>
+            </aside>
+            <section class="card distribution-compose-main" aria-label="문안 작성과 미리보기">
+                <header class="distribution-compose-heading"><div class="distribution-channel-tabs" data-compose-channels role="group" aria-label="발송 채널"></div><details class="distribution-channel-advanced"><summary>채널 설정</summary><div class="distribution-channel-settings"><div class="distribution-channel-grid" data-channel-options></div><fieldset class="distribution-choice-card"><legend>복수 채널 처리</legend><label><input type="radio" name="deliveryStrategy" value="ALL_AVAILABLE" checked> 선택한 채널에 각각 발송</label><label><input type="radio" name="deliveryStrategy" value="PRIORITY_FALLBACK"> 사용 가능한 우선 채널 한 개</label><small>복수 채널은 건수·요금이 각각 집계됩니다. 실패 시 문자 자동 대체는 사용하지 않습니다.</small></fieldset></div></details><p class="distribution-inline-error" data-channel-error role="alert" tabindex="-1" hidden></p></header>
+                <div class="distribution-compose-content">
+                    <section class="distribution-compose-editor" aria-label="문안 편집"><div class="distribution-composer-toolbar"><h3 data-composer-title>문안</h3><details class="distribution-help"><summary aria-label="문안 도움말">?</summary><div class="distribution-help-content">{{name}} 이름, {{surveyTitle}} 설문명, {{surveyUrl}} 대상·언어별 설문 링크, {{closingDate}} 마감일을 본문에 넣습니다. 카카오는 채널의 승인된 기본형 템플릿을 불러와 변수를 연결합니다. 승인 원문·버튼은 유지되고 변수만 치환됩니다. 자동 문자 대체는 사용하지 않습니다. 일괄 발송에서는 이름·링크를 대상자별로 치환하며, 개별 발송에서는 선택한 한 사람에게만 보냅니다.</div></details><button class="button button-small button-navigation" type="button" data-edit-survey-languages>번역 확인</button></div><div class="distribution-language-summary" data-language-summary></div><div class="distribution-message-list" data-message-list></div><p class="distribution-inline-error" data-message-error role="alert" tabindex="-1" hidden></p></section>
+                    <section class="distribution-send-desk" aria-label="실제 받는 내용"><header class="distribution-composer-toolbar"><h3>수신 화면</h3><details class="distribution-help"><summary aria-label="미리보기·발송 도움말">?</summary><div class="distribution-help-content">서버가 실제 발송 문안과 같은 방식으로 치환합니다. 수신 앱의 글꼴·줄바꿈은 다를 수 있습니다. 미리볼 사람을 바꿔도 일괄 발송 대상은 바뀌지 않습니다. 연락처는 화면에서 마스킹합니다. 접수는 수신 완료가 아니며 결과는 발송 이력에서 확인합니다.</div></details><details class="distribution-preview-picker" data-bulk-preview-picker><summary>대상 선택</summary><div class="distribution-preview-picker-content"><label class="form-field">미리볼 대상자<input type="search" data-preview-search placeholder="이름·대상자 코드" autocomplete="off"></label><div class="distribution-preview-recipients" data-preview-recipients></div><nav class="distribution-preview-recipient-pages" data-preview-recipient-pages aria-label="미리보기 대상자 페이지"></nav></div></details><button class="button button-small button-function" type="button" data-preview-delivery>새로 확인</button></header><div class="distribution-send-desk-body"><div class="distribution-preview-summary" data-distribution-review></div><div data-delivery-preview aria-live="polite" aria-busy="false">문안을 작성하면 받는 내용을 표시합니다.</div></div></section>
+                </div>
+
+            </section>
+        </div>
     </div>
 
-    <div class="distribution-step-panel" data-distribution-step="4" hidden>
-        <section class="card distribution-panel">
-            <header class="card-header distribution-panel-head"><div><span class="eyebrow">FINAL REVIEW</span><h3>누구에게 어떤 언어와 방법으로 보낼지 확인하세요.</h3><p>이 단계는 URL을 생성하지 않고, 확정된 URL과 대상·문안을 발송 대기열에 등록합니다.</p></div></header>
-            <div class="card-body">
-                <div class="distribution-review" data-distribution-review></div>
-                <aside class="distribution-execute-note" data-execute-note role="note"></aside>
-                <aside class="distribution-queue-explanation" role="note"><strong>현재 실행 범위</strong><span>배포 계획 저장과 발송 작업 등록까지만 진행하며 실제 메일·문자는 전송되지 않습니다. 실제 전송은 추후 발송 서비스와 전송 처리 기능 연계가 필요합니다.</span></aside>
-                <div class="distribution-final-actions"><button class="button button-save" type="button" data-distribution-save>저장</button><button class="button button-batch button-important" type="button" data-distribution-execute>저장하고 발송 대기열 등록</button></div>
-            </div>
-        </section>
     </div>
-
     <footer class="distribution-step-actions">
         <button class="button button-navigation button-navigation-back" type="button" data-distribution-previous>이전 단계</button>
-        <span data-step-position>STEP 01 / 04</span>
-        <button class="button button-navigation button-important" type="button" data-distribution-next>다음 단계</button>
+        <span data-step-position>STEP 01 / 02</span>
+        <div class="distribution-send-confirmation" data-send-confirmation hidden><label class="distribution-consent"><input type="checkbox" data-delivery-consent> 수신 동의·발송 내용 확인</label><details class="distribution-help"><summary aria-label="발송 확인 도움말">?</summary><div class="distribution-help-content"><aside class="distribution-execute-note" data-execute-note role="note"></aside>수신 동의와 보유 기간을 확인한 대상자에게만 발송하세요. 접수 결과는 이력에 보관하며, 접수와 수신 완료는 구분됩니다.</div></details></div>
+        <button class="button button-navigation button-important" type="button" data-distribution-next>미리보기·발송</button>
+        <button class="button button-batch button-important" type="button" data-distribution-execute hidden>발송 요청</button>
     </footer>
 </section>
+
+<details class="distribution-history card" data-delivery-history>
+    <summary>발송 이력·요청 결과</summary>
+    <div class="card-body">
+    <aside class="distribution-execution-result" data-execution-result role="status" tabindex="-1" hidden></aside>
+<div class="distribution-history-controls"><label>프로젝트<select data-history-survey><option value="">전체 프로젝트 (종료된 설문 포함)</option></select></label><label>처리 결과<select data-history-status><option value="">전체 결과</option><option value="FAILED">접수 실패</option><option value="UNKNOWN">확인 필요</option><option value="ACCEPTED">접수</option><option value="QUEUED">미요청</option><option value="DISABLED">보류</option></select></label><button class="button button-function" type="button" data-history-load>조회</button></div><details class="distribution-history-help"><summary>결과 안내</summary><p>접수는 휴대전화 수신 완료를 뜻하지 않습니다. 과거 요청 시점의 결과이며 최종 전송·예약 상태는 SOLAPI 콘솔에서 확인하세요.</p></details><div data-history-content role="status">조회 버튼으로 저장된 이력을 불러오세요.</div></div>
+</details>

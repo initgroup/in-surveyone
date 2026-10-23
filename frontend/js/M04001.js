@@ -598,6 +598,8 @@
         async exportXlsx(mode) {
             if (!this.selectedSurveyId || this.exporting) return;
             const surveyId = this.selectedSurveyId;
+            this.exportController = new AbortController();
+            const downloadOptions = { signal: this.exportController.signal, timeoutMs: window.SURVEYONE_CONFIG.downloadTimeoutMs || 120000, onTimeout: () => this.exportController.abort() };
             const items = this.filtered();
             const entries = mode === "visible" ? this.visibleEntries() : this.questionEntries;
             const filename = `${safeFilename(this.currentSurvey?.title)}_responses_${mode}.xlsx`;
@@ -606,21 +608,22 @@
             button.disabled = true;
             button.setAttribute("aria-busy", "true");
             try {
-                const response = await fetch(`${window.SURVEYONE_CONFIG.apiBaseUrl}/api/surveys/${encodeURIComponent(surveyId)}/responses/export`, {
+                const response = await Common.failure.bounded(fetch(`${window.SURVEYONE_CONFIG.apiBaseUrl}/api/surveys/${encodeURIComponent(surveyId)}/responses/export`, {
                     method: "POST", credentials: "same-origin",
                     headers: { "Content-Type": "application/json", Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
                     body: JSON.stringify({ mode, questionIds: entries.map((entry) => entry.id), responseIds: items.map((item) => String(item.id || item.responseId)) }),
                     signal: this.exportController.signal
-                });
+                }), downloadOptions);
                 if (!response.ok) {
-                    const payload = await response.json().catch(() => null);
+                    const payload = await Common.failure.bounded(response.json().catch(() => null), downloadOptions);
+                    if (response.status >= 500) throw Common.failure.create(payload?.code || (response.status === 504 ? "REQUEST_TIMEOUT" : "SERVICE_UNAVAILABLE"), { status: response.status, requestId: payload?.requestId });
                     const detail = payload?.detail ?? payload?.message;
                     const message = typeof detail === "string" ? detail : `엑셀 파일을 만들지 못했습니다. (${response.status})`;
                     if (response.status === 401) window.dispatchEvent(new CustomEvent("surveyone:session-invalid", { detail: { endpoint: "/api/surveys/:id/responses/export", message } }));
                     throw new Error(message);
                 }
-                const blob = await response.blob();
-                if (!blob.size || !(response.headers.get("content-type") || "").includes("spreadsheetml")) throw new Error("엑셀 파일 형식을 확인할 수 없습니다.");
+                const blob = await Common.failure.bounded(response.blob(), downloadOptions);
+                if (!blob.size || !(response.headers.get("content-type") || "").includes("spreadsheetml")) throw Common.failure.create("INVALID_RESPONSE");
                 const url = URL.createObjectURL(blob);
                 const anchor = document.createElement("a");
                 anchor.href = url;
@@ -632,7 +635,10 @@
                 setTimeout(() => URL.revokeObjectURL(url), 0);
                 this.context.toast(`${Common.formatNumber(items.length)}건의 엑셀 다운로드를 시작했습니다.`, "success");
             } catch (error) {
-                if (error.name !== "AbortError") this.context.toast(error.message, "error");
+                if (error.name !== "AbortError") {
+                    if (this.root && Common.failure.isService(error)) Common.failure.open(error);
+                    this.context.toast(error.message, "error");
+                }
             } finally {
                 this.exporting = false;
                 if (this.root) {

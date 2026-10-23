@@ -4,11 +4,14 @@
     window.SURVEYONE_CONFIG = Object.freeze({
         productName: "IN-SURVEYONE",
         companyName: "inIT",
-        assetVersion: "20261022.22",
+        assetVersion: "2026.10.23.23",
         apiBaseUrl: "",
+        requestTimeoutMs: 30000,
+        downloadTimeoutMs: 120000,
+        assetTimeoutMs: 15000,
+        pageInitTimeoutMs: 45000,
         defaultRoute: "M01001",
         publicPathPrefix: "/s/",
-        guestProjectLimit: 2,
         locales: [
             { code: "ko", label: "한국어", nativeLabel: "한국어" },
             { code: "en", label: "영어", nativeLabel: "English" },

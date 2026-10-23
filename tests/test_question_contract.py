@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from conftest import signup_member
 
 from backend.errors import DomainValidationError
 from backend.memory_store import MemoryStore, report_cutoff_exclusive
@@ -22,18 +23,8 @@ from backend.oracle_store import OracleStore
 from main import app
 
 
-def _provision_and_login(client: TestClient) -> None:
-    provisioned = client.post("/api/auth/guest", json={"mode": "database"})
-    assert provisioned.status_code == 201, provisioned.text
-    credential = provisioned.json()["data"]["guestCredential"]
-    logged_in = client.post(
-        "/api/auth/login",
-        json={
-            "loginId": credential["loginId"],
-            "password": credential["initialPassword"],
-        },
-    )
-    assert logged_in.status_code == 200, logged_in.text
+def _provision_and_login(client: TestClient) -> dict:
+    return signup_member(client)
 
 
 def test_survey_period_requires_timezone_and_normalizes_to_utc() -> None:

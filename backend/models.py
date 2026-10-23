@@ -306,44 +306,6 @@ class AdminPasswordResetView(ApiModel):
     temporary_password: str = Field(repr=False)
 
 
-class GuestSessionRequest(ApiModel):
-    display_name: str = Field(default="게스트", min_length=1, max_length=60)
-    mode: GuestMode = GuestMode.DATABASE
-
-
-class GuestLimits(ApiModel):
-    max_projects: int | None = None
-    max_questions_per_survey: int | None = None
-    max_responses_per_survey: int | None = None
-
-
-class GuestFeatures(ApiModel):
-    templates: bool = True
-    publish_demo_url: bool = True
-    external_delivery: bool = False
-    raw_data_export: bool = False
-    custom_report_persistence: bool = False
-    multilingual: bool = True
-    all_question_types: bool = True
-
-
-class GuestModeCapability(ApiModel):
-    mode: GuestMode
-    title: str
-    available: bool
-    reason: str | None = None
-    persistence: str
-    expires_in_hours: int | None = None
-    limits: GuestLimits = Field(default_factory=GuestLimits)
-    features: GuestFeatures = Field(default_factory=GuestFeatures)
-    provider_configured: dict[str, bool] = Field(default_factory=dict)
-
-
-class GuestCapabilitiesView(ApiModel):
-    selected_mode: GuestMode
-    modes: list[GuestModeCapability]
-
-
 class SignupRequest(ApiModel):
     login_id: str = Field(min_length=4, max_length=50, pattern=r"^[A-Za-z0-9._-]+$")
     password: str = Field(min_length=8, max_length=128)
@@ -357,9 +319,9 @@ class SignupRequest(ApiModel):
 
     @field_validator("login_id")
     @classmethod
-    def reserve_guest_login_ids(cls, value: str) -> str:
+    def reserve_retired_login_ids(cls, value: str) -> str:
         if re.fullmatch(r"quest\d+", value, flags=re.IGNORECASE):
-            raise ValueError("quest followed by digits is reserved for guest accounts.")
+            raise ValueError("This login ID range is reserved for retired accounts.")
         return value
 
     @field_validator("email")
@@ -384,22 +346,21 @@ class LoginRequest(ApiModel):
     keep_signed_in: bool = False
 
 
-class GuestCredentialView(ApiModel):
-    login_id: str
-    initial_password: str
-    expires_at: datetime
+class LoginPolicyView(ApiModel):
+    allow_concurrent_logins: bool = True
+    revision: int = Field(default=1, ge=1)
+    updated_at: datetime | None = None
+
+
+class LoginPolicyUpdate(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+    allow_concurrent_logins: bool = Field(strict=True)
+    revision: int = Field(ge=1, strict=True)
 
 
 class AuthSessionView(ApiModel):
     user: UserView
     expires_at: datetime
-
-
-class GuestProvisionView(ApiModel):
-    user: UserView
-    expires_at: datetime
-    guest_credential: GuestCredentialView
-    session: AuthSessionView | None = None
 
 
 class QuestionType(str, Enum):
@@ -1305,6 +1266,8 @@ class DeliveryRecipientInput(ApiModel):
     fax: str | None = Field(default=None, max_length=80)
     kakao_id: str | None = Field(default=None, max_length=200)
     channels: list[DeliveryChannel] = Field(min_length=1, max_length=4)
+    selected: bool = True
+    audience_code: str | None = Field(default=None, max_length=40, pattern=r"^[a-z0-9][a-z0-9_-]{0,39}$")
 
     @field_validator("preferred_language")
     @classmethod
@@ -1344,6 +1307,9 @@ class DeliveryMessages(ApiModel):
     email_body: str = Field(default="", max_length=CUSTOM_SOURCE_MAX_BYTES)
     sms_body: str = Field(default="", max_length=1000)
     kakao_body: str = Field(default="", max_length=1000)
+    kakao_template_id: str = Field(default="", max_length=100, pattern=r"^[A-Za-z0-9_-]*$")
+    kakao_variables: dict[str, str] = Field(default_factory=dict, max_length=40)
+    kakao_buttons: list[dict[str, Any]] = Field(default_factory=list, max_length=10)
     fax_title: str = Field(default="", max_length=500)
     fax_body: str = Field(default="", max_length=CUSTOM_SOURCE_MAX_BYTES)
 
@@ -1394,6 +1360,13 @@ class DeliverySchedule(ApiModel):
         return self
 
 
+class DeliveryOptions(ApiModel):
+    send_scope: Literal["BULK", "INDIVIDUAL"] | None = None
+    individual_recipient_id: str = Field(default="", max_length=100)
+    sender_number: str = Field(default="", max_length=30, pattern=r"^[0-9 ()+\-]*$")
+    kakao_pf_id: str = Field(default="", max_length=100, pattern=r"^[A-Za-z0-9_-]*$")
+
+
 class DeploymentDraftRequest(ApiModel):
     revision: int | None = Field(default=None, ge=1)
     recipients: list[DeliveryRecipientInput] = Field(default_factory=list, max_length=2000)
@@ -1402,7 +1375,18 @@ class DeploymentDraftRequest(ApiModel):
         default_factory=dict, max_length=20
     )
     schedule: DeliverySchedule = Field(default_factory=DeliverySchedule)
+    delivery_options: DeliveryOptions = Field(default_factory=DeliveryOptions)
     status: Literal["DRAFT"] = "DRAFT"
+
+    def delivery_recipients(self) -> list[DeliveryRecipientInput]:
+        """Resolve send scope without changing the saved bulk selection flags."""
+        if self.delivery_options.send_scope == "INDIVIDUAL":
+            return [item for item in self.recipients
+                    if item.id == self.delivery_options.individual_recipient_id]
+        selected = [item for item in self.recipients if item.selected]
+        if self.delivery_options.send_scope == "BULK" and self.channels:
+            return [item for item in selected if set(self.channels).intersection(item.channels)]
+        return selected
 
     @field_validator("messages_by_language")
     @classmethod
@@ -1413,6 +1397,11 @@ class DeploymentDraftRequest(ApiModel):
 
     @model_validator(mode="after")
     def validate_delivery_plan(self) -> "DeploymentDraftRequest":
+        if (self.delivery_options.send_scope == "INDIVIDUAL"
+                and self.delivery_options.individual_recipient_id
+                and not any(item.id == self.delivery_options.individual_recipient_id for item in self.recipients)):
+            raise ValueError("개별 발송 대상자를 등록 명단에서 다시 선택해 주세요.")
+        recipients = self.delivery_recipients()
         recipient_ids = [recipient.id for recipient in self.recipients]
         if len(recipient_ids) != len(set(recipient_ids)):
             raise ValueError("배포 대상자 ID는 배포 계획 안에서 고유해야 합니다.")
@@ -1421,12 +1410,12 @@ class DeploymentDraftRequest(ApiModel):
         # A draft can be saved before STEP 01 recipients or STEP 02 channels are
         # complete. Recipient rows that are present are still individually valid;
         # execution uses DeploymentExecuteRequest below to require the full plan.
-        if not self.recipients or not self.channels:
+        if not recipients or not self.channels:
             return self
         selected = set(self.channels)
         unreachable = [
             recipient.id
-            for recipient in self.recipients
+            for recipient in recipients
             if not selected.intersection(recipient.channels)
         ]
         if unreachable:
@@ -1437,14 +1426,14 @@ class DeploymentDraftRequest(ApiModel):
         unavailable = [
             channel.value
             for channel in self.channels
-            if not any(channel in recipient.channels for recipient in self.recipients)
+            if not any(channel in recipient.channels for recipient in recipients)
         ]
         if unavailable:
             raise ValueError(
                 "선택한 채널로 전송 가능한 대상자가 없습니다: "
                 + ", ".join(unavailable)
             )
-        recipient_locales = {recipient.preferred_language for recipient in self.recipients}
+        recipient_locales = {recipient.preferred_language for recipient in recipients}
         missing_locales = recipient_locales - set(self.messages_by_language)
         if missing_locales:
             raise ValueError(
@@ -1459,7 +1448,7 @@ class DeploymentDraftRequest(ApiModel):
         required_by_locale: dict[str, set[DeliveryChannel]] = {
             locale: set() for locale in recipient_locales
         }
-        for recipient in self.recipients:
+        for recipient in recipients:
             required_by_locale[recipient.preferred_language].update(
                 selected.intersection(recipient.channels)
             )
@@ -1488,6 +1477,34 @@ class DeploymentExecuteRequest(DeploymentDraftRequest):
     )
 
 
+class DeploymentSendRequest(ApiModel):
+    revision: int = Field(ge=1)
+    consent_confirmed: Literal[True]
+
+
+class DeliverySendItem(ApiModel):
+    delivery_id: str
+    channel: DeliveryChannel
+    status: Literal["QUEUED", "ACCEPTED", "FAILED", "UNKNOWN", "DISABLED", "SENT", "CANCELLED"]
+    provider_message_id: str | None = None
+    error_code: str | None = None
+    status_code: str | None = None
+    message: str | None = None
+    group_id: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    attempted_at: datetime | None = None
+
+
+class DeliverySendResult(ApiModel):
+    items: list[DeliverySendItem]
+    accepted: int = 0
+    failed: int = 0
+    unknown: int = 0
+    queued: int = 0
+    disabled: int = 0
+
+
 class DeploymentDraftView(DeploymentDraftRequest):
     deployment_id: str
     survey_id: str
@@ -1507,6 +1524,8 @@ class DeliveryProviderView(ApiModel):
 
 class DeliveryProvidersView(ApiModel):
     providers: dict[str, DeliveryProviderView]
+    default_sender: str = ""
+    kakao_pf_id: str = ""
 
 
 class DeliveryChannelResult(ApiModel):
@@ -1766,6 +1785,7 @@ class SurveyPublicLink(ApiModel):
 
 
 class SurveyPublicLinks(ApiModel):
+    public_base_url: str | None = None
     survey_id: str
     title: str
     version: int

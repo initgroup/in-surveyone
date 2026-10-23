@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from conftest import signup_member
 
 from backend import stores
 from backend.security import session_token_hash
@@ -35,18 +36,7 @@ def _signup(client: TestClient, prefix: str) -> dict:
 
 
 def _provision_and_login(client: TestClient) -> dict:
-    provisioned = client.post("/api/auth/guest")
-    assert provisioned.status_code == 201, provisioned.text
-    credential = provisioned.json()["data"]["guestCredential"]
-    logged_in = client.post(
-        "/api/auth/login",
-        json={
-            "loginId": credential["loginId"],
-            "password": credential["initialPassword"],
-        },
-    )
-    assert logged_in.status_code == 200, logged_in.text
-    return provisioned.json()["data"]
+    return signup_member(client)
 
 
 def _shorten_current_memory_session(client: TestClient, seconds: int = 20) -> datetime:
@@ -199,10 +189,10 @@ def test_project_list_uses_server_paging_search_and_sort() -> None:
         assert searched["items"][0]["title"] == "페이지 설문 12"
 
 
-def test_guest_create_publish_respond_and_report_flow() -> None:
+def test_member_create_publish_respond_and_report_flow() -> None:
     with TestClient(app) as owner:
         guest = _provision_and_login(owner)
-        assert guest["user"]["isGuest"] is True
+        assert guest["user"]["isGuest"] is False
         assert owner.get("/api/auth/me").status_code == 200
 
         created = owner.post(
@@ -1030,7 +1020,7 @@ def test_oracle_mode_never_silently_uses_memory_repository() -> None:
 
             blocked = client.get("/api/templates")
             assert blocked.status_code == 503, blocked.text
-            assert "not implemented" in blocked.json()["detail"]
+            assert blocked.json()["code"] == "DATABASE_UNAVAILABLE"
     finally:
         object.__setattr__(settings, "db_mode", original_mode)
 

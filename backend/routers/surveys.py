@@ -31,7 +31,6 @@ from backend.models import (
     SurveyUpdateRequest,
 )
 from backend.stores import SurveyStore
-from backend.publication_links import public_links_view
 from backend.qr_code import create_qr_svg
 from backend.response_export import render_response_workbook
 from backend.report_export import (
@@ -193,11 +192,10 @@ def survey_public_links(
     user: UserRecord = Depends(current_user),
     store: SurveyStore = Depends(current_store),
 ) -> ApiResponse[SurveyPublicLinks]:
-    detail = store.get_survey(user, survey_id)
-    if not detail.slug or not detail.public_url:
-        raise ConflictError("설문을 먼저 저장·확정한 뒤 대상별 URL을 확인해 주세요.")
-    # Authorize the owner first, then use the active snapshot, never draft routes.
-    return ApiResponse(data=public_links_view(store.public_survey(detail.slug)))
+    # The owner-scoped repository projects only active-version URL metadata.
+    # Include the canonical configured origin to avoid a second browser request.
+    view = store.public_links(user, survey_id)
+    return ApiResponse(data=view.model_copy(update={"public_base_url": get_settings().base_url}))
 
 
 @router.post(

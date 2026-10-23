@@ -48,7 +48,6 @@ def test_project_creation_is_a_single_menu_four_step_flow() -> None:
     builder_script = (PROJECT_ROOT / "frontend" / "js" / "M02003.js").read_text(encoding="utf-8")
     project_script = (PROJECT_ROOT / "frontend" / "js" / "M02001.js").read_text(encoding="utf-8")
     dashboard_script = (PROJECT_ROOT / "frontend" / "js" / "M01001.js").read_text(encoding="utf-8")
-    app_script = (PROJECT_ROOT / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
     app_css = (PROJECT_ROOT / "frontend" / "css" / "app.css").read_text(encoding="utf-8")
     builder_css = (PROJECT_ROOT / "frontend" / "css" / "pages" / "M02003.css").read_text(encoding="utf-8")
 
@@ -73,8 +72,6 @@ def test_project_creation_is_a_single_menu_four_step_flow() -> None:
     assert 'this.context.api.post("/api/surveys"' not in builder_script
     assert 'this.context.api.post("/api/surveys", body)' in project_script
     assert 'this.openWorkspace("M02001", { create: "1" })' in dashboard_script
-    assert 'guestStartTarget: null' in app_script
-    assert 'navigate(target.route || "M02001", target.params || { create: "1" })' in app_script
     assert 'start: "template"' in dashboard_script
     assert 'this.startMode = params.get("start") === "template"' in project_script
     assert 'this.context.navigate("M02003", { surveyId: survey.id, flow: "project", template: "1"' in project_script
@@ -205,7 +202,9 @@ def test_template_layer_locks_background_and_keeps_a_stable_scroll_area() -> Non
     assert "function startModalDrag(event)" in app_script
     assert "dom.modal.setPointerCapture(event.pointerId)" in app_script
     assert "function moveModalWithKeyboard(event)" in app_script
-    assert "html.app-modal-open, html.app-modal-open body" in app_css
+    assert "html.app-modal-open, html.app-message-open { overflow: hidden;" in app_css
+    assert "scrollbar-gutter: stable" in app_css
+    assert "state.modalScrollPosition" in app_script
     assert ".modal-drag-bar" in app_css
     assert ".modal-template-library { height: min(560px, calc(100vh - 30px)); overflow: hidden; }" in app_css
     assert "grid-template-rows: auto auto minmax(0, 1fr) auto" in builder_css

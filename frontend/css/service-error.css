@@ -1,0 +1,29 @@
+.service-failure { box-sizing: border-box; display: grid; place-items: center; min-height: min(72vh,720px); padding: 28px 16px; color: #17263c; font-family: inherit; font-size: 16px; line-height: 1.7; outline: none; }
+.service-failure *, .service-failure *::before, .service-failure *::after { box-sizing: border-box; }
+.service-failure-card { width: min(100%,640px); padding: clamp(24px,5vw,48px); background: #fff; border: 1px solid #d6dfeb; border-radius: 16px; box-shadow: 0 12px 40px #192d4b0d; }
+.service-failure-brand { display: block; margin-bottom: 22px; color: #526780; font-size: 12px; font-weight: 800; letter-spacing: .1em; }
+.service-failure-symbol { display: grid; place-items: center; width: 64px; height: 64px; margin-bottom: 20px; color: #906116; background: #fff4dc; border-radius: 16px; }
+.service-failure :is(h1,h2) { margin: 0 0 14px; color: #17263c; font-size: clamp(22px,3.6vw,28px); line-height: 1.4; overflow-wrap: anywhere; letter-spacing: -.03em; }
+.service-failure p { margin: 8px 0; color: #52637a; font-size: 16px; overflow-wrap: anywhere; }
+.service-failure .service-failure-description { color: #253b56; }
+.service-failure .service-failure-preserved { margin: 20px 0; padding: 14px 16px; color: #2d4a65; background: #edf5fc; border-left: 3px solid #6083aa; border-radius: 6px; font-size: 14px; }
+.service-failure-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+.service-failure-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 10px 16px; border: 1px solid #becbdc; border-radius: 8px; background: #fff; color: #344d69; font: inherit; font-size: 15px; font-weight: 750; line-height: 1.5; text-decoration: none; cursor: pointer; }
+.service-failure-button.is-primary { background: #28384d; color: #fff; border-color: #28384d; }
+.service-failure-button:hover { filter: brightness(.95); }
+.service-failure-button:focus-visible { outline: 3px solid #3f72c5; outline-offset: 3px; }
+.service-failure-meta { display: grid; gap: 6px; margin: 26px 0 0; padding-top: 16px; border-top: 1px solid #e4eaf1; font-size: 14px; color: #53647b; }
+.service-failure-meta > div { display: grid; grid-template-columns: 70px minmax(0,1fr); gap: 8px; }
+.service-failure-meta dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.service-failure-dialog { position: fixed; inset: 0; width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; padding: max(12px,env(safe-area-inset-top)) 0 max(12px,env(safe-area-inset-bottom)); border: 0; background: #f4f7fb; color: #17263c; overflow: auto; overscroll-behavior: contain; }
+.service-failure-dialog::backdrop { background: #f4f7fb; }
+.service-failure-dialog .service-failure { min-height: 100%; }
+.service-error-page { margin: 0; background: #f4f7fb; color: #17263c; font: 16px/1.7 system-ui,sans-serif; }
+.service-error-page main { min-height: 100dvh; }
+.service-error-skip { position: absolute; top: -70px; left: 12px; padding: 10px 16px; background: #fff; color: #203c64; z-index: 2; }
+.service-error-skip:focus { top: 10px; }
+@media (max-width: 36rem) { .service-failure { padding: 16px 10px; } .service-failure-card { padding: 24px 18px; border-radius: 10px; } .service-failure-actions { flex-direction: column; } .service-failure-button { width: 100%; } .service-failure-meta > div { grid-template-columns: 1fr; gap: 0; } }
+
+.public-state-card:has(.service-failure) { padding: 0; border: 0; background: transparent; box-shadow: none; }
+
+.service-failure:focus-visible { outline: none; }

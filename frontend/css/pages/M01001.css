@@ -41,13 +41,9 @@
 .visitor-start-card li::before { color: var(--jade); content: "✓"; font-size: var(--text-ui); font-weight: 900; }
 .visitor-start-action-box { display: grid; gap: 8px; align-content: center; align-self: stretch; width: 154px; min-height: 142px; margin: 0; padding: 12px; background: #fff; border: 1px solid #d7dee8; border-radius: 12px; }
 .visitor-start-action-box .button { width: 100%; min-height: 46px; margin: 0; padding: 8px 10px; box-shadow: none; line-height: 1.3; white-space: normal; }
-.visitor-database-actions { grid-template-columns: 1fr; }
 .visitor-card-topline { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
 .visitor-card-kicker { color: var(--blue-strong); font-size: var(--text-meta); font-weight: 900; letter-spacing: .04em; }
 .visitor-card-recommendation { padding: 4px 8px; color: #245f55; background: #e7f5f1; border-radius: 999px; font-size: var(--text-ui); font-weight: 850; white-space: nowrap; }
-.visitor-database-card { background: #f7f9fc; border-color: #cfd8e6; }
-.visitor-database-card.is-disabled { opacity: .72; }
-.visitor-start-card .visitor-database-status { min-height: 18px; margin: -2px 0 10px; color: var(--jade); font-size: var(--text-ui); font-weight: 750; }
 .visitor-member-card { color: var(--ink); background: #fff; }
 .visitor-member-actions { grid-template-columns: 1fr; }
 .visitor-member-actions .button { min-height: 44px; font-size: var(--text-ui); }

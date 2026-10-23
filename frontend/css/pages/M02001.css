@@ -35,10 +35,10 @@
 .project-stats div:last-child { border-right: 0; }
 .project-stats dt { color: var(--muted); font-size: var(--text-ui); }
 .project-stats dd { margin: 0; font-weight: 800; }
-.project-card-footer { display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 10px 17px; background: #fbfcfd; border-top: 1px solid #e7ebf1; }
-.project-card-footer > span { color: var(--muted); font-size: var(--text-ui); }
-.project-card-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-.project-card-actions button { min-height: 30px; padding: 5px 9px; font-size: var(--text-ui); }
+.project-card-footer { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; min-height: 52px; padding: 10px 17px; background: #fbfcfd; border-top: 1px solid #e7ebf1; }
+.project-card-footer > span { flex: 0 0 auto; color: var(--muted); font-size: var(--text-ui); white-space: nowrap; }
+.project-card-actions { display: flex; flex: 1 1 auto; min-width: 0; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.project-card-actions button { flex: 0 0 auto; white-space: nowrap; min-height: 30px; padding: 5px 9px; font-size: var(--text-ui); }
 .project-grid.is-list .project-card { display: grid; grid-template-columns: 135px minmax(220px, 1fr) minmax(230px, .8fr) 220px 220px; align-items: center; min-height: 104px; }
 .project-grid.is-list .project-card-head { padding: 18px; }
 .project-grid.is-list .project-card-main { padding: 14px; }

@@ -20,7 +20,7 @@
         info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
         time: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
     };
-    const credentialEndpoints = new Set(["/api/auth/login", "/api/auth/signup", "/api/auth/guest"]);
+    const credentialEndpoints = new Set(["/api/auth/login", "/api/auth/signup"]);
     const sessionMutationEndpoints = new Set([...credentialEndpoints, "/api/auth/logout"]);
     const sessionProbeEndpoints = new Set(["/api/auth/me"]);
     let sessionGeneration = 0;
@@ -31,92 +31,199 @@
     }
 
     async function request(path, options = {}) {
-        const endpoint = String(path).split("?", 1)[0];
-        const requestSessionGeneration = sessionGeneration;
-        const headers = new Headers(options.headers || {});
-        let body = options.body;
-        if (body && !(body instanceof FormData) && typeof body !== "string") {
-            headers.set("Content-Type", "application/json");
-            body = JSON.stringify(body);
-        }
-        headers.set("Accept", "application/json");
-        const response = await fetch(`${window.SURVEYONE_CONFIG.apiBaseUrl}${path}`, {
-            ...options,
-            headers,
-            body,
-            credentials: "same-origin"
-        });
-        if (response.ok && sessionMutationEndpoints.has(endpoint)) sessionGeneration += 1;
-        const sessionExpiresAt = response.headers.get("X-SurveyOne-Session-Expires-At");
-        if (sessionExpiresAt && Number.isFinite(Date.parse(sessionExpiresAt))) {
-            window.dispatchEvent(new CustomEvent("surveyone:session-refreshed", {
-                detail: { expiresAt: sessionExpiresAt }
-            }));
-        }
-        const contentType = response.headers.get("content-type") || "";
-        const rawBody = await response.text();
-        const expectsJson = contentType.toLowerCase().includes("json");
-        let payload = rawBody;
-        if (expectsJson) {
-            if (!rawBody.trim()) {
-                payload = null;
-            } else {
-                try {
-                    payload = JSON.parse(rawBody);
-                } catch (cause) {
-                    const message = response.ok
-                        ? "서버 응답 형식이 올바르지 않습니다. 잠시 후 다시 시도해 주세요."
-                        : `요청을 처리하지 못했습니다. (${response.status})`;
-                    const error = new Error(message, { cause });
+        const requestController = typeof AbortController === "function" ? new AbortController() : null;
+        const abortTransport = () => requestController?.abort();
+        if (options.signal?.aborted) abortTransport();
+        options.signal?.addEventListener("abort", abortTransport, { once: true });
+        try {
+            return await bounded((async () => {
+                const endpoint = String(path).split("?", 1)[0];
+                const requestSessionGeneration = sessionGeneration;
+                const headers = new Headers(options.headers || {});
+                let body = options.body;
+                if (body && !(body instanceof FormData) && typeof body !== "string") {
+                    headers.set("Content-Type", "application/json");
+                    body = JSON.stringify(body);
+                }
+                headers.set("Accept", "application/json");
+                const response = await fetch(`${window.SURVEYONE_CONFIG.apiBaseUrl}${path}`, {
+                    ...options,
+                    headers,
+                    body,
+                    credentials: "same-origin",
+                    signal: requestController?.signal || options.signal
+                });
+                if (response.ok && sessionMutationEndpoints.has(endpoint)) sessionGeneration += 1;
+                const sessionExpiresAt = response.headers.get("X-SurveyOne-Session-Expires-At");
+                if (sessionExpiresAt && Number.isFinite(Date.parse(sessionExpiresAt))) {
+                    window.dispatchEvent(new CustomEvent("surveyone:session-refreshed", {
+                        detail: { expiresAt: sessionExpiresAt }
+                    }));
+                }
+                const contentType = response.headers.get("content-type") || "";
+                const rawBody = await response.text();
+                const expectsJson = contentType.toLowerCase().includes("json");
+                let payload = rawBody;
+                if (expectsJson) {
+                    if (!rawBody.trim()) {
+                        payload = null;
+                    } else {
+                        try {
+                            payload = JSON.parse(rawBody);
+                        } catch (cause) {
+                            const message = response.ok
+                                ? "서버 응답 형식이 올바르지 않습니다. 잠시 후 다시 시도해 주세요."
+                                : `요청을 처리하지 못했습니다. (${response.status})`;
+                            const error = new Error(message, { cause });
+                            error.status = response.status;
+                            error.payload = null;
+                            if (response.ok) throw serviceError("INVALID_RESPONSE", { status: response.status });
+                            if (response.status >= 500) throw serviceError(response.status === 504 ? "REQUEST_TIMEOUT" : "SERVICE_UNAVAILABLE", { status: response.status });
+                            throw error;
+                        }
+                    }
+                }
+                if (response.status >= 500 || response.status === 408) {
+                    const code = payload?.code === "DATABASE_UNAVAILABLE" ? "DATABASE_UNAVAILABLE"
+                        : response.status === 504 || response.status === 408 ? "REQUEST_TIMEOUT"
+                        : response.status === 502 || response.status === 503 ? "SERVICE_UNAVAILABLE" : "SERVER_ERROR";
+                    throw serviceError(code, { status: response.status, requestId: payload?.requestId });
+                }
+                if (response.ok && response.status !== 204 && (!expectsJson || !payload || typeof payload !== "object")) {
+                    throw serviceError("INVALID_RESPONSE", { status: response.status });
+                }
+                if (!response.ok) {
+                    const detail = payload?.detail ?? payload?.message;
+                    const message = Array.isArray(detail)
+                        ? detail.map((item) => item?.msg || item?.message || String(item)).join(" / ")
+                        : (typeof detail === "string"
+                            ? detail
+                            : (typeof detail?.message === "string" ? detail.message : `요청을 처리하지 못했습니다. (${response.status})`));
+                    const error = new Error(message);
                     error.status = response.status;
-                    error.payload = null;
+                    error.payload = payload;
+                    if (
+                        response.status === 401
+                        && !credentialEndpoints.has(endpoint)
+                        && !sessionProbeEndpoints.has(endpoint)
+                        && requestSessionGeneration === sessionGeneration
+                    ) {
+                        sessionGeneration += 1;
+                        error.sessionInvalid = true;
+                        window.dispatchEvent(new CustomEvent("surveyone:session-invalid", {
+                            detail: { endpoint, message }
+                        }));
+                    }
                     throw error;
                 }
-            }
-        }
-        if (!response.ok) {
-            const detail = payload?.detail ?? payload?.message;
-            const message = Array.isArray(detail)
-                ? detail.map((item) => item?.msg || item?.message || String(item)).join(" / ")
-                : (typeof detail === "string"
-                    ? detail
-                    : (typeof detail?.message === "string" ? detail.message : `요청을 처리하지 못했습니다. (${response.status})`));
-            const error = new Error(message);
-            error.status = response.status;
-            error.payload = payload;
-            if (
-                response.status === 401
-                && !credentialEndpoints.has(endpoint)
-                && !sessionProbeEndpoints.has(endpoint)
-                && requestSessionGeneration === sessionGeneration
-            ) {
-                sessionGeneration += 1;
-                error.sessionInvalid = true;
-                window.dispatchEvent(new CustomEvent("surveyone:session-invalid", {
-                    detail: { endpoint, message }
+                if (
+                    payload
+                    && typeof payload === "object"
+                    && !Array.isArray(payload)
+                    && Object.prototype.hasOwnProperty.call(payload, "data")
+                    && (payload.status === "success" || Object.keys(payload).length <= 3)
+                ) {
+                    return payload.data;
+                }
+                return payload;
+            })(), { signal: options.signal, timeoutMs: options.timeoutMs ?? window.SURVEYONE_CONFIG.requestTimeoutMs ?? 30000,
+                onTimeout: abortTransport });
+        } catch (cause) {
+            if (cause?.name === "AbortError" || options.signal?.aborted) throw cause;
+            const error = cause instanceof TypeError ? serviceError(globalThis.navigator?.onLine === false ? "OFFLINE" : "NETWORK_ERROR") : cause;
+            error.method = String(options.method || "GET").toUpperCase();
+            if (isServiceError(error) && !options.silentFailure) {
+                window.dispatchEvent(new CustomEvent("surveyone:service-error", {
+                    detail: { error, signal: options.signal, method: error.method }
                 }));
             }
             throw error;
+        } finally {
+            options.signal?.removeEventListener("abort", abortTransport);
         }
-        if (
-            payload
-            && typeof payload === "object"
-            && !Array.isArray(payload)
-            && Object.prototype.hasOwnProperty.call(payload, "data")
-            && (payload.status === "success" || Object.keys(payload).length <= 3)
-        ) {
-            return payload.data;
-        }
-        return payload;
     }
 
     const api = {
-        get(path) { return request(path); },
+        get(path, options = {}) { return request(path, options); },
         post(path, body, options = {}) { return request(path, { ...options, method: "POST", body }); },
-        put(path, body) { return request(path, { method: "PUT", body }); },
-        patch(path, body) { return request(path, { method: "PATCH", body }); },
-        delete(path) { return request(path, { method: "DELETE" }); }
+        put(path, body, options = {}) { return request(path, { ...options, method: "PUT", body }); },
+        patch(path, body, options = {}) { return request(path, { ...options, method: "PATCH", body }); },
+        delete(path, options = {}) { return request(path, { ...options, method: "DELETE" }); }
     };
+
+    const failureCopy = Object.freeze({
+        DATABASE_UNAVAILABLE: ["데이터베이스 연결이 원활하지 않습니다", "저장소에 일시적으로 연결할 수 없어 작업을 완료하지 못했습니다.", "잠시 후 다시 시도해 주세요. 문제가 계속되면 관리자에게 아래 확인 정보를 전달해 주세요.", "database"],
+        REQUEST_TIMEOUT: ["응답 대기 시간이 초과되었습니다", "서버에서 정해진 시간 안에 응답하지 않았습니다.", "네트워크 연결을 확인하고 잠시 후 다시 시도해 주세요.", "time"],
+        OFFLINE: ["인터넷 연결이 끊어졌습니다", "현재 기기가 네트워크에 연결되어 있지 않습니다.", "Wi-Fi 또는 유선 연결을 확인한 뒤 다시 시도해 주세요.", "info"],
+        NETWORK_ERROR: ["웹서비스에 연결할 수 없습니다", "서버까지 연결되지 않아 응답을 받지 못했습니다.", "인터넷 연결을 확인해 주세요. 서버 재시작이나 일시적인 접속 장애일 수 있습니다.", "info"],
+        INVALID_RESPONSE: ["서버 응답을 확인할 수 없습니다", "정상적인 처리 결과 대신 예상하지 못한 응답을 받았습니다.", "잠시 후 다시 시도해 주세요. 계속되면 관리자에게 확인 정보를 전달해 주세요.", "info"],
+        ASSET_LOAD_FAILED: ["작업 화면을 불러오지 못했습니다", "화면에 필요한 파일을 가져오지 못했습니다.", "연결 상태를 확인하고 화면을 다시 불러와 주세요.", "info"],
+        SERVICE_UNAVAILABLE: ["웹서비스를 잠시 이용할 수 없습니다", "서버가 요청을 처리하지 못하고 있습니다.", "서비스 재시작 또는 일시적인 과부하일 수 있습니다. 잠시 후 다시 시도해 주세요.", "info"],
+        SERVER_ERROR: ["요청 처리 중 문제가 발생했습니다", "서버에서 작업을 정상적으로 완료하지 못했습니다.", "잠시 후 다시 시도해 주세요. 문제가 계속되면 관리자에게 확인 정보를 전달해 주세요.", "info"]
+    });
+    function serviceError(code, values = {}) {
+        const safe = Object.hasOwn(failureCopy, code) ? code : "SERVER_ERROR";
+        return Object.assign(new Error(failureCopy[safe][1]), values, { code: safe, serviceFailure: true });
+    }
+    function isServiceError(error) {
+        return error?.name !== "AbortError" && (error?.serviceFailure === true || error?.status >= 500 || error?.status === 408 || error instanceof TypeError);
+    }
+    function bounded(task, { signal, timeoutMs = 30000, onTimeout } = {}) {
+        if (typeof setTimeout !== "function") return Promise.resolve(task);
+        return new Promise((resolve, reject) => {
+            let settled = false, timer;
+            const finish = (error, value) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                signal?.removeEventListener("abort", onAbort);
+                if (error) reject(error); else resolve(value);
+            };
+            const onAbort = () => { const error = new Error("요청이 취소되었습니다."); error.name = "AbortError"; finish(error); };
+            if (signal?.aborted) onAbort();
+            else {
+                signal?.addEventListener("abort", onAbort, { once: true });
+                timer = setTimeout(() => { finish(serviceError("REQUEST_TIMEOUT")); onTimeout?.(); }, Math.max(1, Number(timeoutMs) || 30000));
+            }
+            Promise.resolve(task).then(value => finish(null, value), error => finish(error));
+        });
+    }
+    function failureInfo(error = {}) {
+        const code = Object.hasOwn(failureCopy, error.code) ? error.code
+            : error.status === 504 || error.status === 408 ? "REQUEST_TIMEOUT"
+            : error.status === 502 || error.status === 503 ? "SERVICE_UNAVAILABLE"
+            : error instanceof TypeError ? "NETWORK_ERROR" : "SERVER_ERROR";
+        const [title, description, guidance, symbol] = failureCopy[code];
+        return { code, title, description, guidance, symbol,
+            requestId: /^[a-f0-9-]{16,40}$/i.test(error.requestId || "") ? error.requestId : "",
+            status: Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? error.status : null };
+    }
+    let failureSequence = 0;
+    function failureMarkup(error, { heading = "h2", retry = true, preserve = false, write = false, home = true } = {}) {
+        const info = failureInfo(error);
+        const tag = heading === "h1" ? "h1" : "h2";
+        const id = `serviceFailureTitle-${++failureSequence}`;
+        return `<section class="service-failure" tabindex="-1" aria-labelledby="${id}" data-service-failure><div class="service-failure-card"><span class="service-failure-brand">IN-SURVEYONE</span><span class="service-failure-symbol">${icon(info.symbol, 36)}</span><${tag} id="${id}">${info.title}</${tag}><p class="service-failure-description">${info.description}</p><p>${info.guidance}</p>${preserve ? `<p class="service-failure-preserved">작성 중인 내용은 현재 화면에 유지되어 있습니다.${write === "submission" ? " 응답 제출 결과를 확인할 수 없습니다. 이 창을 유지하고 답변을 바꾸지 않은 채 잠시 후 다시 제출해 주세요." : write ? " 요청이 서버에서 처리됐는지는 확인할 수 없습니다. 저장 상태나 발송 이력을 먼저 확인해 주세요." : " 화면으로 돌아가 작업을 계속할 수 있습니다."}</p>` : ""}<div class="service-failure-actions">${preserve ? '<button type="button" class="service-failure-button is-primary" data-failure-return>작업 화면으로 돌아가기</button>' : ""}${retry ? `<button type="button" class="service-failure-button${preserve ? "" : " is-primary"}" data-failure-retry>${preserve ? "화면 다시 불러오기" : "다시 시도"}</button>` : ""}${home && !preserve ? '<a class="service-failure-button" href="/#/M01001" data-failure-home>홈으로</a>' : ""}</div><dl class="service-failure-meta"><div><dt>상태</dt><dd>${info.code}${info.status ? ` · HTTP ${info.status}` : ""}</dd></div>${info.requestId ? `<div><dt>문의 번호</dt><dd>${escapeHtml(info.requestId)}</dd></div>` : ""}</dl></div></section>`;
+    }
+    let activeFailure = null;
+    function closeFailure() { if (activeFailure?.open) activeFailure.close(); }
+    function openFailure(error, { onRetry = null, write = false } = {}) {
+        if (activeFailure?.open) return activeFailure;
+        const returnFocus = document.activeElement;
+        const dialog = document.createElement("dialog");
+        activeFailure = dialog;
+        dialog.className = "service-failure-dialog";
+        dialog.setAttribute("aria-label", failureInfo(error).title);
+        dialog.innerHTML = failureMarkup(error, { preserve: true, retry: Boolean(onRetry), write, home: false });
+        dialog.addEventListener("close", () => { dialog.remove(); if (activeFailure === dialog) activeFailure = null; if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true }); }, { once: true });
+        dialog.querySelector("[data-failure-return]").addEventListener("click", () => dialog.close());
+        dialog.querySelector("[data-failure-retry]")?.addEventListener("click", () => { dialog.close(); void onRetry(); });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+        dialog.querySelector("[data-failure-return]").focus({ preventScroll: true });
+        return dialog;
+    }
+    const failure = Object.freeze({ create: serviceError, isService: isServiceError, info: failureInfo, markup: failureMarkup, open: openFailure, close: closeFailure, bounded });
 
     function escapeHtml(value) {
         return String(value ?? "")
@@ -225,5 +332,5 @@
         }
     });
 
-    window.Common = { preferences, api, request, icon, escapeHtml, formatNumber, formatDate, debounce, copyText, downloadCsv, questionsOf };
+    window.Common = { failure, preferences, api, request, icon, escapeHtml, formatNumber, formatDate, debounce, copyText, downloadCsv, questionsOf };
 })();

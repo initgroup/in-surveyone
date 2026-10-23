@@ -20,16 +20,14 @@
 
         bind() {
             this.onClick = (event) => {
-                const guestStart = event.target.closest("[data-start-guest]");
-                if (guestStart) { this.context.openAuth("guest"); return; }
+                if (event.target.closest("[data-showcase]")) { this.context.navigate("M01002"); return; }
                 const authStart = event.target.closest("[data-start-auth]");
                 if (authStart) { this.context.openAuth(authStart.dataset.startAuth); return; }
-                if (event.target.closest("[data-visitor-database-retry]")) { void this.configureDatabaseGuestEntry({ force: true }); return; }
                 if (event.target.closest("[data-dashboard-create]")) { this.openWorkspace("M02001", { create: "1" }); return; }
-                if (event.target.closest("[data-dashboard-templates]")) { this.openWorkspace("M02001", { create: "1", start: "template" }); return; }
+                if (event.target.closest("[data-dashboard-templates]")) { if (this.isVisitor) { this.context.navigate("M01002"); return; } this.openWorkspace("M02001", { create: "1", start: "template" }); return; }
                 if (event.target.closest("[data-dashboard-all]")) { this.openWorkspace("M02001"); return; }
                 if (event.target.closest("[data-dashboard-reports]")) { this.openWorkspace("M05001"); return; }
-                if (event.target.closest("[data-dashboard-refresh]")) { void this.load({ announce: true, refreshGuest: true }); return; }
+                if (event.target.closest("[data-dashboard-refresh]")) { void this.load({ announce: true,  }); return; }
                 if (event.target.closest("[data-blank-survey]")) { this.openWorkspace("M02001", { create: "1" }); return; }
                 const project = event.target.closest("[data-open-survey]");
                 if (project) this.context.navigate("M02003", { surveyId: project.dataset.openSurvey });
@@ -38,11 +36,11 @@
         },
 
         openWorkspace(route, params = null) {
-            if (this.isVisitor) this.context.openAuth("guest", { route, params });
+            if (this.isVisitor) this.context.openAuth("login");
             else this.context.navigate(route, params);
         },
 
-        async load({ announce = false, refreshGuest = false } = {}) {
+        async load({ announce = false } = {}) {
             if (this.loading) return;
             this.loading = true;
             const refreshButton = this.root.querySelector("[data-dashboard-refresh]");
@@ -54,15 +52,7 @@
             if (this.isVisitor) {
                 this.renderMetrics({ drafts: 0, active: 0, responses: 0, closed: 0 });
                 this.renderRecent([]);
-                try {
-                    await this.configureDatabaseGuestEntry({ force: refreshGuest });
-                    this.renderTemplateEntry();
-                } catch (error) {
-                    this.renderTemplateEntry();
-                    console.warn("게스트 시작 상태를 확인하지 못했습니다.", error);
-                    if (announce) this.context.toast("일부 대시보드 정보를 새로고침하지 못했습니다.", "error");
-                    announce = false;
-                }
+                this.renderTemplateEntry();
                 this.finishLoading(announce);
                 return;
             }
@@ -97,28 +87,6 @@
                 refreshButton.textContent = "새로고침";
             }
             if (announce) this.context.toast("대시보드 정보를 새로고침했습니다.", "success");
-        },
-
-        async configureDatabaseGuestEntry({ force = false } = {}) {
-            const button = this.root.querySelector("[data-visitor-database-button]");
-            const retry = this.root.querySelector("[data-visitor-database-retry]");
-            const status = this.root.querySelector("[data-visitor-database-status]");
-            if (button) button.disabled = true;
-            if (retry) retry.disabled = true;
-            if (status) status.textContent = "발급 상태를 확인하고 있습니다.";
-            const capabilities = await this.context.loadGuestCapabilities({ force });
-            const database = capabilities?.modes?.find((mode) => mode.mode === "database");
-            const card = this.root.querySelector("[data-visitor-database-card]");
-            const available = Boolean(database?.available);
-            card?.classList.toggle("is-disabled", !available);
-            if (button) button.disabled = !available;
-            if (retry) {
-                retry.hidden = available;
-                retry.disabled = available;
-            }
-            if (status) status.textContent = available
-                ? "현재 발급할 수 있습니다. 유효기간과 이용 한도는 발급 화면에서 확인하세요."
-                : `현재 발급할 수 없습니다. ${database?.reason || "서비스 저장소 연결 상태를 확인해 주세요."}`;
         },
 
         renderMetrics(summary) {
@@ -168,7 +136,7 @@
                 const message = this.isVisitor
                     ? "현재는 둘러보기 상태입니다. 위에서 시작 방식을 선택하면 내 프로젝트가 여기에 표시됩니다."
                     : "아직 만든 설문이 없습니다.";
-                const action = this.isVisitor ? "체험 시작하기" : "첫 설문 만들기";
+                const action = this.isVisitor ? "로그인하고 시작" : "첫 설문 만들기";
                 host.innerHTML = `<div class="dashboard-inline-empty"><span>${message}</span><button class="button button-small button-function button-important" data-dashboard-create>${action}</button></div>`;
                 return;
             }

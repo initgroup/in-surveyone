@@ -89,3 +89,12 @@ def test_text_recipient_import_handles_one_thousand_rows() -> None:
 
     assert len(recipients) == 1000
     assert recipients[-1].name == "응답자 1000"
+
+
+def test_mobile_import_maps_sms_and_kakao_and_preserves_audience_code():
+    source = "name,countryCode,preferredLanguage,mobile,audienceCode\n대상자 A001,KR,ko,01012345678,2026-team\n"
+    recipients, _, _ = parse_recipient_file("recipients.csv", source.encode("utf-8"))
+    recipient = recipients[0]
+    assert recipient.kakao_id == recipient.mobile
+    assert {channel.value for channel in recipient.channels} == {"SMS", "KAKAO"}
+    assert recipient.audience_code == "2026-team"

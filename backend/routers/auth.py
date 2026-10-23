@@ -5,17 +5,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Response
 
 from backend.config import get_settings
-from backend.errors import ServiceUnavailableError
-from backend.models import GuestCapabilitiesView, GuestMode
-from backend.stores import (
-    guest_capabilities,
-    primary_store,
-)
+from backend.stores import primary_store
 from backend.models import (
     ApiResponse,
     AuthSessionView,
-    GuestProvisionView,
-    GuestSessionRequest,
     LoginRequest,
     SignupRequest,
 )
@@ -59,11 +52,7 @@ def _set_session_cookie(
         1,
         int((session.expires_at - datetime.now(timezone.utc)).total_seconds()),
     )
-    maximum_seconds = (
-        settings.guest_project_ttl_hours * 60 * 60
-        if session.user.is_guest
-        else settings.session_ttl_seconds
-    )
+    maximum_seconds = settings.session_ttl_seconds
     cookie_options: dict[str, object] = {}
     if persistent:
         cookie_options["max_age"] = min(remaining_seconds, maximum_seconds)
@@ -87,33 +76,6 @@ def _set_session_cookie(
     )
     _prevent_auth_caching(response)
     _set_session_expiry_header(response, session)
-
-
-@router.post("/guest", response_model=ApiResponse[GuestProvisionView], status_code=201)
-def start_guest_session(
-    response: Response,
-    payload: GuestSessionRequest | None = None,
-) -> ApiResponse[GuestProvisionView]:
-    request_payload = payload or GuestSessionRequest()
-    capabilities = guest_capabilities(GuestMode.DATABASE)
-    database = capabilities.modes[0]
-    if not database.available:
-        raise ServiceUnavailableError(
-            database.reason or "Database guest mode is unavailable."
-        )
-    store = primary_store()
-    provisioned = store.create_guest(
-        request_payload.display_name,
-        request_payload.mode,
-    )
-    token, session = store.login(
-        LoginRequest(
-            login_id=provisioned.guest_credential.login_id,
-            password=provisioned.guest_credential.initial_password,
-        )
-    )
-    _set_session_cookie(response, token, session)
-    return ApiResponse(data=provisioned.model_copy(update={"session": session}))
 
 
 @router.post("/signup", response_model=ApiResponse[AuthSessionView], status_code=201)
@@ -168,12 +130,3 @@ def extend_session(
     session = primary_store().extend_session(token)
     _set_session_expiry_header(response, session)
     return ApiResponse(data=session)
-
-
-@router.get(
-    "/guest/capabilities",
-    response_model=ApiResponse[GuestCapabilitiesView],
-)
-def capabilities(
-) -> ApiResponse[GuestCapabilitiesView]:
-    return ApiResponse(data=guest_capabilities(GuestMode.DATABASE))

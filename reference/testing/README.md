@@ -28,6 +28,8 @@
 | 저장·취소·이동 | 해당 저장/복원 테스트 + 저장 실패/수정 중 저장/이탈 중 관련 경계 | 여러 편집기의 공통 처리 변경이면 workflow 브라우저 묶음 추가 |
 | 문항·응답 데이터 계약 | schema + 편집/저장 + 공개 응답 + 과거 버전/보고서/export 중 영향받는 경계 | 공유 모델/serializer 변경이 여러 업무로 확산되면 전체 검사 |
 | 공통 CSS·SPA shell·공통 UI 모듈 | 호출처의 대표 업무 화면과 관련 계약/라이프사이클 테스트 | 전역 글꼴·레이아웃·내비게이션은 영향받는 메뉴/화면 폭을 넓게 확인 |
+| 장애 안내·타임아웃 | `tests/test_service_failures.py`, `tests/browser_service_failures.py`의 1440/768/360px 초기 세션·DB·API/자산 지연·취소·입력 보존·공개 재시도 검증 | 공통 API/라우팅 변경이므로 전체 검사 및 관련 정상 흐름 검증 |
+| 로그인 정책·중복 접속 | `tests/test_login_policy.py`의 Memory/Oracle 공통 계약, `tests/browser_login_policy.py`의 1440/768/360px 관리자 권한·수동 저장·실패·충돌·재조회 검증. 실제 DB 로그인·세션은 사용하지 않음 | 인증·설정 전역 계약 변경 시 전체 검사 |
 | 인증·tenant·세션·Origin·DB 저장소 | 관련 허용/차단·권한·트랜잭션·repository 계약 + 관련 API 흐름 | 공통 보안/영속성 계약이 광범위하게 바뀌거나 범위 불명확하면 전체 검사 |
 | DDL/ALT·의존성·실행 환경 | schema fresh/upgrade 계약 또는 실제 바뀐 의존성의 빌드/import·사용처 | 공유 동작 영향에 따라 전체 검사. 실제 DB migration 실행은 별도 작업 |
 | 배포 전 또는 영향 범위 불명확 | 누적 변경 전체에 `validate-source.ps1` + 영향 있는 브라우저 흐름 | 운영 DB/발송 검증은 별도 범위로 명시하고 자동화 테스트 통과와 구분 |
@@ -49,7 +51,7 @@
 | 공통 환경 설정·업무 이동 | `test_frontend_workflow_runtime.py`, `test_frontend_workspace_navigation.py` |
 | HTML/CSS/JS 편집·격리 미리보기 | `test_frontend_code_editor.py`, `test_custom_code_events.py`, HTML 계약 변경 시 `test_survey_document_contract.py` |
 | 표시 문구·결과 코드·내보내기 | `test_answer_codes.py`, `test_response_export.py`, `test_question_contract.py`의 관련 테스트 |
-| 공개 URL·확정·배포 센터 | `test_publication_links.py`, `test_frontend_publication_navigation.py`, `test_frontend_distribution.py` |
+| 공개 URL·확정·배포 센터 | `test_publication_links.py`, `test_frontend_publication_navigation.py`, `test_frontend_distribution.py`; URL 관리의 고정 헤더·하단·지연/실패·재발급은 `venv\Scripts\python.exe -B -X utf8 tests/browser_publication_links.py` (합성 API, 20개 대상, 1440/768/360px 및 360×480px) |
 | 도메인·CORS·로그인/쓰기 Origin | `test_config_compat.py`, `test_domain_access.py` |
 | 공개 제출 제한·질문 검증 | `test_request_guard.py`, `test_question_contract.py`, `test_survey_audience_codes.py`의 관련 테스트 |
 | Oracle SQL·pool·schema | `test_oracle_repository.py`, `test_database_pool.py`, `test_schema_contract.py`의 관련 테스트 |
@@ -91,6 +93,18 @@ $env:SURVEYONE_LOAD_DOTENV = 'false'
 
 pytest는 `tests/conftest.py`가 테스트 전용 memory 모드와 `.env` 로드 차단을 강제합니다. memory/가짜 Oracle 기반 테스트는 운영 Oracle 접속·저장 성공의 증거가 아닙니다. 운영 검증이 필요하면 AGENTS.md의 별도 절차를 적용합니다.
 
+## Oracle URL 메타데이터의 선택 필드 회귀
+
+`SURVEY_PUBLIC_LINKS_BY_OWNER`의 SQL/JSON 선택 필드는 과거 확정 snapshot에 없을 수 있습니다. 번역 항목에 제목이 없거나 `audienceRoutes/defaultAudience`가 생략되면 `NULL ON EMPTY`로 처리하고 기본 제목·전체 설문 URL을 사용합니다. 손상된 JSON과 필수 제목의 오류를 무조건 숨기지 않습니다.
+
+JSON 경로 동작은 memory/가짜 Oracle 테스트만으로 검증되지 않습니다. 해당 SQL을 수정했으면 Oracle 연결 환경에서 다음 읽기 전용 검증도 실행합니다.
+
+```powershell
+.\venv\Scripts\python.exe -B -X utf8 tests/oracle_publication_links.py
+```
+
+이 도구는 실제 업무 행 대신 DUAL에 바인딩한 합성 CLOB만 조회합니다. 번역 제목 누락·빈 번역·과거 선택 설정 누락·명시적 null·큰 대상 목록을 검증하며 기본 pytest에서 실행하지 않습니다. 실제 설문을 확인할 때는 조회 성공과 건수만 보고하고 계정·프로젝트 식별자·제목·응답 원문을 출력하지 않습니다.
+
 ## 반복 실행과 결과 보고
 
 - 같은 수정 작업에서는 한 동작을 구현할 때마다 전체 검사하지 않고, 의미 있는 변경 묶음이 완성된 뒤 관련 검사를 실행합니다.
@@ -101,3 +115,19 @@ pytest는 `tests/conftest.py`가 테스트 전용 memory 모드와 `.env` 로드
 - 회귀 테스트는 재발 방지 가치가 있는 사용자 동작·데이터 계약에 추가합니다. 단순 문구·색상 변경에 테스트를 자동으로 늘리거나 기존 구현을 복제한 검사를 만들지 않습니다.
 
 공개 한 문항씩 보기의 상단 이동·첫 소개·마지막 제출은 `node tests/browser_public_paged.cjs`로 점검합니다. 80문항·60개 보기·30행 매트릭스의 PC/태블릿/모바일과 별도 미리보기 iframe을 사용하며 운영 데이터에 접근하지 않습니다. 미리보기 fixture만 바꾼 경우 `$env:SURVEYONE_PAGED_PREVIEW_ONLY='1'`로 독립된 iframe 시나리오만 실행할 수 있습니다. 전체 묶음을 실행할 때는 해당 변수를 해제합니다.
+
+
+## SOLAPI와 배포센터 검증
+
+- `tests/test_solapi_delivery.py`: HMAC 인증, 선택 대상·대상별 확정 URL·동일 문안의 미리보기/발송, 승인 템플릿과 변수·버튼, 예약, 부분 접수 실패, 타임아웃·잘못된 응답의 확인 필요 상태, 재호출 중복 차단, 테넌트·revision·동의 및 Oracle 선점 커밋 후 네트워크 호출을 가짜 transport로 검증합니다.
+- `venv\Scripts\python.exe -B -X utf8 tests/browser_distribution.py`: 1440/768/360px에서 두 단계 탐색, 일괄 명단과 개별 수신 연락처 범위 분리·모드 복귀 시 체크 보존, URL 레이어 전후 경로·입력·페이지/작업영역 스크롤 보존, 대상자 검색·채널 선택별 실제 문안·링크·승인 카카오 버튼, 같은 화면의 예약 시각 전달, 이메일 제목·HTML 격리와 외부 추적 차단, 편집 후 확인 무효화, 그리드 26행 직접 붙여넣기·열 제목 자동 인식·블록 편집/되돌리기·키보드 페이지 이동·행/상세 동기화·2,000명 경계, 25명 선택, 저장 후 마스킹과 전체 연락처 변경 시 채널 선택 보존, 기본 문안·승인 알림톡 매핑, 50건 미리보기·재시도·가짜 발송, 새 배포 복구와 모바일 하단 버튼을 확인합니다. 합성 화면은 `.tmp/delivery-review/`에 둡니다.
+- 이 검증은 운영 Oracle 데이터와 SOLAPI 실제 발신번호·키·잔액·수신을 확인하지 않으며 실제 외부 전송을 수행하지 않습니다. DB schema 변경은 없습니다.
+
+
+발송 이력 변경은 `test_solapi_delivery.py`의 한도 오류·HTTP 메시지 정제·과거 배치/테넌트 조회·Oracle JSON 결과 저장 검증과 `browser_distribution.py`의 이력 조회·필터·상세 표시를 실행합니다. 이력 SQL은 현재 공개 버전/활성 배포 조건을 사용하지 않으며, DB 구조를 변경하지 않습니다.
+
+
+## 배포 버전 검증
+
+- `tests/test_release_version.py`: VERSION 형식·날짜, 비로그인/DB 비의존 API와 no-store, 정적 자산 동기화, 임시 프로젝트에서 호출 위치와 무관한 PowerShell 갱신·실패 전 원본 보존을 확인합니다.
+- `venv\Scripts\python.exe -B -X utf8 tests/browser_release_version.py`: 합성 API로 1440/768/360px 헤더, 버전 조회가 느리거나 실패해도 입력 가능, 서버/화면 버전 차이 표시, 확인 간격과 미저장 입력 보존을 검증합니다. 운영 DB·배포·발송을 사용하지 않습니다. 캡처는 `.tmp/release-version-review/`에 생성합니다.

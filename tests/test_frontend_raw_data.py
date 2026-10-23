@@ -69,7 +69,7 @@ def test_frontend_assets_are_versioned_and_not_cached_in_local_or_test_mode() ->
         encoding="utf-8"
     )
 
-    version_match = re.search(r'assetVersion: "(\d{8}\.\d+)"', config)
+    version_match = re.search(r'assetVersion: "(\d{4}\.\d{2}\.\d{2}\.\d+)"', config)
     assert version_match
     version = version_match.group(1)
     public = (PROJECT_ROOT / "frontend" / "public.html").read_text(encoding="utf-8")
@@ -206,9 +206,10 @@ def test_default_columns_refresh_and_xlsx_export_include_all_filtered_pages() ->
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
-const context = { console, AbortController, setTimeout, CustomEvent: class { constructor(name, init) { this.type = name; this.detail = init.detail; } },
+const context = { console, AbortController, setTimeout, clearTimeout, CustomEvent: class { constructor(name, init) { this.type = name; this.detail = init.detail; } },
     Common: { questionsOf: (survey) => survey.questions || [], formatNumber: String }, SURVEYONE_CONFIG: { apiBaseUrl: "" } };
 context.window = context;
+vm.runInNewContext(fs.readFileSync("frontend/js/common.js", "utf8"), context);
 vm.runInNewContext(fs.readFileSync(process.argv[2], "utf8"), context);
 (async () => {
     const page = Object.create(context.Pages.M04001);
@@ -272,6 +273,22 @@ vm.runInNewContext(fs.readFileSync(process.argv[2], "utf8"), context);
     await page.exportXlsx("raw");
     assert.equal(sessionInvalid, true);
     assert.equal(button.disabled, false);
+    assert.equal(clicks, 2);
+    const faults = [];
+    context.Common.failure = { ...context.Common.failure, open(error) { faults.push(error); } };
+    context.SURVEYONE_CONFIG.downloadTimeoutMs = 20;
+    let attempts = 0;
+    context.fetch = async () => { attempts++; return { ok: true, status: 200, headers: { get: () => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }, blob: () => new Promise(() => {}) }; };
+    await page.exportXlsx("raw");
+    assert.equal(attempts, 1);
+    assert.equal(faults[0].code, "REQUEST_TIMEOUT");
+    assert.equal(page.exportController.signal.aborted, true);
+    assert.equal(button.disabled, false);
+    context.fetch = async () => ({ ok: false, status: 503, json: async () => ({ code: "DATABASE_UNAVAILABLE", detail: "private connection detail" }) });
+    await page.exportXlsx("raw");
+    assert.equal(faults[1].code, "DATABASE_UNAVAILABLE");
+    assert(!faults[1].message.includes("private"));
+    assert.equal(page.exportController.signal.aborted, false);
     assert.equal(clicks, 2);
     setTimeout(() => assert.equal(revoked, 2), 0);
 })().catch((error) => { console.error(error); process.exitCode = 1; });

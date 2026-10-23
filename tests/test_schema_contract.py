@@ -13,6 +13,7 @@ TRUC_PATH = DATABASE / "SURVEYONE_SYSTEM_TRUC.sql"
 
 PREFIX = "INIT$SVY_"
 EXPECTED_TABLES = {
+    "INIT$SVY_TB_LOGIN_POLICY",
     "INIT$SVY_TB_AUDIT_LOG",
     "INIT$SVY_TB_AUTH_SESSION",
     "INIT$SVY_TB_DELIVERY",
@@ -325,9 +326,9 @@ def test_all_declared_oracle_identifiers_use_project_prefix_and_fit_30_bytes() -
     assert all(name.startswith(PREFIX) for name in names)
     assert all(len(name.encode("ascii")) <= 30 for name in names)
 
-    assert len(re.findall(r'CREATE TABLE "INIT\$SVY_', ddl)) == 23
-    assert len(set(re.findall(r'CREATE (?:UNIQUE )?INDEX "(INIT\$SVY_[A-Z0-9_]+)"', ddl))) == 25
-    assert len(set(re.findall(r'CONSTRAINT "(INIT\$SVY_[A-Z0-9_]+)"', ddl))) == 164
+    assert len(re.findall(r'CREATE TABLE "INIT\$SVY_', ddl)) == len(EXPECTED_TABLES)
+    assert len(set(re.findall(r'CREATE (?:UNIQUE )?INDEX "(INIT\$SVY_[A-Z0-9_]+)"', ddl))) == 26
+    assert len(set(re.findall(r'CONSTRAINT "(INIT\$SVY_[A-Z0-9_]+)"', ddl))) == 169
     assert len(re.findall(r'CREATE OR REPLACE FUNCTION "INIT\$SVY_', ddl)) == 2
     assert ddl.count('CREATE SEQUENCE "INIT$SVY_SQ_GUEST_LOGIN"') == 1
 
@@ -416,7 +417,7 @@ def test_rerunnable_install_and_upgrade_add_columns_in_identical_table_order() -
     )
 
 
-def test_guest_login_sequence_has_identical_rerunnable_definition() -> None:
+def test_legacy_guest_sequence_is_retained_without_runtime_dependency() -> None:
     ddl = _read(DDL_PATH)
     alt = _read(ALT_PATH)
     definition = (
@@ -427,7 +428,7 @@ def test_guest_login_sequence_has_identical_rerunnable_definition() -> None:
     for source in (ddl, alt):
         assert "CREATE_SEQUENCE_IF_MISSING" in source
         assert source.count(definition) == 1
-    assert "GUEST_SEQUENCE_COUNT" in _read(DATABASE / "auth.sql")
+    assert "GUEST_SEQUENCE_COUNT" not in _read(DATABASE / "auth.sql")
 
 
 def test_survey_soft_delete_status_is_supported_by_fresh_and_upgrade_schema() -> None:
@@ -518,16 +519,6 @@ def test_guest_login_collision_check_includes_inactive_and_expired_users() -> No
     assert "USE_YN" not in statement
     assert "STATUS_CODE" not in statement
     assert "EXPIRES_AT" not in statement
-
-
-def test_guest_sequence_nextval_is_selected_only_at_the_outermost_level() -> None:
-    auth_sql = _read(DATABASE / "auth.sql")
-    statement = auth_sql.split("-- [AUTH_GUEST_LOGIN_NEXT]", 1)[1].split(
-        "-- [AUTH_LOGIN_ID_EXISTS]", 1
-    )[0]
-
-    assert '"INIT$SVY_SQ_GUEST_LOGIN".NEXTVAL AS LOGIN_SEQUENCE_VALUE' in statement
-    assert "FROM (" not in statement.upper()
 
 
 def test_i18n_resource_id_is_wide_enough_and_upgrade_only_widens() -> None:

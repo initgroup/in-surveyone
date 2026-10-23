@@ -47,7 +47,7 @@
             }
         },
         render() {
-            const typeLabel = { all: "전체 계정", member: "일반 회원", guest: "게스트", guest_unused: "미사용 게스트", guest_expired: "만료 게스트" }[this.memberType];
+            const typeLabel = { all: "전체 계정", member: "일반 회원" }[this.memberType];
             this.root.querySelector("[data-member-count]").textContent = this.query ? `${typeLabel} 검색 결과 ${Common.formatNumber(this.total)}명` : `${typeLabel} ${Common.formatNumber(this.total)}명 · 페이지당 ${this.pageSize}명`;
             this.root.querySelectorAll("[data-member-type]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.memberType === this.memberType)));
             const host = this.root.querySelector("[data-member-list]");
@@ -62,16 +62,14 @@
         row(item) {
             const self = String(item.id) === String(this.context.user.id);
             const withdrawn = Boolean(item.withdrawnAt);
-            const expiresAt = item.expiresAt ? new Date(item.expiresAt) : null;
-            const expired = Boolean(item.isGuest && expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt <= new Date());
-            const active = item.active !== false && !withdrawn && !expired;
-            const statusLabel = withdrawn ? "탈퇴" : expired ? "만료" : active ? "이용 중" : "이용 중지";
+            const active = item.active !== false && !withdrawn;
+            const statusLabel = withdrawn ? "탈퇴" : active ? "이용 중" : "이용 중지";
             const statusClass = withdrawn ? "is-withdrawn" : active ? "is-active" : "is-stopped";
-            const typeLabel = item.isGuest ? (Number(item.projectCount || 0) ? "게스트" : "미사용 게스트") : "일반 회원";
+            const typeLabel = "일반 회원";
             const actions = withdrawn
                 ? '<span class="member-admin-withdrawn-note">복구할 수 없는 탈퇴 처리 완료</span>'
-                : `<div class="member-admin-actions"><button class="button button-small button-batch" type="button" data-member-password-reset="${Common.escapeHtml(item.id)}" ${self || !active ? "disabled" : ""}>비밀번호 초기화</button><button class="button button-small button-batch" type="button" data-member-status="${Common.escapeHtml(item.id)}" data-next-active="${!active}" ${self || expired ? "disabled" : ""}>${active ? "이용 중지" : "이용 재개"}</button><button class="button button-small button-delete" type="button" data-member-withdraw="${Common.escapeHtml(item.id)}" ${self ? "disabled" : ""}>회원 탈퇴</button></div>`;
-            return `<tr><td data-label="회원"><span class="member-admin-identity"><strong>${Common.escapeHtml(item.name)}</strong><small>${Common.escapeHtml(withdrawn ? "계정 정보 익명화됨" : item.loginId)}</small></span></td><td data-label="분류"><span class="member-admin-badge ${item.isGuest ? "is-guest" : "is-member"}">${typeLabel}</span></td><td data-label="기관">${Common.escapeHtml(item.organizationName)}</td><td data-label="이메일">${Common.escapeHtml(item.email || "미등록")}</td><td data-label="권한"><span class="member-admin-badge ${item.systemAdmin ? "is-admin" : ""}">${item.systemAdmin ? "플랫폼 관리자" : Common.escapeHtml(item.role || "OWNER")}</span></td><td data-label="상태"><span class="member-admin-badge ${statusClass}">${statusLabel}</span></td><td data-label="가입·로그인"><span class="member-admin-identity"><small>가입 ${Common.formatDate(item.createdAt)}</small><small>${item.isGuest && item.expiresAt ? `만료 ${Common.formatDate(item.expiresAt)}` : `최근 ${item.lastLoginAt ? Common.formatDate(item.lastLoginAt) : "기록 없음"}`}</small>${withdrawn ? `<small>탈퇴 ${Common.formatDate(item.withdrawnAt)}</small>` : ""}</span></td><td data-label="관리">${actions}</td></tr>`;
+                : `<div class="member-admin-actions"><button class="button button-small button-batch" type="button" data-member-password-reset="${Common.escapeHtml(item.id)}" ${self || !active ? "disabled" : ""}>비밀번호 초기화</button><button class="button button-small button-batch" type="button" data-member-status="${Common.escapeHtml(item.id)}" data-next-active="${!active}" ${self ? "disabled" : ""}>${active ? "이용 중지" : "이용 재개"}</button><button class="button button-small button-delete" type="button" data-member-withdraw="${Common.escapeHtml(item.id)}" ${self ? "disabled" : ""}>회원 탈퇴</button></div>`;
+            return `<tr><td data-label="회원"><span class="member-admin-identity"><strong>${Common.escapeHtml(item.name)}</strong><small>${Common.escapeHtml(withdrawn ? "계정 정보 익명화됨" : item.loginId)}</small></span></td><td data-label="분류"><span class="member-admin-badge is-member">${typeLabel}</span></td><td data-label="기관">${Common.escapeHtml(item.organizationName)}</td><td data-label="이메일">${Common.escapeHtml(item.email || "미등록")}</td><td data-label="권한"><span class="member-admin-badge ${item.systemAdmin ? "is-admin" : ""}">${item.systemAdmin ? "플랫폼 관리자" : Common.escapeHtml(item.role || "OWNER")}</span></td><td data-label="상태"><span class="member-admin-badge ${statusClass}">${statusLabel}</span></td><td data-label="가입·로그인"><span class="member-admin-identity"><small>가입 ${Common.formatDate(item.createdAt)}</small><small>최근 ${item.lastLoginAt ? Common.formatDate(item.lastLoginAt) : "기록 없음"}</small>${withdrawn ? `<small>탈퇴 ${Common.formatDate(item.withdrawnAt)}</small>` : ""}</span></td><td data-label="관리">${actions}</td></tr>`;
         },
         renderPagination() {
             const host = this.root.querySelector("[data-member-pagination]");
@@ -133,7 +131,7 @@
         async withdrawMember(memberId, button) {
             const item = this.items.find((candidate) => String(candidate.id) === String(memberId));
             if (!item || item.withdrawnAt) return;
-            const accountType = item.isGuest ? "게스트" : "일반 회원";
+            const accountType = "일반 회원";
             const confirmed = await this.context.confirmMessage(
                 `${item.name} (${item.loginId}) ${accountType} 계정을 탈퇴 처리할까요?\n\n로그인 정보·이름·이메일은 익명화되고 모든 로그인 세션이 종료됩니다. 이 작업은 복구할 수 없습니다. 설문·응답 등 업무 이력은 무결성과 보존 정책에 따라 유지됩니다.`,
                 { title: `${accountType} 회원 탈퇴`, confirmLabel: "탈퇴 처리", tone: "error", destructive: true }

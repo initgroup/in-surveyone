@@ -25,14 +25,12 @@ from backend.models import (
     AdminTemplatePublishRequest,
     DeploymentDraftRequest,
     DeploymentDraftView,
-    GuestMode,
     LoginRequest,
     PublicSurvey,
     Question,
     QuestionType,
     SubmitResponseRequest,
     SurveyLanguages,
-    SurveyCreateRequest,
     SurveyDetail,
     SurveySection,
     SurveySettings,
@@ -45,7 +43,7 @@ from backend.models import (
 from backend.memory_store import UserRecord, _seed_templates
 from backend.oracle_store import OracleStore, _json_load, _public_snapshot, utcnow
 from backend.delivery_security import decrypt_contact
-from backend.security import verify_password
+from backend.security import hash_password
 from backend.sql_loader import sql_loader
 
 
@@ -173,17 +171,17 @@ def test_oracle_json_loader_reads_clob_values_larger_than_varchar_limit() -> Non
     assert lob.read_count == 1
 
 
-def test_oracle_admin_member_guest_filter_and_withdrawal_are_transactional() -> None:
+def test_oracle_admin_member_filter_and_withdrawal_are_transactional() -> None:
     member_row = {
         "user_id": "user_guest_001",
         "tenant_id": "tenant_guest_001",
         "login_id": "quest001",
         "user_name": "게스트",
         "email": None,
-        "role_code": "GUEST",
+        "role_code": "MEMBER",
         "system_admin_yn": "N",
-        "guest_yn": "Y",
-        "guest_mode_code": "DB",
+        "guest_yn": "N",
+        "guest_mode_code": "NONE",
         "use_yn": "Y",
         "withdrawn_at": None,
         "created_at": utcnow(),
@@ -196,7 +194,7 @@ def test_oracle_admin_member_guest_filter_and_withdrawal_are_transactional() -> 
         def fetch_one(self, connection, sql_id, params=None):
             self.events.append(f"fetch_one:{sql_id}")
             if sql_id == "ADMIN_MEMBER_COUNT":
-                assert params["memberType"] == "GUEST"
+                assert params["memberType"] == "MEMBER"
                 return {"member_count": 1}
             if sql_id == "ADMIN_MEMBER_DETAIL_LOCK":
                 return dict(member_row)
@@ -205,7 +203,7 @@ def test_oracle_admin_member_guest_filter_and_withdrawal_are_transactional() -> 
         def fetch_all(self, connection, sql_id, params=None):
             self.events.append(f"fetch_all:{sql_id}")
             if sql_id == "ADMIN_MEMBER_PAGE":
-                assert params["memberType"] == "GUEST"
+                assert params["memberType"] == "MEMBER"
                 return [dict(member_row)]
             return super().fetch_all(connection, sql_id, params)
 
@@ -229,11 +227,11 @@ def test_oracle_admin_member_guest_filter_and_withdrawal_are_transactional() -> 
     )
 
     page = store.admin_members(
-        admin, page=1, page_size=20, member_type="guest"
+        admin, page=1, page_size=20, member_type="member"
     )
     assert page.total == 1
-    assert page.items[0].is_guest is True
-    assert page.items[0].guest_mode == GuestMode.DATABASE
+    assert page.items[0].is_guest is False
+    assert page.items[0].guest_mode is None
 
     store.admin_withdraw_member(admin, member_row["user_id"])
 
@@ -250,107 +248,8 @@ def test_oracle_admin_member_guest_filter_and_withdrawal_are_transactional() -> 
     assert_exact_sql_binds(crud.executes)
 
 
-def test_database_guest_is_provisioned_without_a_session_or_plaintext_storage() -> None:
-    pool = FakePool()
-    crud = RecordingCrud()
-    settings = get_settings()
-    store = OracleStore(settings=settings, pool=pool, crud=crud)
-
-    provisioned = store.create_guest("DB tester", GuestMode.DATABASE)
-
-    assert provisioned.user.guest_mode == GuestMode.DATABASE
-    assert provisioned.guest_credential.login_id == "quest001"
-    assert provisioned.guest_credential.expires_at == provisioned.expires_at
-    assert pool.commits == 1
-    statements = {sql_id: params for sql_id, params in crud.executes}
-    assert statements["AUTH_TENANT_INSERT"]["tenantTypeCode"] == "DB_GUEST"
-    assert statements["AUTH_USER_INSERT"]["guestModeCode"] == "DB"
-    assert statements["AUTH_USER_INSERT"]["loginId"] == "quest001"
-    assert verify_password(
-        provisioned.guest_credential.initial_password,
-        statements["AUTH_USER_INSERT"]["passwordHash"],
-    )
-    assert provisioned.guest_credential.initial_password not in str(statements)
-    assert statements["AUTH_TENANT_INSERT"]["expiresAt"] == provisioned.expires_at
-    assert "AUTH_SESSION_INSERT" not in statements
-    capability_batch = next(rows for sql_id, rows in crud.batches if sql_id == "AUTH_GUEST_CAP_INSERT")
-    assert {row["capabilityCode"] for row in capability_batch} >= {
-        "SURVEY_CREATE",
-        "SURVEY_PUBLISH",
-        "MULTILINGUAL",
-        "RAW_EXPORT",
-        "CUSTOM_REPORT",
-    }
-    allowed_by_code = {
-        row["capabilityCode"]: row["allowedYn"] for row in capability_batch
-    }
-    assert allowed_by_code["CUSTOM_REPORT"] == "N"
-    assert allowed_by_code["EXTERNAL_DELIVERY"] == "N"
-    limits_by_code = {
-        row["capabilityCode"]: row["limitValue"] for row in capability_batch
-    }
-    assert limits_by_code["SURVEY_CREATE"] == settings.db_guest_max_projects
-    assert (
-        limits_by_code["SURVEY_QUESTION_COUNT"]
-        == settings.db_guest_max_questions
-    )
-    assert limits_by_code["RESPONSE_COLLECT"] == settings.db_guest_max_responses
 
 
-def test_database_guest_can_relogin_without_revealing_password_again() -> None:
-    provisioning_crud = RecordingCrud()
-    store = OracleStore(
-        settings=get_settings(), pool=FakePool(), crud=provisioning_crud
-    )
-    provisioned = store.create_guest("Guest", GuestMode.DATABASE)
-    user_insert = next(
-        params
-        for sql_id, params in provisioning_crud.executes
-        if sql_id == "AUTH_USER_INSERT"
-    )
-    tenant_insert = next(
-        params
-        for sql_id, params in provisioning_crud.executes
-        if sql_id == "AUTH_TENANT_INSERT"
-    )
-
-    class LoginCrud(RecordingCrud):
-        def fetch_one(self, connection, sql_id, params=None):
-            if sql_id == "AUTH_USER_BY_LOGIN":
-                return {
-                    "user_id": user_insert["userId"],
-                    "tenant_id": user_insert["tenantId"],
-                    "login_id": user_insert["loginId"],
-                    "password_hash": user_insert["passwordHash"],
-                    "user_name": user_insert["userName"],
-                    "email": None,
-                    "role_code": "GUEST",
-                    "guest_yn": "Y",
-                    "guest_mode_code": "DB",
-                    "created_at": utcnow(),
-                    "tenant_name": tenant_insert["tenantName"],
-                    "tenant_expires_at": tenant_insert["expiresAt"],
-                }
-            return super().fetch_one(connection, sql_id, params)
-
-    login_crud = LoginCrud()
-    login_store = OracleStore(
-        settings=get_settings(), pool=FakePool(), crud=login_crud
-    )
-    _, relogged = login_store.login(
-        LoginRequest(
-            loginId=provisioned.guest_credential.login_id,
-            password=provisioned.guest_credential.initial_password,
-        )
-    )
-
-    assert relogged.user.is_guest is True
-    assert relogged.user.login_id == provisioned.guest_credential.login_id
-    assert relogged.expires_at <= tenant_insert["expiresAt"]
-    remaining = (relogged.expires_at - utcnow()).total_seconds()
-    assert get_settings().session_ttl_seconds - 5 <= remaining
-    assert remaining <= get_settings().session_ttl_seconds
-    assert "guestCredential" not in relogged.model_dump(by_alias=True)
 
 
 def test_session_lookup_validates_database_row_with_application_clock() -> None:
@@ -361,15 +260,15 @@ def test_session_lookup_validates_database_row_with_application_clock() -> None:
         "expires_at": now + timedelta(hours=1),
         "revoked_at": None,
         "tenant_id": "tenant-session",
-        "login_id": "quest999",
-        "user_name": "Guest",
+        "login_id": "member-session",
+        "user_name": "Member",
         "email": None,
-        "role_code": "GUEST",
-        "guest_yn": "Y",
-        "guest_mode_code": "DB",
+        "role_code": "OWNER",
+        "guest_yn": "N",
+        "guest_mode_code": "NONE",
         "user_use_yn": "Y",
         "created_at": now,
-        "tenant_name": "Guest workspace",
+        "tenant_name": "Member workspace",
         "tenant_status_code": "ACTIVE",
         "tenant_expires_at": now + timedelta(hours=2),
     }
@@ -384,7 +283,7 @@ def test_session_lookup_validates_database_row_with_application_clock() -> None:
         settings=get_settings(), pool=FakePool(), crud=SessionCrud()
     )
 
-    assert store.auth_session("opaque-token").user.login_id == "quest999"
+    assert store.auth_session("opaque-token").user.login_id == "member-session"
 
     session_row["expires_at"] = now - timedelta(seconds=1)
     with pytest.raises(AuthenticationError, match="만료"):
@@ -406,43 +305,8 @@ def test_session_sql_does_not_hide_state_before_domain_validation() -> None:
     assert "S.EXPIRES_AT >" not in where_clause
 
 
-def test_guest_sequence_skips_inactive_existing_login_ids() -> None:
-    class CollisionCrud(RecordingCrud):
-        checked: list[str]
-
-        def __init__(self) -> None:
-            super().__init__()
-            self.checked = []
-
-        def fetch_one(self, connection, sql_id, params=None):
-            if sql_id == "AUTH_LOGIN_ID_EXISTS":
-                self.checked.append(params["loginId"])
-                return {"login_id_exists": 1} if params["loginId"] == "quest001" else None
-            return super().fetch_one(connection, sql_id, params)
-
-    crud = CollisionCrud()
-    provisioned = OracleStore(
-        settings=get_settings(), pool=FakePool(), crud=crud
-    ).create_guest("Guest", GuestMode.DATABASE)
-
-    assert provisioned.guest_credential.login_id == "quest002"
-    assert crud.checked == ["quest001", "quest002"]
-    checked = [
-        params["loginId"]
-        for sql_id, params in crud.executes
-        if sql_id == "AUTH_USER_INSERT"
-    ]
-    assert checked == ["quest002"]
 
 
-def test_guest_login_format_does_not_truncate_sequence_values_above_999() -> None:
-    crud = RecordingCrud()
-    crud.guest_login_sequence = 999
-    provisioned = OracleStore(
-        settings=get_settings(), pool=FakePool(), crud=crud
-    ).create_guest("Guest", GuestMode.DATABASE)
-
-    assert provisioned.guest_credential.login_id == "quest1000"
 
 
 def test_quest001_cannot_read_quest010_owned_survey() -> None:
@@ -684,7 +548,7 @@ def test_oracle_delivery_draft_encrypts_contacts_and_keeps_them_out_of_plan_json
     )
     assert targets[0]["batchId"] == inserted_batch
     assert raw_email not in targets[0]["attributesJson"]
-    assert json.loads(targets[0]["attributesJson"]) == {"channels": ["EMAIL"]}
+    assert json.loads(targets[0]["attributesJson"]) == {"channels": ["EMAIL"], "selected": True, "audienceCode": None}
     assert_exact_sql_binds(crud.executes)
     assert_exact_sql_binds(
         [
@@ -804,7 +668,8 @@ def test_new_oracle_delivery_batch_never_rewrites_executed_history() -> None:
     assert target_rows[0]["batchId"] != "old-executed-batch"
 
 
-def test_oracle_delivery_execution_only_records_queued_or_disabled_work() -> None:
+@pytest.mark.parametrize("individual", [False, True])
+def test_oracle_delivery_execution_only_records_queued_or_disabled_work(individual) -> None:
     now = utcnow()
     public = PublicSurvey(
         survey_id="survey-execute",
@@ -828,10 +693,12 @@ def test_oracle_delivery_execution_only_records_queued_or_disabled_work() -> Non
     request = DeploymentDraftRequest.model_validate(
         {
             "revision": 1,
+            "deliveryOptions": {"sendScope": "INDIVIDUAL", "individualRecipientId": "respondent-1"} if individual else {},
             "recipients": [
                 {
                     "id": "respondent-1",
                     "name": "Recipient",
+                    "selected": not individual,
                     "countryCode": "KR",
                     "preferredLanguage": "ko",
                     "email": "recipient@example.test",
@@ -933,8 +800,8 @@ def test_oracle_delivery_execution_only_records_queued_or_disabled_work() -> Non
     queued = next(
         rows for sql_id, rows in crud.batches if sql_id == "DELIVERY_QUEUE_INSERT"
     )
-    assert {row["statusCode"] for row in queued} == {"QUEUED", "DISABLED"}
-    assert {row["providerCode"] for row in queued} == {"test-email", "disabled"}
+    assert {row["statusCode"] for row in queued} == {"DISABLED"}
+    assert {row["providerCode"] for row in queued} == {"disabled"}
     assert all(row["lastErrorCode"] is None for row in queued if row["statusCode"] == "QUEUED")
     assert all(
         row["lastErrorCode"] == "PROVIDER_DISABLED"
@@ -953,8 +820,8 @@ def test_oracle_delivery_execution_only_records_queued_or_disabled_work() -> Non
         for sql_id, params in crud.executes
         if sql_id == "DELIVERY_BATCH_MARK_EXECUTED"
     )
-    assert marked["executionStatusCode"] == "PARTIAL"
-    assert result.execution.execution_status == "PARTIAL"
+    assert marked["executionStatusCode"] == "DISABLED"
+    assert result.execution.execution_status == "DISABLED"
     assert_exact_sql_binds(crud.executes)
     assert_exact_sql_binds(
         [
@@ -1533,74 +1400,24 @@ def test_repeated_oracle_parallel_dml_deadlock_becomes_safe_503() -> None:
     assert pool.rollbacks == 2
 
 
-def test_readiness_query_matches_all_ddl_tables() -> None:
-    ddl = (PROJECT_ROOT / "database" / "SURVEYONE_SYSTEM_DDL.sql").read_text(
-        encoding="utf-8"
-    )
+def test_readiness_requires_member_objects_without_guest_objects() -> None:
+    ddl = (PROJECT_ROOT / "database" / "SURVEYONE_SYSTEM_DDL.sql").read_text(encoding="utf-8")
     ddl_tables = set(re.findall(r'CREATE TABLE "(INIT\$SVY_TB_[A-Z0-9_]+)"', ddl))
-    readiness_tables = set(
-        re.findall(r"'(INIT\$SVY_TB_[A-Z0-9_]+)'", sql_loader.get("AUTH_SCHEMA_READY"))
-    )
-
-    assert len(ddl_tables) == 23
-    assert readiness_tables == ddl_tables
+    readiness_tables = set(re.findall(r"'(INIT\$SVY_TB_[A-Z0-9_]+)'", sql_loader.get("AUTH_SCHEMA_READY")))
+    assert readiness_tables == ddl_tables - {"INIT$SVY_TB_GUEST_CAP"}
 
     class ReadinessCrud(RecordingCrud):
-        def __init__(
-            self,
-            count: int,
-            *,
-            critical_columns: int = 16,
-            critical_constraints: int = 14,
-            valid_functions: int = 2,
-            guest_sequences: int = 1,
-        ) -> None:
+        def __init__(self, **overrides):
             super().__init__()
-            self.count = count
-            self.critical_columns = critical_columns
-            self.critical_constraints = critical_constraints
-            self.valid_functions = valid_functions
-            self.guest_sequences = guest_sequences
+            self.values = {"table_count": 23, "critical_column_count": 17, "critical_constraint_count": 15, "valid_function_count": 1, **overrides}
 
         def fetch_one(self, connection, sql_id, params=None):
             assert sql_id == "AUTH_SCHEMA_READY"
-            return {
-                "table_count": self.count,
-                "critical_column_count": self.critical_columns,
-                "critical_constraint_count": self.critical_constraints,
-                "valid_function_count": self.valid_functions,
-                "guest_sequence_count": self.guest_sequences,
-            }
+            return self.values
 
-    ready = OracleStore(
-        settings=get_settings(), pool=FakePool(), crud=ReadinessCrud(23)
-    ).readiness()
-    incomplete = OracleStore(
-        settings=get_settings(), pool=FakePool(), crud=ReadinessCrud(22)
-    ).readiness()
-    malformed = OracleStore(
-        settings=get_settings(),
-        pool=FakePool(),
-        crud=ReadinessCrud(23, critical_columns=15),
-    ).readiness()
-    invalid_function = OracleStore(
-        settings=get_settings(),
-        pool=FakePool(),
-        crud=ReadinessCrud(23, valid_functions=1),
-    ).readiness()
-    missing_sequence = OracleStore(
-        settings=get_settings(),
-        pool=FakePool(),
-        crud=ReadinessCrud(23, guest_sequences=0),
-    ).readiness()
-    assert ready == (True, None)
-    assert incomplete[0] is False
-    assert "incomplete" in str(incomplete[1]).lower()
-    assert malformed[0] is False
-    assert invalid_function[0] is False
-    assert missing_sequence[0] is False
-    assert "guest_sequence_count=0/1" in str(missing_sequence[1])
-    assert "SURVEYONE_SYSTEM_ALT.sql" in str(missing_sequence[1])
+    for overrides, expected in (({}, True), ({"table_count": 21}, False), ({"critical_column_count": 15}, False), ({"valid_function_count": 0}, False)):
+        result = OracleStore(settings=get_settings(), pool=FakePool(), crud=ReadinessCrud(**overrides)).readiness()
+        assert result[0] is expected
 
 
 def test_response_answer_sql_reuses_the_deterministic_owner_page() -> None:
@@ -1869,8 +1686,8 @@ def test_public_oracle_queries_block_expired_database_guests() -> None:
     for statement in (public_sql, lock_sql):
         assert 'JOIN "INIT$SVY_TB_TENANT"' in statement
         assert "T.STATUS_CODE = 'ACTIVE'" in statement
-        assert "T.TENANT_TYPE_CODE = 'DB_GUEST'" in statement
-        assert "T.EXPIRES_AT > SYSTIMESTAMP" in statement
+        assert "T.TENANT_TYPE_CODE = 'MEMBER'" in statement
+        assert "DB_GUEST" not in statement
 
     class ExpiredGuestCrud(RecordingCrud):
         def fetch_one(self, connection, sql_id, params=None):
@@ -1930,139 +1747,80 @@ def test_oracle_update_rejects_unverified_source_locale_change() -> None:
         raise AssertionError("Oracle accepted an unverified sourceLocale change")
 
 
-def test_database_guest_project_limit_is_checked_under_tenant_lock() -> None:
-    settings = replace(get_settings(), db_guest_max_projects=1)
+def test_retired_oracle_guest_login_and_session_are_rejected() -> None:
+    now = utcnow()
+    row = {
+        "user_id": "legacy-user", "tenant_id": "legacy-tenant",
+        "login_id": "quest-retired-fixture", "user_name": "Legacy fixture",
+        "tenant_name": "Synthetic workspace", "role_code": "GUEST",
+        "guest_yn": "Y", "guest_mode_code": "DB", "created_at": now,
+        "password_hash": hash_password("FixtureOnly!234"),
+        "user_use_yn": "Y", "tenant_status_code": "ACTIVE",
+        "expires_at": now + timedelta(hours=1), "revoked_at": None,
+    }
 
-    class ProjectLimitCrud(RecordingCrud):
+    class LegacyCrud(RecordingCrud):
         def fetch_one(self, connection, sql_id, params=None):
-            self.events.append(f"fetch:{sql_id}")
-            if sql_id == "SURVEY_DB_GUEST_TENANT_LOCK":
-                return {"tenant_id": "tenant-1"}
-            if sql_id == "SURVEY_COUNT_BY_TENANT":
-                return {"project_count": 1}
+            if sql_id in {"AUTH_USER_BY_LOGIN", "AUTH_SESSION_SELECT"}:
+                return row
             return super().fetch_one(connection, sql_id, params)
 
-    crud = ProjectLimitCrud()
-    store = OracleStore(settings=settings, pool=FakePool(), crud=crud)
-    user = SimpleNamespace(
-        tenant_id="tenant-1",
-        id="user-1",
-        guest_mode=GuestMode.DATABASE,
-    )
-
-    try:
-        store.create_survey(
-            user,
-            SurveyCreateRequest(
-                title="Over project limit",
-                questions=[
-                    Question(
-                        id="q1",
-                        type=QuestionType.SHORT_TEXT,
-                        title="Question",
-                    )
-                ],
-            ),
-        )
-    except DomainValidationError:
-        pass
-    else:  # pragma: no cover - protects the DB guest project cap.
-        raise AssertionError("DB guest project limit was not enforced")
-    assert crud.events.index("fetch:SURVEY_DB_GUEST_TENANT_LOCK") < crud.events.index(
-        "fetch:SURVEY_COUNT_BY_TENANT"
-    )
-    assert all(sql_id != "SURVEY_INSERT" for sql_id, _ in crud.executes)
+    crud = LegacyCrud()
+    pool = FakePool()
+    store = OracleStore(settings=get_settings(), pool=pool, crud=crud)
+    with pytest.raises(AuthenticationError):
+        store.login(LoginRequest(loginId=row["login_id"], password="FixtureOnly!234"))
+    with pytest.raises(AuthenticationError):
+        store.auth_session("legacy-opaque-fixture")
+    assert not any(sql_id in {"AUTH_SESSION_INSERT", "AUTH_SESSION_EXTEND"} for sql_id, _ in crud.executes)
+    assert pool.rollbacks == 2
 
 
-def test_database_guest_question_limit_is_checked_under_survey_lock() -> None:
-    settings = replace(get_settings(), db_guest_max_questions=1)
-    current = SimpleNamespace(
-        languages=SurveyLanguages(),
-        translations={},
-        title="Draft",
-        description=None,
-        category="test",
-        sections=[],
-        settings=SurveySettings(),
-        theme=SurveyTheme(),
-        skin={},
-        logic_rules=[],
-    )
+def test_oracle_public_links_project_metadata_in_one_owner_scoped_query() -> None:
+    row = {
+        "survey_id": "survey-links", "public_slug": "current-slug", "status_code": "PUBLISHED",
+        "version_no": 8, "published_title": "Published title", "guest_demo": "false",
+        "audience_routes_json": json.dumps([{"code": "team", "label": "Team", "sectionIds": ["section-a"]}]),
+        "default_audience": "team",
+    }
 
-    class QuestionLimitStore(OracleStore):
-        def _survey_row(self, connection, user, survey_id, *, lock=False):
-            assert lock is True
-            return {}
+    class LinksCrud(RecordingCrud):
+        def __init__(self):
+            super().__init__()
+            self.reads = []
 
-        def _detail_from_row(self, row):
-            return current
+        def fetch_one(self, connection, sql_id, params=None):
+            self.reads.append((sql_id, params))
+            assert sql_id == "SURVEY_PUBLIC_LINKS_BY_OWNER"
+            return row
 
-    store = QuestionLimitStore(
-        settings=settings, pool=FakePool(), crud=RecordingCrud()
-    )
-    user = SimpleNamespace(
-        tenant_id="tenant-1",
-        id="user-1",
-        guest_mode=GuestMode.DATABASE,
-    )
-    request = SurveyUpdateRequest(
-        sections=[
-            SurveySection(
-                id="section-1",
-                title="Questions",
-                questions=[
-                    Question(id="q1", type=QuestionType.SHORT_TEXT, title="One"),
-                    Question(id="q2", type=QuestionType.SHORT_TEXT, title="Two"),
-                ],
-            )
-        ]
-    )
+    crud = LinksCrud()
+    store = OracleStore(settings=get_settings(), pool=FakePool(), crud=crud)
+    actor = SimpleNamespace(tenant_id="tenant-links", id="owner-links")
+    result = store.public_links(actor, "survey-links")
+    assert result.version == 8
+    assert result.title == "Published title"
+    assert result.links[0].url == "/s/current-slug?audience=team"
+    assert result.links[0].is_default is True
+    assert crud.reads == [("SURVEY_PUBLIC_LINKS_BY_OWNER", {"surveyId": "survey-links", "tenantId": "tenant-links", "ownerUserId": "owner-links"})]
+    assert_exact_sql_binds(crud.reads)
+    statement = sql_loader.get("SURVEY_PUBLIC_LINKS_BY_OWNER")
+    assert "V.VERSION_NO = S.ACTIVE_VERSION_NO" in statement
+    assert "S.TENANT_ID = :tenantId" in statement
+    assert "S.OWNER_USER_ID = :ownerUserId" in statement
+    assert "DRAFT_JSON" not in statement
+    assert '"INIT$SVY_TB_RESPONSE"' not in statement
+    assert "V.SNAPSHOT_JSON," in statement  # projection input only
+    assert "V.SNAPSHOT_JSON\n" not in statement
 
-    try:
-        store.update_survey(user, "survey-1", request)
-    except DomainValidationError:
-        pass
-    else:  # pragma: no cover - protects the DB guest question cap.
-        raise AssertionError("DB guest question limit was not enforced")
-
-
-def test_database_guest_response_limit_is_checked_under_survey_lock() -> None:
-    settings = replace(get_settings(), db_guest_max_responses=1)
-    snapshot = PublicSurvey(
-        survey_id="survey-1",
-        slug="persistent-db-guest",
-        version=1,
-        title="DB guest response cap",
-        category="test",
-        sections=[
-            SurveySection(
-                id="section-1",
-                title="Questions",
-                questions=[
-                    Question(
-                        id="optional-text",
-                        type=QuestionType.SHORT_TEXT,
-                        title="Optional",
-                    )
-                ],
-            )
-        ],
-        settings=SurveySettings(),
-        theme=SurveyTheme(),
-        published_at=utcnow(),
-        guest_demo=True,
-    )
-    crud = OneResponseCrud(snapshot)
-    crud.response_count = 1
-    store = OracleStore(settings=settings, pool=FakePool(), crud=crud)
-
-    try:
-        store.submit_response(snapshot.slug, SubmitResponseRequest(answers=[]))
-    except ConflictError:
-        pass
-    else:  # pragma: no cover - protects the DB guest response cap.
-        raise AssertionError("DB guest response limit was not enforced")
-    assert crud.events.index("fetch:RESPONSE_SURVEY_LOCK") < crud.events.index(
-        "fetch:RESPONSE_COUNT_BY_SURVEY"
-    )
-    assert all(sql_id != "RESPONSE_INSERT" for sql_id, _ in crud.executes)
+    row["public_slug"] = None
+    with pytest.raises(ConflictError):
+        store.public_links(actor, "survey-links")
+    row["public_slug"] = "current-slug"
+    row["status_code"] = "CLOSED"
+    with pytest.raises(NotFoundError):
+        store.public_links(actor, "survey-links")
+    row["status_code"] = "PUBLISHED"
+    row["audience_routes_json"] = "invalid JSON"
+    with pytest.raises(ServiceUnavailableError):
+        store.public_links(actor, "survey-links")

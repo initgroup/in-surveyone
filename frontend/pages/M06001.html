@@ -1,6 +1,6 @@
 <section class="system-settings-hero page-section" aria-labelledby="systemSettingsTitle">
-    <div><span class="eyebrow">IN-SURVEYONE ENVIRONMENT</span><h2 id="systemSettingsTitle">시스템 환경 설정</h2><p>프로젝트와 무관한 작업 화면 기본값과 현재 실행 환경을 확인합니다. 설문 스킨은 설문 프로젝트의 STEP 02에서 설정합니다.</p></div>
-    <span class="tag">이 브라우저</span>
+    <div><span class="eyebrow">IN-SURVEYONE ENVIRONMENT</span><h2 id="systemSettingsTitle">시스템 환경 설정</h2><p>작업 화면 기본값과 시스템 로그인 정책을 관리합니다. 설문 스킨은 설문 프로젝트의 STEP 02에서 설정합니다.</p></div>
+    <span class="tag">작업 환경·로그인</span>
 </section>
 
 <div class="system-settings-layout">
@@ -23,7 +23,19 @@
                 <div><dt>로그인 세션</dt><dd>HttpOnly 세션 쿠키</dd></div>
                 <div><dt>외부 발송</dt><dd>Provider 설정에 따라 제한</dd></div>
             </dl>
-            <p class="system-runtime-note">화면 밀도·움직임·시작 화면은 현재 접속 주소의 브라우저에만 저장되며 다른 도메인과 공유되지 않습니다. 테넌트 권한, 데이터베이스 연결, 발송 Provider와 보안 정책은 서버 운영 설정이 기준이며 브라우저 설정으로 변경할 수 없습니다.</p>
+            <p class="system-runtime-note">화면 밀도·움직임·시작 화면은 현재 접속 주소의 브라우저에만 저장되며 다른 도메인과 공유되지 않습니다. 로그인 정책은 별도 서버 저장 항목으로 전체 계정에 적용됩니다. 테넌트 권한, 데이터베이스 연결과 발송 Provider는 서버 운영 설정이 기준입니다.</p>
         </div>
     </aside>
 </div>
+
+<section class="card system-login-policy" aria-labelledby="loginPolicyTitle">
+    <header class="card-header"><h2 id="loginPolicyTitle">로그인 정책</h2><span class="tag">전체 계정 공통</span></header>
+    <div class="card-body">
+        <p data-login-policy-access>플랫폼 관리자만 변경할 수 있습니다.</p>
+        <form data-login-policy-form hidden>
+            <label class="system-login-policy-toggle"><input type="checkbox" name="allowConcurrentLogins" disabled><span><strong>중복 로그인 허용</strong><small>같은 계정으로 여러 기기·브라우저에서 동시에 접속합니다.</small></span></label>
+            <p class="field-help">허용을 끄면 다음 로그인부터 이전 접속은 종료되고 새 접속만 유지됩니다. 설정 저장만으로 현재 접속을 종료하지 않습니다. 같은 브라우저의 탭은 하나의 로그인 세션을 공유합니다.</p>
+            <div class="system-settings-actions"><span data-login-policy-state role="status" aria-live="polite">정책을 불러오는 중입니다.</span><div><button class="button button-function" type="button" data-login-policy-reload>다시 불러오기</button><button class="button button-save button-important" type="submit" data-login-policy-save disabled>로그인 정책 저장</button></div></div>
+        </form>
+    </div>
+</section>

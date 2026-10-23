@@ -28,7 +28,6 @@
 .member-admin-badge.is-stopped { color:#a23345; background:#fff0f2; }
 .member-admin-badge.is-admin { color:#2857cf; background:#eaf0ff; }
 .member-admin-badge.is-member { color:#315678; background:#edf4fb; }
-.member-admin-badge.is-guest { color:#75520b; background:#fff3d5; }
 .member-admin-badge.is-withdrawn { color:#5f6672; background:#eceff3; }
 .member-admin-actions { display:flex; gap:6px; justify-content:flex-end; white-space:nowrap; }
 .member-admin-withdrawn-note { color:var(--muted); font-size: var(--text-ui); }

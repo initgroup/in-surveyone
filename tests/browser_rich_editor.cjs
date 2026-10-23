@@ -45,6 +45,7 @@ async function check(name, fn) { await fn(); checks += 1; console.log("PASS " + 
             let value;
             let status = 200;
             if (url.pathname === "/api/auth/me") value = { user: { id: "ui-test-user", tenantId: "ui-test-tenant", displayName: "자동화 테스트", role: "OWNER", systemAdmin: true }, expiresAt: new Date(Date.now() + 3600000).toISOString() };
+            else if (url.pathname === "/api/version") value = {version: fs.readFileSync(path.join(root, "VERSION"), "utf8").trim()};
             else if (url.pathname === "/api/runtime-config") value = { publicBaseUrl: "https://www.insurveyone.com", environment: "test" };
             else if (url.pathname === "/api/surveys/page") value = { items: [survey], page: 1, total: 1, totalAll: 1 };
             else if (url.pathname === "/api/surveys") value = { surveys: url.searchParams.has("status") ? [] : [survey] };

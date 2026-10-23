@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend.publication_links import public_link_items
+from backend.publication_links import public_link_items, public_links_metadata
 
 from backend.survey_audience import audience_submission, validate_audiences
 
@@ -72,9 +72,9 @@ from backend.models import (
     DeploymentExecuteResult,
     DeploymentExecutionView,
     GuestMode,
-    GuestCredentialView,
-    GuestProvisionView,
     LoginRequest,
+    LoginPolicyView,
+    LoginPolicyUpdate,
     PublicSurvey,
     PublishRequest,
     PublishResult,
@@ -86,6 +86,7 @@ from backend.models import (
     SurveyDetail,
     SurveyLanguages,
     SurveyPage,
+    SurveyPublicLinks,
     SurveyProjectProfile,
     SurveyReport,
     SurveyResponseView,
@@ -106,7 +107,6 @@ from backend.models import (
 )
 from backend.security import (
     hash_password,
-    new_initial_password,
     new_session_token,
     session_token_hash,
     verify_password,
@@ -189,10 +189,6 @@ class OracleStore(MemoryStore):
     def _normalize_login(login_id: str) -> str:
         return login_id.strip().lower()
 
-    @staticmethod
-    def _guest_mode(value: Any) -> GuestMode | None:
-        return GuestMode.DATABASE if str(value or "").upper() == "DB" else None
-
     def _user_from_row(self, row: dict[str, Any]) -> UserRecord:
         role = UserRole(str(row["role_code"]).upper())
         return UserRecord(
@@ -236,6 +232,33 @@ class OracleStore(MemoryStore):
             created_at=user.created_at,
         )
 
+    @staticmethod
+    def _login_policy_view(row: dict[str, Any] | None) -> LoginPolicyView:
+        if row is None or row.get("allow_multi_yn") not in {"Y", "N"}:
+            raise ServiceUnavailableError("로그인 정책을 불러올 수 없습니다. DB 설정을 확인하세요.")
+        return LoginPolicyView(
+            allow_concurrent_logins=row["allow_multi_yn"] == "Y",
+            revision=int(row["revision_no"]),
+            updated_at=_as_aware(row.get("updated_at")),
+        )
+
+    def login_policy(self, user: UserRecord) -> LoginPolicyView:
+        self._require_system_admin(user)
+        with self.pool.connection() as connection:
+            return self._login_policy_view(self.crud.fetch_one(connection, "AUTH_POLICY_SELECT"))
+
+    def update_login_policy(self, user: UserRecord, request: LoginPolicyUpdate) -> LoginPolicyView:
+        self._require_system_admin(user)
+        with self.pool.transaction() as connection:
+            current = self._login_policy_view(self.crud.fetch_one(connection, "AUTH_POLICY_LOCK"))
+            if request.revision != current.revision:
+                raise ConflictError("다른 관리자가 로그인 정책을 변경했습니다. 다시 불러온 뒤 저장하세요.")
+            self.crud.execute(connection, "AUTH_POLICY_UPDATE", {
+                "allowMultiYn": "Y" if request.allow_concurrent_logins else "N",
+                "updatedBy": user.id,
+            })
+            return self._login_policy_view(self.crud.fetch_one(connection, "AUTH_POLICY_SELECT"))
+
     def _new_session(
         self,
         connection: Any,
@@ -252,6 +275,10 @@ class OracleStore(MemoryStore):
             if expires_at is not None
             else session_expires_at
         )
+        # Serialize login-policy changes and session replacement across workers.
+        policy = self._login_policy_view(self.crud.fetch_one(connection, "AUTH_POLICY_LOCK"))
+        if not policy.allow_concurrent_logins:
+            self.crud.execute(connection, "ADMIN_MEMBER_SESSIONS_REVOKE", {"userId": user.id})
         token = new_session_token()
         self.crud.execute(
             connection,
@@ -265,121 +292,6 @@ class OracleStore(MemoryStore):
             },
         )
         return token, AuthSessionView(user=self._user_view(user), expires_at=expires_at)
-
-    def create_guest(
-        self,
-        display_name: str,
-        mode: GuestMode = GuestMode.DATABASE,
-    ) -> GuestProvisionView:
-        if mode != GuestMode.DATABASE:
-            raise DomainValidationError("OracleStore only creates database guests.")
-        now = utcnow()
-        expires_at = now + timedelta(hours=self.settings.guest_unused_ttl_hours)
-        tenant_id = new_id("tenant")
-        user_id = new_id("user")
-        initial_password = new_initial_password()
-        with self.pool.transaction() as connection:
-            login_id = ""
-            for _ in range(10_000):
-                login_row = self.crud.fetch_one(connection, "AUTH_GUEST_LOGIN_NEXT")
-                raw_sequence_value = (
-                    login_row.get("login_sequence_value") if login_row else None
-                )
-                try:
-                    sequence_value = int(raw_sequence_value)
-                except (TypeError, ValueError, OverflowError):
-                    raise ServiceUnavailableError(
-                        "게스트 로그인 아이디를 발급할 수 없습니다."
-                    )
-                if sequence_value < 1:
-                    raise ServiceUnavailableError(
-                        "Oracle returned an invalid guest login sequence value."
-                    )
-                candidate = f"quest{sequence_value:03d}"
-                if self.crud.fetch_one(
-                    connection, "AUTH_LOGIN_ID_EXISTS", {"loginId": candidate}
-                ) is None:
-                    login_id = candidate
-                    break
-            if not login_id:
-                raise ServiceUnavailableError(
-                    "사용 가능한 게스트 로그인 아이디를 발급할 수 없습니다."
-                )
-            tenant_name = f"게스트 체험공간 {login_id.upper()}"
-            self.crud.execute(
-                connection,
-                "AUTH_TENANT_INSERT",
-                {
-                    "tenantId": tenant_id,
-                    "tenantName": tenant_name,
-                    "tenantTypeCode": "DB_GUEST",
-                    "expiresAt": expires_at,
-                },
-            )
-            self.crud.execute(
-                connection,
-                "AUTH_USER_INSERT",
-                {
-                    "userId": user_id,
-                    "tenantId": tenant_id,
-                    "loginId": login_id,
-                    "passwordHash": hash_password(initial_password),
-                    "userName": display_name.strip() or "게스트",
-                    "email": None,
-                    "roleCode": UserRole.GUEST.value,
-                    "systemAdminYn": "N",
-                    "guestYn": "Y",
-                    "guestModeCode": "DB",
-                },
-            )
-            capability_rows = []
-            for code, (allowed, limit_value) in {
-                "SURVEY_CREATE": (True, self.settings.db_guest_max_projects),
-                "SURVEY_QUESTION_COUNT": (
-                    True,
-                    self.settings.db_guest_max_questions,
-                ),
-                "RESPONSE_COLLECT": (True, self.settings.db_guest_max_responses),
-                "SURVEY_PUBLISH": (True, None),
-                "MULTILINGUAL": (True, None),
-                "RAW_EXPORT": (True, None),
-                "CUSTOM_REPORT": (False, None),
-                "EXTERNAL_DELIVERY": (False, None),
-            }.items():
-                capability_rows.append(
-                    {
-                        "tenantId": tenant_id,
-                        "userId": user_id,
-                        "capabilityCode": code,
-                        "allowedYn": "Y" if allowed else "N",
-                        "limitValue": limit_value,
-                        "expiresAt": expires_at,
-                    }
-                )
-            self.crud.executemany(connection, "AUTH_GUEST_CAP_INSERT", capability_rows)
-            user = UserRecord(
-                id=user_id,
-                tenant_id=tenant_id,
-                login_id=login_id,
-                name=display_name.strip() or "게스트",
-                email=None,
-                organization_name=tenant_name,
-                password_hash=None,
-                role=UserRole.GUEST,
-                is_guest=True,
-                guest_mode=GuestMode.DATABASE,
-                created_at=now,
-                tenant_expires_at=expires_at,
-            )
-            return GuestProvisionView(
-                user=self._user_view(user),
-                expires_at=expires_at,
-                guest_credential=GuestCredentialView(
-                    login_id=login_id,
-                    initial_password=initial_password,
-                    expires_at=expires_at,
-                ),
-            )
 
     def signup(self, request: SignupRequest) -> tuple[str, AuthSessionView]:
         login_id = self._normalize_login(request.login_id)
@@ -446,6 +358,8 @@ class OracleStore(MemoryStore):
             ):
                 raise AuthenticationError("아이디 또는 비밀번호가 올바르지 않습니다.")
             user = self._user_from_row(row)
+            if user.is_guest or user.role == UserRole.GUEST:
+                raise AuthenticationError("아이디 또는 비밀번호가 올바르지 않습니다.")
             return self._new_session(
                 connection,
                 user,
@@ -464,6 +378,9 @@ class OracleStore(MemoryStore):
             )
             if row is None:
                 raise AuthenticationError("로그인 세션이 유효하지 않거나 만료되었습니다.")
+            user = self._user_from_row(row)
+            if user.is_guest or user.role == UserRole.GUEST:
+                raise AuthenticationError("사용할 수 없는 로그인 계정입니다.")
             now = utcnow()
             if row.get("revoked_at") is not None:
                 raise AuthenticationError("로그인 세션이 종료되었습니다.")
@@ -746,7 +663,7 @@ class OracleStore(MemoryStore):
         self._require_system_admin(user)
         normalized = query.strip().lower()
         normalized_type = member_type.strip().lower()
-        if normalized_type not in {"all", "member", "guest", "guest_unused", "guest_expired"}:
+        if normalized_type not in {"all", "member"}:
             raise DomainValidationError("회원 분류가 올바르지 않습니다.")
         params = {
             "queryPattern": f"%{normalized}%" if normalized else None,
@@ -1323,47 +1240,8 @@ class OracleStore(MemoryStore):
             translations=translations,
         )
         with self.pool.transaction() as connection:
-            if user.guest_mode == GuestMode.DATABASE:
-                locked_tenant = self.crud.fetch_one(
-                    connection,
-                    "SURVEY_DB_GUEST_TENANT_LOCK",
-                    {"tenantId": user.tenant_id},
-                )
-                if locked_tenant is None:
-                    raise ConflictError("DB guest workspace is unavailable or expired.")
-                project_count = self.crud.fetch_one(
-                    connection,
-                    "SURVEY_COUNT_BY_TENANT",
-                    {"tenantId": user.tenant_id},
-                )
-                if int(project_count["project_count"] or 0) >= self.settings.db_guest_max_projects:
-                    raise DomainValidationError(
-                        "DB guest project limit has been reached."
-                    )
-                if sum(len(section.questions) for section in sections) > self.settings.db_guest_max_questions:
-                    raise DomainValidationError(
-                        "DB guest question limit has been exceeded."
-                    )
-                project_expires_at = utcnow() + timedelta(
-                    hours=self.settings.guest_project_ttl_hours
-                )
-                self.crud.execute(
-                    connection,
-                    "SURVEY_DB_GUEST_TENANT_EXTEND",
-                    {
-                        "tenantId": user.tenant_id,
-                        "expiresAt": project_expires_at,
-                    },
-                )
-                self.crud.execute(
-                    connection,
-                    "SURVEY_DB_GUEST_CAP_EXTEND",
-                    {
-                        "tenantId": user.tenant_id,
-                        "userId": user.id,
-                        "expiresAt": project_expires_at,
-                    },
-                )
+            if user.is_guest or user.role == UserRole.GUEST:
+                raise AuthenticationError("회원 로그인이 필요합니다.")
             self.crud.execute(
                 connection,
                 "SURVEY_INSERT",
@@ -1693,12 +1571,6 @@ class OracleStore(MemoryStore):
         else:
             sections = detail.sections
         self._validate_global_question_ids(sections)
-        if user.guest_mode == GuestMode.DATABASE and sum(
-            len(section.questions) for section in sections
-        ) > self.settings.db_guest_max_questions:
-            raise DomainValidationError(
-                "DB guest question limit has been exceeded."
-            )
         settings = request.settings if "settings" in fields and request.settings else detail.settings
         validate_audiences(sections, settings)
         project_profile = (
@@ -1834,12 +1706,6 @@ class OracleStore(MemoryStore):
                 supported_locales=detail.supported_locales,
                 translations=detail.translations,
                 published_at=published_at,
-                guest_demo=user.guest_mode == GuestMode.DATABASE,
-                experience_expires_at=(
-                    user.tenant_expires_at
-                    if user.guest_mode == GuestMode.DATABASE
-                    else None
-                ),
             )
             snapshot = public.model_dump_json(by_alias=True)
             content_hash = hashlib.sha256(snapshot.encode("utf-8")).hexdigest()
@@ -2014,13 +1880,38 @@ class OracleStore(MemoryStore):
     @staticmethod
     def _public_from_row(row: dict[str, Any]) -> PublicSurvey:
         public = _public_snapshot(row["snapshot_json"])
+        if public.guest_demo or str(row.get("tenant_type_code") or "MEMBER").upper() != "MEMBER":
+            raise NotFoundError("공개 설문을 찾을 수 없습니다.")
         public.slug = str(row.get("public_slug") or public.slug)
-        is_guest = str(row.get("tenant_type_code") or "MEMBER").upper() == "DB_GUEST"
-        public.guest_demo = is_guest
-        public.experience_expires_at = (
-            _as_aware(row.get("tenant_expires_at")) if is_guest else None
-        )
         return public
+
+    def public_links(self, user: UserRecord, survey_id: str) -> SurveyPublicLinks:
+        # Project ownership and active-version metadata come from one query.
+        # Never fetch draft JSON, question snapshots or response aggregates here.
+        with self.pool.connection() as connection:
+            row = self.crud.fetch_one(connection, "SURVEY_PUBLIC_LINKS_BY_OWNER", {
+                "surveyId": survey_id, "tenantId": user.tenant_id, "ownerUserId": user.id,
+            })
+        if row is None:
+            raise NotFoundError("설문 프로젝트를 찾을 수 없습니다.")
+        if not row.get("public_slug"):
+            raise ConflictError("설문을 먼저 저장·확정한 뒤 대상별 URL을 확인해 주세요.")
+        if (row.get("status_code") != "PUBLISHED" or row.get("version_no") is None
+                or str(row.get("guest_demo") or "false").lower() == "true"):
+            raise NotFoundError("공개 설문을 찾을 수 없습니다.")
+        try:
+            if row.get("published_title") is None:
+                raise ValueError("Published title is missing.")
+            settings = SurveySettings(
+                audience_routes=_json_load(row.get("audience_routes_json"), []),
+                default_audience=row.get("default_audience"),
+            )
+            return public_links_metadata(
+                survey_id=str(row["survey_id"]), title=str(row["published_title"]),
+                version=int(row["version_no"]), slug=str(row["public_slug"]), settings=settings,
+            )
+        except (TypeError, ValueError) as exc:
+            raise ServiceUnavailableError("확정된 대상별 URL 정보를 확인할 수 없습니다.") from exc
 
     def public_survey(self, slug: str, language: str | None = None) -> PublicSurvey:
         public = self._public_from_row(self._public_row(slug))
@@ -2072,7 +1963,7 @@ class OracleStore(MemoryStore):
         response_id = new_id("response")
         tenant_id = str(row["tenant_id"])
         with self.pool.transaction() as connection:
-            if public.guest_demo or idempotency_hash or (
+            if idempotency_hash or (
                 public.settings.one_response_per_respondent and respondent_hash
             ):
                 locked_survey = self.crud.fetch_one(
@@ -2130,17 +2021,6 @@ class OracleStore(MemoryStore):
                 )
                 if int(duplicate["duplicate_count"] or 0) > 0:
                     raise ConflictError("이미 이 설문에 응답했습니다.")
-            if public.guest_demo:
-                response_count = self.crud.fetch_one(
-                    connection,
-                    "RESPONSE_COUNT_BY_SURVEY",
-                    {
-                        "tenantId": tenant_id,
-                        "surveyId": public.survey_id,
-                    },
-                )
-                if int(response_count["response_count"] or 0) >= self.settings.db_guest_max_responses:
-                    raise ConflictError("DB guest response limit has been reached.")
             self.crud.execute(
                 connection,
                 "RESPONSE_INSERT",
@@ -2364,6 +2244,7 @@ class OracleStore(MemoryStore):
                     for locale, messages in request.messages_by_language.items()
                 },
                 "schedule": request.schedule.model_dump(by_alias=True, mode="json"),
+                "deliveryOptions": request.delivery_options.model_dump(by_alias=True, mode="json"),
                 "status": "DRAFT",
             }
         )
@@ -2430,6 +2311,8 @@ class OracleStore(MemoryStore):
                 "countryCode": str(target["country_code"]),
                 "preferredLanguage": str(target["preferred_lang_code"]),
                 "channels": list(attributes.get("channels") or []),
+                "selected": attributes.get("selected", True),
+                "audienceCode": attributes.get("audienceCode"),
                 "email": None,
                 "mobile": None,
                 "fax": None,
@@ -2447,6 +2330,7 @@ class OracleStore(MemoryStore):
             "channels": list(plan.get("channels") or []),
             "messagesByLanguage": dict(plan.get("messagesByLanguage") or {}),
             "schedule": dict(plan.get("schedule") or {}),
+            "deliveryOptions": dict(plan.get("deliveryOptions") or {}),
             "status": "DRAFT",
             "deploymentId": str(context["deployment_id"]),
             "surveyId": str(context["survey_id"]),
@@ -2482,6 +2366,10 @@ class OracleStore(MemoryStore):
     def _validate_delivery_languages(
         request: DeploymentDraftRequest, public: PublicSurvey
     ) -> None:
+        from backend.survey_audience import resolve_audience
+        for recipient in request.recipients:
+            if recipient.selected:
+                resolve_audience(public, recipient.audience_code)
         unsupported = {
             recipient.preferred_language
             for recipient in request.recipients
@@ -2590,6 +2478,7 @@ class OracleStore(MemoryStore):
                 DeliveryChannel.KAKAO: ("kakao_id", "KAKAO"),
                 DeliveryChannel.FAX: ("fax", "FAX"),
             }
+            active_ids = {item.id for item in request.delivery_recipients()}
             seen_contacts: set[tuple[str, str]] = set()
             target_rows: list[dict[str, Any]] = []
             endpoint_rows: list[dict[str, Any]] = []
@@ -2611,7 +2500,9 @@ class OracleStore(MemoryStore):
                             {
                                 "channels": [
                                     channel.value for channel in recipient.channels
-                                ]
+                                ],
+                                "selected": recipient.selected,
+                                "audienceCode": recipient.audience_code
                             }
                         ),
                         "retentionUntil": retention_until,
@@ -2629,11 +2520,13 @@ class OracleStore(MemoryStore):
                         self.settings.delivery_secret, contact_type, value
                     )
                     duplicate_key = (contact_type, value_hash)
-                    if duplicate_key in seen_contacts:
+                    active = recipient.selected if request.delivery_options.send_scope is None else recipient.id in active_ids and channel in request.channels
+                    if active and duplicate_key in seen_contacts:
                         raise DomainValidationError(
                             f"같은 {contact_type} 연락처를 배포 대상에 중복 등록할 수 없습니다."
                         )
-                    seen_contacts.add(duplicate_key)
+                    if active:
+                        seen_contacts.add(duplicate_key)
                     endpoint_rows.append(
                         {
                             "recipientId": new_id("recipient"),
@@ -2710,10 +2603,14 @@ class OracleStore(MemoryStore):
         survey_id: str,
         request: DeploymentExecuteRequest,
     ) -> DeploymentExecuteResult:
+        if not request.delivery_recipients():
+            raise DomainValidationError("발송할 대상자를 선택해 주세요.")
+        if any(provider.enabled and provider.provider_code == "solapi" for provider in self.delivery_providers(user).providers.values()):
+            self.preview_deployment(user, survey_id, request, verify_templates=True)
         saved = self.save_deployment(user, survey_id, request)
         now = utcnow()
         with self.pool.transaction() as connection:
-            context, _ = self._delivery_context(
+            context, public = self._delivery_context(
                 connection, user, survey_id, lock=True
             )
             params = {
@@ -2752,8 +2649,13 @@ class OracleStore(MemoryStore):
                 for row in endpoint_rows
             }
             providers = self.delivery_providers(user).providers
+            prepared = {}
+            if any(provider.enabled and provider.provider_code == "solapi" for provider in providers.values()):
+                from backend.delivery_service import render_jobs
+                prepared = {(job["recipientId"], job["channel"]): job["payload"] for job in render_jobs(
+                    self.settings, public, raw, providers, deployment_id=raw.deployment_id)}
             queue_rows: list[dict[str, Any]] = []
-            for recipient in raw.recipients:
+            for recipient in raw.delivery_recipients():
                 available = [
                     channel
                     for channel in raw.channels
@@ -2815,6 +2717,7 @@ class OracleStore(MemoryStore):
                                     "messages": message.model_dump(
                                         by_alias=True, mode="json"
                                     ),
+                                    "solapiMessage": {key: value for key, value in (prepared.get((recipient.id, channel.value)) or {}).items() if key != "to"},
                                 }
                             ),
                             "scheduledAt": raw.schedule.scheduled_at or now,
@@ -2876,6 +2779,112 @@ class OracleStore(MemoryStore):
                 channel_results=channel_results,
             ),
         )
+
+    def preview_deployment(self, user, survey_id, request, *, offset=0, verify_templates=False, recipient_id=None):
+        from backend.delivery_service import preview_result, render_jobs
+        with self.pool.connection() as connection:
+            context, public = self._delivery_context(connection, user, survey_id)
+            params = {"tenantId": user.tenant_id, "surveyId": survey_id,
+                      "deploymentId": str(context["deployment_id"]),
+                      "surveyVersionNo": int(context["survey_version_no"])}
+            batch = self.crud.fetch_one(connection, "DELIVERY_BATCH_LATEST", params)
+            previous = self._deployment_from_rows(connection, context, batch) if batch else None
+            merged = self._merge_masked_recipient_contacts(request, previous)
+        jobs = render_jobs(self.settings, public, merged, self.delivery_providers(user).providers,
+                           deployment_id=str(context["deployment_id"]), verify_templates=verify_templates)
+        return preview_result(jobs, offset=offset, recipient_id=recipient_id)
+
+    def _send_batch(self, connection, user, survey_id, revision, *, lock=False):
+        context, _ = self._delivery_context(connection, user, survey_id, lock=lock)
+        params = {"tenantId": user.tenant_id, "surveyId": survey_id,
+                  "deploymentId": str(context["deployment_id"]),
+                  "surveyVersionNo": int(context["survey_version_no"])}
+        batch = self.crud.fetch_one(connection, "DELIVERY_BATCH_LATEST_FOR_UPDATE" if lock else "DELIVERY_BATCH_LATEST", params)
+        if batch is None or int(batch["revision_no"]) != revision or str(batch["status_code"]) != "EXECUTED":
+            raise ConflictError("현재 배포 실행과 revision이 일치하지 않습니다.")
+        return batch, {**params, "batchId": str(batch["batch_id"]), "ownerUserId": user.id}
+
+    def delivery_status(self, user, survey_id, revision):
+        from backend.delivery_service import send_result
+        with self.pool.connection() as connection:
+            _, params = self._send_batch(connection, user, survey_id, revision)
+            rows = self.crud.fetch_all(connection, "DELIVERY_SEND_LIST", params)
+        return send_result(rows)
+
+    def delivery_history(self, user, survey_id=None, *, offset=0, status=None):
+        from backend.delivery_service import send_result
+        with self.pool.connection() as connection:
+            if survey_id:
+                self._survey_row(connection, user, survey_id)
+            rows = self.crud.fetch_all(connection, "DELIVERY_HISTORY_BY_OWNER", {
+                "tenantId": user.tenant_id, "ownerUserId": user.id, "surveyId": survey_id,
+                "offset": offset, "statusCode": status})
+            items = []
+            for row in rows[:50]:
+                row["message_template_json"] = _json_load(row.get("message_template_json"), {})
+                item = send_result([row]).items[0].model_dump(by_alias=True, mode="json")
+                items.append({**item, "surveyId": str(row["survey_id"]), "surveyTitle": str(row["survey_title"]),
+                              "surveyVersion": int(row["survey_version_no"]), "batchId": row.get("batch_id")})
+        return {"items": items, "hasMore": len(rows) > 50, "offset": offset}
+
+    def send_deployment(self, user, survey_id, request):
+        from backend.delivery_service import outcome_metadata, phone_number, send_result
+        from backend.solapi import SolapiClient
+        providers = self.delivery_providers(user).providers
+        claimed = []
+        # Commit the claim before network I/O. Retries can never reclaim SENDING rows,
+        # including a crash/timeout where provider acceptance cannot be determined.
+        with self.pool.transaction() as connection:
+            batch, params = self._send_batch(connection, user, survey_id, request.revision, lock=True)
+            rows = self.crud.fetch_all(connection, "DELIVERY_SEND_LIST", params)
+            plan = _json_load(batch.get("plan_json"), {})
+            scheduled_value = (plan.get("schedule") or {}).get("scheduledAt")
+            try:
+                scheduled_at = datetime.fromisoformat(scheduled_value) if scheduled_value else None
+            except (ValueError, TypeError):
+                raise ServiceUnavailableError("저장된 발송 예약 시각을 확인할 수 없습니다.") from None
+            if scheduled_at is not None and (scheduled_at.tzinfo is None or scheduled_at.utcoffset() is None):
+                raise ServiceUnavailableError("저장된 발송 예약 시각의 시간대를 확인할 수 없습니다.")
+            now = utcnow()
+            for row in rows:
+                code = str(row["channel_code"])
+                provider = providers.get(code.lower())
+                if row["status_code"] != "QUEUED" or row["provider_code"] != "solapi" or not provider or not provider.enabled:
+                    continue
+                retention = _as_aware(row.get("retention_until"))
+                target_retention = _as_aware(row.get("target_retention_until"))
+                if row.get("recipient_status") != "READY" or row.get("target_status") != "READY":
+                    raise ConflictError("수신 거부·만료 등으로 발송할 수 없는 대상자가 있습니다.")
+                if retention is None or retention <= now or target_retention is None or target_retention <= now:
+                    raise ConflictError("연락처 보유 기간이 종료되어 발송할 수 없습니다.")
+                template = _json_load(row.get("message_template_json"), {})
+                payload = template.get("solapiMessage")
+                if not payload or code not in {"SMS", "KAKAO"}:
+                    raise ConflictError("이전 배포 작업은 SOLAPI 문안이 없습니다. 새 배포를 준비해 주세요.")
+                destination = decrypt_contact(self.settings.delivery_secret, str(row["contact_value_encrypted"]))
+                message = {**payload, "to": phone_number(destination, str(row["country_code"])),
+                           "customFields": {"surveyoneDeliveryId": str(row["delivery_id"])}}
+                affected = self.crud.execute(connection, "DELIVERY_SEND_CLAIM", {**params, "deliveryId": str(row["delivery_id"]), "updatedAt": now})
+                if affected == 1:
+                    claimed.append((code, message))
+        for code in ("SMS", "KAKAO"):
+            messages = [message for channel, message in claimed if channel == code]
+            outcomes = SolapiClient(self.settings).send_many(messages, scheduled_at)
+            if not outcomes:
+                continue
+            with self.pool.transaction() as connection:
+                for outcome in outcomes:
+                    original = next(row for row in rows if str(row["delivery_id"]) == outcome.delivery_id)
+                    metadata = _json_load(original.get("message_template_json"), {})
+                    metadata["deliveryResult"] = outcome_metadata(outcome, now)
+                    self.crud.execute(connection, "DELIVERY_SEND_OUTCOME", {
+                        **params, "deliveryId": outcome.delivery_id,
+                        "statusCode": "FAILED" if outcome.status == "FAILED" else "SENDING",
+                        "providerMessageId": outcome.message_id, "lastErrorCode": outcome.error_code, "updatedAt": utcnow(),
+                        "messageTemplateJson": _json_dump(metadata)})
+        with self.pool.connection() as connection:
+            rows = self.crud.fetch_all(connection, "DELIVERY_SEND_LIST", params)
+        return send_result(rows)
 
     def dashboard(self, user: UserRecord) -> DashboardView:
         surveys = self.list_surveys(user)
@@ -3095,10 +3104,9 @@ class OracleStore(MemoryStore):
                 row = self.crud.fetch_one(connection, "AUTH_SCHEMA_READY")
             expected = {
                 "table_count": 23,
-                "critical_column_count": 16,
-                "critical_constraint_count": 14,
-                "valid_function_count": 2,
-                "guest_sequence_count": 1,
+                "critical_column_count": 17,
+                "critical_constraint_count": 15,
+                "valid_function_count": 1,
             }
             actual = {
                 key: int(row.get(key) or 0) if row else 0 for key in expected

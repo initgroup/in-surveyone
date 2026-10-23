@@ -35,7 +35,17 @@ def test_project_workspaces_share_one_top_right_list_button_contract() -> None:
         "frontend/pages/M03001.html",
     ):
         html = _read(path)
-        assert html.index("survey-flow") < html.index("workspace-list-button")
+        if path == "frontend/pages/M03001.html":
+            # Compact distribution keeps stages and project commands in one header.
+            header = html.split('<header class="distribution-workflow-head', 1)[1].split("</header>", 1)[0]
+            assert 'class="survey-flow distribution-flow"' in header
+            assert 'data-distribution-step-target="1"' in header
+            assert 'data-distribution-step-target="2"' in header
+            assert "data-distribution-save" in header
+            assert "data-distribution-project-back" in header
+            assert html.index("</header>", html.index("distribution-workflow-head")) < html.index("distribution-workspace-body")
+        else:
+            assert html.index("survey-flow") < html.index("workspace-list-button")
 
 
 def test_project_list_buttons_keep_correct_spa_destinations_and_mobile_visibility() -> None:

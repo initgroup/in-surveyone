@@ -3,18 +3,13 @@ from __future__ import annotations
 from urllib.parse import parse_qs, urlsplit
 
 from fastapi.testclient import TestClient
+from conftest import signup_member
 
 from main import app
 
 
-def _login_guest(client: TestClient) -> None:
-    created = client.post("/api/auth/guest", json={"mode": "database"})
-    assert created.status_code == 201, created.text
-    credential = created.json()["data"]["guestCredential"]
-    logged_in = client.post("/api/auth/login", json={
-        "loginId": credential["loginId"], "password": credential["initialPassword"],
-    })
-    assert logged_in.status_code == 200, logged_in.text
+def _login_member(client: TestClient) -> dict:
+    return signup_member(client)
 
 
 def _draft() -> dict:
@@ -39,7 +34,7 @@ def _assert_audiences(links: list[dict], slug: str) -> None:
 
 def test_publish_returns_all_audience_urls_and_get_uses_active_snapshot() -> None:
     with TestClient(app, client=("publication-links-test", 50000)) as client:
-        _login_guest(client)
+        _login_member(client)
         created = client.post("/api/surveys", json=_draft())
         assert created.status_code == 201, created.text
         survey_id = created.json()["data"]["id"]
@@ -76,7 +71,7 @@ def test_publish_returns_all_audience_urls_and_get_uses_active_snapshot() -> Non
 
 def test_audience_urls_stay_identical_when_republished_with_same_routes() -> None:
     with TestClient(app, client=("publication-links-test", 50000)) as client:
-        _login_guest(client)
+        _login_member(client)
         created = client.post("/api/surveys", json=_draft()).json()["data"]
         survey_id = created["id"]
         first = client.post(f"/api/surveys/{survey_id}/publish", json={}).json()["data"]
@@ -89,9 +84,45 @@ def test_audience_urls_stay_identical_when_republished_with_same_routes() -> Non
 def test_public_link_listing_requires_project_owner() -> None:
     with TestClient(app, client=("publication-links-test", 50000)) as client:
         assert client.get("/api/surveys/unknown/public-links").status_code == 401
-        _login_guest(client)
+        _login_member(client)
         created = client.post("/api/surveys", json=_draft()).json()["data"]
         survey_id = created["id"]
         assert client.post(f"/api/surveys/{survey_id}/publish", json={}).status_code == 200
-        _login_guest(client)
+        _login_member(client)
+        assert client.get(f"/api/surveys/{survey_id}/public-links").status_code == 404
+
+
+def test_public_link_listing_does_not_load_full_draft_or_public_questions(monkeypatch) -> None:
+    from backend.memory_store import memory_store
+    from main import settings
+
+    with TestClient(app) as client:
+        _login_member(client)
+        created = client.post("/api/surveys", json=_draft()).json()["data"]
+        survey_id = created["id"]
+        published = client.post(f"/api/surveys/{survey_id}/publish", json={}).json()["data"]
+
+        def full_survey_forbidden(*args, **kwargs):
+            raise AssertionError("URL listing must not load/validate full survey questions")
+
+        monkeypatch.setattr(memory_store, "get_survey", full_survey_forbidden)
+        monkeypatch.setattr(memory_store, "public_survey", full_survey_forbidden)
+        response = client.get(f"/api/surveys/{survey_id}/public-links")
+        assert response.status_code == 200
+        assert response.json()["data"]["publicBaseUrl"] == settings.base_url
+        assert response.json()["data"]["links"] == published["links"]
+
+
+def test_public_link_listing_preserves_default_language_title_and_closed_access() -> None:
+    with TestClient(app) as client:
+        _login_member(client)
+        draft = _draft()
+        draft.update({"defaultLocale": "en", "supportedLocales": ["ko", "en"], "translations": {"en": {"title": "Published English title"}}})
+        created = client.post("/api/surveys", json=draft)
+        assert created.status_code == 201, created.text
+        survey_id = created.json()["data"]["id"]
+        assert client.post(f"/api/surveys/{survey_id}/publish", json={}).status_code == 200
+        view = client.get(f"/api/surveys/{survey_id}/public-links").json()["data"]
+        assert view["title"] == "Published English title"
+        assert client.post(f"/api/surveys/{survey_id}/close").status_code == 200
         assert client.get(f"/api/surveys/{survey_id}/public-links").status_code == 404

@@ -6,7 +6,10 @@
             code: "M01",
             label: "홈",
             icon: "home",
-            items: [{ code: "M01001", label: "대시보드", description: "오늘의 설문 운영 현황" }]
+            items: [
+                { code: "M01001", label: "대시보드", description: "오늘의 설문 운영 현황" },
+                { code: "M01002", label: "기능·템플릿 안내", description: "설문 기능과 응답 화면 미리보기" }
+            ]
         },
         {
             code: "M02",

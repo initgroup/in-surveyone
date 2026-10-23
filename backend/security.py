@@ -56,11 +56,6 @@ def new_session_token() -> str:
     return secrets.token_urlsafe(48)
 
 
-def new_initial_password() -> str:
-    """Return a one-time, URL-safe guest password with at least 192 bits of entropy."""
-    return secrets.token_urlsafe(24)
-
-
 def session_token_hash(token: str, secret: str) -> str:
     return hmac.new(
         secret.encode("utf-8"),

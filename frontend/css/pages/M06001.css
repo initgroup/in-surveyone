@@ -13,3 +13,10 @@
 .system-runtime-note { margin: 18px 0 0; padding: 13px 14px; color: #465873; background: var(--blue-soft); border-radius: 10px; font-size: var(--text-ui); line-height: 1.6; }
 @media (max-width: 64rem) { .system-settings-layout { grid-template-columns: 1fr; } }
 @media (max-width: 50rem) { .system-settings-hero { align-items: flex-start; flex-direction: column; padding: 21px; } .system-settings-actions { align-items: stretch; flex-direction: column; } .system-settings-actions .button { width: 100%; } }
+
+.system-login-policy { margin-top: 18px; }
+.system-login-policy-toggle { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; }
+.system-login-policy-toggle input { flex: 0 0 auto; width: 20px; min-height: 20px; margin: 3px 0 0; accent-color: var(--blue); }
+.system-login-policy-toggle > span { display: grid; gap: 5px; }
+.system-login-policy-toggle small { color: var(--muted); font-size: 14px; }
+.system-login-policy .system-settings-actions > div { display: flex; flex-wrap: wrap; gap: 8px; }

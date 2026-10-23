@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -41,64 +40,14 @@ def test_admin_member_list_reset_and_status_workflow(monkeypatch) -> None:
         TestClient(app) as admin_client,
         TestClient(app) as member_client,
         TestClient(app) as login_client,
-        TestClient(app) as guest_client,
     ):
         admin = _signup(admin_client, "member-admin", admin_key=admin_key)
         member = _signup(member_client, "managed-member")
         member_id = member["user"]["id"]
-        guest_response = guest_client.post(
-            "/api/auth/guest", json={"displayName": "분류 확인 게스트", "mode": "database"}
-        )
-        assert guest_response.status_code == 201, guest_response.text
-        guest = guest_response.json()["data"]
-        guest_id = guest["user"]["id"]
-        guest_login_id = guest["guestCredential"]["loginId"]
-
         assert member_client.get("/api/admin/members").status_code == 403
-        assert member_client.delete(f"/api/admin/members/{guest_id}").status_code == 403
-        assert admin_client.get("/api/admin/members?memberType=unknown").status_code == 422
-        guest_page = admin_client.get(
-            f"/api/admin/members?memberType=guest&query={guest_login_id}"
-        )
-        assert guest_page.status_code == 200
-        guest_item = guest_page.json()["data"]["items"][0]
-        assert guest_item["id"] == guest_id
-        assert guest_item["isGuest"] is True
-        assert guest_item["guestMode"] == "database"
-        assert guest_item["expiresAt"] is not None
-        assert guest_item["projectCount"] == 0
-        unused_guest_page = admin_client.get(
-            f"/api/admin/members?memberType=guest_unused&query={guest_login_id}"
-        )
-        assert unused_guest_page.status_code == 200
-        assert unused_guest_page.json()["data"]["total"] == 1
-        created_guest_project = guest_client.post(
-            "/api/surveys", json={"title": "게스트 사용 여부 확인"}
-        )
-        assert created_guest_project.status_code == 201, created_guest_project.text
-        used_guest_page = admin_client.get(
-            f"/api/admin/members?memberType=guest_unused&query={guest_login_id}"
-        )
-        assert used_guest_page.status_code == 200
-        assert used_guest_page.json()["data"]["total"] == 0
-        expired_at = datetime.now(timezone.utc) - timedelta(minutes=1)
-        memory_store._users[guest_id] = replace(
-            memory_store._users[guest_id], tenant_expires_at=expired_at
-        )
-        guest_tenant_id = memory_store._users[guest_id].tenant_id
-        memory_store._tenants[guest_tenant_id] = replace(
-            memory_store._tenants[guest_tenant_id], expires_at=expired_at
-        )
-        expired_guest_page = admin_client.get(
-            f"/api/admin/members?memberType=guest_expired&query={guest_login_id}"
-        )
-        assert expired_guest_page.status_code == 200
-        assert expired_guest_page.json()["data"]["total"] == 1
-        member_page = admin_client.get(
-            f"/api/admin/members?memberType=member&query={guest_login_id}"
-        )
-        assert member_page.status_code == 200
-        assert member_page.json()["data"]["total"] == 0
+        assert member_client.delete(f"/api/admin/members/{member_id}").status_code == 403
+        for retired_type in ("guest", "guest_unused", "guest_expired", "unknown"):
+            assert admin_client.get(f"/api/admin/members?memberType={retired_type}").status_code == 422
         page = admin_client.get("/api/admin/members?page=1&pageSize=1")
         assert page.status_code == 200, page.text
         page_data = page.json()["data"]

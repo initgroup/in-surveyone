@@ -1244,6 +1244,20 @@ initadmin / init2026!
 NHN Cloud Notification Hub
 
 SOLAPI (솔라피) — 간편 연동형 : 카톡, 문자 발송
+----------------------------------------------------------
+const { SolapiMessageService } = require('solapi');
+const messageService = new SolapiMessageService(
+  "SOLAPI_API_KEY",
+  "SOLAPI_API_SECRET"
+);
+
+messageService.send({
+  'to': '01012345678',
+  'from': '15771603',
+  'text': '안녕하세요! SOLAPI 테스트 메시지입니다.'
+});
+----------------------------------------------------------
+
 
 
 # 서버 실행

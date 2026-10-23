@@ -8,7 +8,6 @@
             validationTitle: "확인이 필요한 문항이 있습니다.", pagerAria: "문항 이동", previous: "이전", next: "다음", draftLocal: "이 탭에 임시 저장됩니다.", notSentBeforeSubmit: "제출 전에는 서버에 전송하지 않습니다.", submit: "응답 제출하기",
             invalidUrlTitle: "설문 주소가 올바르지 않습니다.", invalidUrlMessage: "전달받은 링크를 다시 확인해 주세요.", openFailedTitle: "설문을 열 수 없습니다.", descriptionFallback: "설문에 참여해 주세요.", scheduledTitle: "아직 설문 기간이 시작되지 않았습니다.", scheduledMessage: "{title} 설문은 {start}부터 참여할 수 있습니다. 시작 시간 이후 이 페이지를 새로고침해 주세요.", closedTitle: "설문 기간이 종료되었습니다.", closedMessage: "{title} 설문은 {end}에 종료되어 더 이상 응답을 제출할 수 없습니다.",
             languageChangeFailed: "언어를 바꾸지 못했습니다. {message}", retry: "다시 시도해 주세요.", languageChangeTitle: "설문 언어를 바꾸지 못했습니다.", languageChangeRefresh: "페이지를 새로 고침한 뒤 다시 시도해 주세요.",
-            expiryPolicy: "운영 정책에 따른 만료 시각", expiryUnknown: "확인되지 않은 만료 시각", demoBanner: "체험용 설문 · {expiry}까지만 접근할 수 있습니다. 실제 개인정보를 입력하지 마세요.",
             minutes: "약 {count}분", questions: "{count}개", identified: "기명", anonymous: "익명", required: "필수", selectPlaceholder: "선택하세요", shortPlaceholder: "답변을 입력하세요", longPlaceholder: "의견을 자유롭게 입력하세요", numberPlaceholder: "숫자 입력",
             item: "항목", content: "내용", rowDefault: "1행", addRow: "＋ 행 추가", rowInputAria: "{number}행 {column}", rowDeleteAria: "{number}행 삭제", draftSaving: "임시 저장 중…", draftSaved: "이 탭에 임시 저장했습니다.", draftRestored: "이 탭에 저장된 답변을 복원했습니다.", draftUnavailable: "임시 저장을 사용할 수 없습니다.",
             requiredError: "필수 문항에 응답해 주세요.", emailError: "이메일 형식으로 입력해 주세요.", questionFallback: "문항", questionLink: "{number}번 {title}", pageStatus: "{current} / {total} 문항", requiredToast: "{number}번 필수 문항에 응답해 주세요.",
@@ -20,7 +19,6 @@
             validationTitle: "Some questions need your attention.", pagerAria: "Question navigation", previous: "Previous", next: "Next", draftLocal: "Your draft is saved in this tab.", notSentBeforeSubmit: "Nothing is sent to the server before submission.", submit: "Submit response",
             invalidUrlTitle: "This survey address is invalid.", invalidUrlMessage: "Please check the link you received.", openFailedTitle: "The survey could not be opened.", descriptionFallback: "Please take part in this survey.", scheduledTitle: "This survey has not started yet.", scheduledMessage: "{title} will open on {start}. Refresh this page after the start time.", closedTitle: "This survey has ended.", closedMessage: "{title} closed on {end} and no longer accepts responses.",
             languageChangeFailed: "The language could not be changed. {message}", retry: "Please try again.", languageChangeTitle: "The survey language could not be changed.", languageChangeRefresh: "Refresh the page and try again.",
-            expiryPolicy: "the expiry time set by policy", expiryUnknown: "an unknown expiry time", demoBanner: "Demo survey · Available only until {expiry}. Do not enter real personal information.",
             minutes: "About {count} min", questions: "{count}", identified: "Identified", anonymous: "Anonymous", required: "Required", selectPlaceholder: "Select an option", shortPlaceholder: "Enter your answer", longPlaceholder: "Enter your comments", numberPlaceholder: "Enter a number",
             item: "Item", content: "Details", rowDefault: "Row 1", addRow: "＋ Add row", rowInputAria: "Row {number}, {column}", rowDeleteAria: "Delete row {number}", draftSaving: "Saving draft…", draftSaved: "Draft saved in this tab.", draftRestored: "Your saved answers were restored in this tab.", draftUnavailable: "Draft saving is unavailable.",
             requiredError: "Please answer this required question.", emailError: "Enter a valid email address.", questionFallback: "Question", questionLink: "Question {number}: {title}", pageStatus: "Question {current} of {total}", requiredToast: "Please answer required question {number}.",
@@ -32,7 +30,6 @@
             validationTitle: "確認が必要な設問があります。", pagerAria: "設問の移動", previous: "前へ", next: "次へ", draftLocal: "このタブに一時保存されます。", notSentBeforeSubmit: "送信するまでサーバーには送られません。", submit: "回答を送信",
             invalidUrlTitle: "アンケートのURLが正しくありません。", invalidUrlMessage: "受け取ったリンクをもう一度確認してください。", openFailedTitle: "アンケートを開けません。", descriptionFallback: "アンケートにご協力ください。", scheduledTitle: "アンケート期間はまだ始まっていません。", scheduledMessage: "{title}は{start}から回答できます。開始時刻後にこのページを再読み込みしてください。", closedTitle: "アンケート期間は終了しました。", closedMessage: "{title}は{end}に終了したため、回答を送信できません。",
             languageChangeFailed: "言語を変更できませんでした。{message}", retry: "もう一度お試しください。", languageChangeTitle: "アンケートの言語を変更できませんでした。", languageChangeRefresh: "ページを再読み込みして、もう一度お試しください。",
-            expiryPolicy: "運用ポリシーで定められた有効期限", expiryUnknown: "確認できない有効期限", demoBanner: "体験用アンケート · {expiry}まで利用できます。実際の個人情報は入力しないでください。",
             minutes: "約{count}分", questions: "{count}問", identified: "記名", anonymous: "匿名", required: "必須", selectPlaceholder: "選択してください", shortPlaceholder: "回答を入力してください", longPlaceholder: "ご意見を自由に入力してください", numberPlaceholder: "数値を入力",
             item: "項目", content: "内容", rowDefault: "1行目", addRow: "＋ 行を追加", rowInputAria: "{number}行目 {column}", rowDeleteAria: "{number}行目を削除", draftSaving: "一時保存中…", draftSaved: "このタブに一時保存しました。", draftRestored: "このタブに保存された回答を復元しました。", draftUnavailable: "一時保存を利用できません。",
             requiredError: "必須設問に回答してください。", emailError: "正しいメールアドレスを入力してください。", questionFallback: "設問", questionLink: "設問{number}: {title}", pageStatus: "{current} / {total}問", requiredToast: "必須設問{number}に回答してください。",
@@ -44,7 +41,6 @@
             validationTitle: "有题目需要检查。", pagerAria: "题目导航", previous: "上一题", next: "下一题", draftLocal: "草稿将保存在此标签页。", notSentBeforeSubmit: "提交前不会发送到服务器。", submit: "提交答卷",
             invalidUrlTitle: "问卷地址无效。", invalidUrlMessage: "请重新检查您收到的链接。", openFailedTitle: "无法打开问卷。", descriptionFallback: "请参与本次问卷。", scheduledTitle: "问卷尚未开始。", scheduledMessage: "{title}将于{start}开始。请在开始时间后刷新此页面。", closedTitle: "问卷已结束。", closedMessage: "{title}已于{end}结束，无法继续提交答卷。",
             languageChangeFailed: "无法切换语言。{message}", retry: "请重试。", languageChangeTitle: "无法切换问卷语言。", languageChangeRefresh: "请刷新页面后重试。",
-            expiryPolicy: "按运营政策设定的到期时间", expiryUnknown: "未知的到期时间", demoBanner: "体验问卷 · 仅可使用至{expiry}。请勿填写真实个人信息。",
             minutes: "约{count}分钟", questions: "{count}题", identified: "实名", anonymous: "匿名", required: "必填", selectPlaceholder: "请选择", shortPlaceholder: "请输入答案", longPlaceholder: "请自由填写意见", numberPlaceholder: "请输入数字",
             item: "项目", content: "内容", rowDefault: "第1行", addRow: "＋ 添加行", rowInputAria: "第{number}行 {column}", rowDeleteAria: "删除第{number}行", draftSaving: "正在保存草稿…", draftSaved: "草稿已保存在此标签页。", draftRestored: "已恢复此标签页保存的答案。", draftUnavailable: "无法保存草稿。",
             requiredError: "请回答此必填题。", emailError: "请输入有效的电子邮箱地址。", questionFallback: "题目", questionLink: "第{number}题：{title}", pageStatus: "第{current}题，共{total}题", requiredToast: "请回答第{number}道必填题。",
@@ -56,7 +52,6 @@
             validationTitle: "Có câu hỏi cần được kiểm tra.", pagerAria: "Điều hướng câu hỏi", previous: "Trước", next: "Tiếp", draftLocal: "Bản nháp được lưu trong thẻ này.", notSentBeforeSubmit: "Dữ liệu chưa được gửi đến máy chủ trước khi nộp.", submit: "Gửi câu trả lời",
             invalidUrlTitle: "Địa chỉ khảo sát không hợp lệ.", invalidUrlMessage: "Vui lòng kiểm tra lại liên kết bạn nhận được.", openFailedTitle: "Không thể mở khảo sát.", descriptionFallback: "Vui lòng tham gia khảo sát này.", scheduledTitle: "Khảo sát chưa bắt đầu.", scheduledMessage: "{title} sẽ mở vào {start}. Hãy tải lại trang sau thời gian bắt đầu.", closedTitle: "Khảo sát đã kết thúc.", closedMessage: "{title} đã kết thúc vào {end} và không còn nhận phản hồi.",
             languageChangeFailed: "Không thể đổi ngôn ngữ. {message}", retry: "Vui lòng thử lại.", languageChangeTitle: "Không thể đổi ngôn ngữ khảo sát.", languageChangeRefresh: "Hãy tải lại trang rồi thử lại.",
-            expiryPolicy: "thời điểm hết hạn theo chính sách", expiryUnknown: "thời điểm hết hạn chưa xác định", demoBanner: "Khảo sát dùng thử · Chỉ truy cập được đến {expiry}. Không nhập thông tin cá nhân thật.",
             minutes: "Khoảng {count} phút", questions: "{count} câu", identified: "Có danh tính", anonymous: "Ẩn danh", required: "Bắt buộc", selectPlaceholder: "Vui lòng chọn", shortPlaceholder: "Nhập câu trả lời", longPlaceholder: "Tự do nhập ý kiến", numberPlaceholder: "Nhập số",
             item: "Mục", content: "Nội dung", rowDefault: "Dòng 1", addRow: "＋ Thêm dòng", rowInputAria: "Dòng {number}, {column}", rowDeleteAria: "Xóa dòng {number}", draftSaving: "Đang lưu bản nháp…", draftSaved: "Đã lưu bản nháp trong thẻ này.", draftRestored: "Đã khôi phục câu trả lời lưu trong thẻ này.", draftUnavailable: "Không thể lưu bản nháp.",
             requiredError: "Vui lòng trả lời câu hỏi bắt buộc này.", emailError: "Vui lòng nhập địa chỉ email hợp lệ.", questionFallback: "Câu hỏi", questionLink: "Câu {number}: {title}", pageStatus: "Câu {current} / {total}", requiredToast: "Vui lòng trả lời câu bắt buộc số {number}.",
@@ -68,7 +63,6 @@
             validationTitle: "May mga tanong na kailangang suriin.", pagerAria: "Paglipat sa mga tanong", previous: "Nakaraan", next: "Susunod", draftLocal: "Naka-save ang draft sa tab na ito.", notSentBeforeSubmit: "Hindi ito ipapadala sa server bago isumite.", submit: "Isumite ang sagot",
             invalidUrlTitle: "Hindi wasto ang address ng survey.", invalidUrlMessage: "Pakisuring muli ang link na natanggap mo.", openFailedTitle: "Hindi mabuksan ang survey.", descriptionFallback: "Mangyaring lumahok sa survey na ito.", scheduledTitle: "Hindi pa nagsisimula ang survey.", scheduledMessage: "Magbubukas ang {title} sa {start}. I-refresh ang pahinang ito pagkatapos ng oras ng pagsisimula.", closedTitle: "Tapos na ang survey.", closedMessage: "Nagsara ang {title} noong {end} at hindi na tumatanggap ng mga sagot.",
             languageChangeFailed: "Hindi mapalitan ang wika. {message}", retry: "Pakisubukang muli.", languageChangeTitle: "Hindi mapalitan ang wika ng survey.", languageChangeRefresh: "I-refresh ang pahina at subukang muli.",
-            expiryPolicy: "oras ng pag-expire ayon sa patakaran", expiryUnknown: "hindi matukoy na oras ng pag-expire", demoBanner: "Demo survey · Maa-access lamang hanggang {expiry}. Huwag maglagay ng totoong personal na impormasyon.",
             minutes: "Humigit-kumulang {count} min", questions: "{count}", identified: "May pangalan", anonymous: "Anonymous", required: "Kailangan", selectPlaceholder: "Pumili", shortPlaceholder: "Ilagay ang sagot", longPlaceholder: "Malayang ilagay ang iyong opinyon", numberPlaceholder: "Maglagay ng numero",
             item: "Item", content: "Nilalaman", rowDefault: "Hanay 1", addRow: "＋ Magdagdag ng hanay", rowInputAria: "Hanay {number}, {column}", rowDeleteAria: "Tanggalin ang hanay {number}", draftSaving: "Sine-save ang draft…", draftSaved: "Naka-save ang draft sa tab na ito.", draftRestored: "Naibalik ang mga sagot na naka-save sa tab na ito.", draftUnavailable: "Hindi magagamit ang pag-save ng draft.",
             requiredError: "Pakisagutan ang kinakailangang tanong na ito.", emailError: "Maglagay ng wastong email address.", questionFallback: "Tanong", questionLink: "Tanong {number}: {title}", pageStatus: "Tanong {current} sa {total}", requiredToast: "Pakisagutan ang kinakailangang tanong {number}.",
@@ -147,6 +141,12 @@
         state.slug = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || new URLSearchParams(location.search).get("slug") || "");
         if (!state.slug) return showState("!", text("invalidUrlTitle"), text("invalidUrlMessage"));
         bind();
+        await loadPublicSurvey();
+    }
+
+    async function loadPublicSurvey() {
+        dom.state.hidden = true;
+        dom.loading.hidden = false;
         try {
             let payload = await Common.api.get(publicSurveyPath(state.requestedLocale));
             state.survey = payload.survey || payload;
@@ -160,7 +160,15 @@
             restoreDraft();
             render();
         } catch (error) {
-            showState("!", text("openFailedTitle"), error.message);
+            if (Common.failure.isService(error)) {
+                dom.loading.hidden = true;
+                dom.form.hidden = true;
+                document.querySelector(".public-progress").hidden = true;
+                dom.state.hidden = false;
+                dom.state.innerHTML = Common.failure.markup(error, { heading: "h1", home: false });
+                dom.state.querySelector("[data-failure-retry]").addEventListener("click", () => void loadPublicSurvey());
+                dom.state.querySelector("[data-service-failure]").focus({ preventScroll: true });
+            } else showState("!", text("openFailedTitle"), error.message);
         }
     }
 
@@ -483,23 +491,13 @@
             try {
                 render();
                 dom.saveState.textContent = text("languageChangeFailed", { message: error?.message || text("retry") });
+                if (Common.failure.isService(error)) queueMicrotask(() => Common.failure.open(error));
             } catch {
                 showState("!", text("languageChangeTitle"), text("languageChangeRefresh"));
             }
         } finally {
             dom.language.disabled = false;
             dom.language.focus({ preventScroll: true });
-        }
-    }
-
-    function formatExperienceExpiry(value) {
-        if (!value) return text("expiryPolicy");
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return text("expiryUnknown");
-        try {
-            return new Intl.DateTimeFormat(state.locale, { dateStyle: "medium", timeStyle: "short" }).format(date);
-        } catch {
-            return text("expiryUnknown");
         }
     }
 
@@ -551,13 +549,7 @@
         document.querySelector("[data-public-category]").textContent = (state.survey.category || "ONLINE SURVEY").toUpperCase();
         document.querySelector("[data-public-title]").textContent = localizedSurveyField("title");
         document.querySelector("[data-public-description]").textContent = localizedSurveyField("description") || text("descriptionFallback");
-        const guestDemo = Boolean(state.survey.guestDemo ?? state.survey.guest_demo);
-        const expiresAt = state.survey.experienceExpiresAt || state.survey.experience_expires_at;
-        dom.demoBanner.hidden = !guestDemo && !state.preview;
-        if (guestDemo) {
-            const expires = formatExperienceExpiry(expiresAt);
-            dom.demoBanner.textContent = text("demoBanner", { expiry: expires });
-        }
+        dom.demoBanner.hidden = !state.preview;
         if (state.preview) dom.demoBanner.textContent = "미리보기 · 현재 초안입니다. 입력 내용은 저장하거나 제출하지 않습니다.";
         const answerableQuestions = state.questions.filter((item) => item.type !== "notice");
         document.querySelector("[data-public-time]").textContent = text("minutes", { count: Math.max(1, Math.ceil(answerableQuestions.length * .35)) });
@@ -1586,6 +1578,7 @@
             dom.summary.querySelector("ul").innerHTML = `<li>${Common.escapeHtml(error.message)}</li>`;
             dom.summary.setAttribute("tabindex", "-1");
             dom.summary.focus();
+            if (Common.failure.isService(error)) Common.failure.open(error, { write: "submission" });
         }
     }
 

@@ -82,7 +82,6 @@ def test_content_length_and_chunked_caps_run_before_json_parsing() -> None:
         get_settings(),
         public_body_max_bytes=32,
         delivery_body_max_bytes=32,
-        guest_body_max_bytes=16,
         auth_body_max_bytes=16,
     )
     oversized = b'{"answers":{}} trailing-malformed-' + b"x" * 64
@@ -129,23 +128,6 @@ def test_content_length_and_chunked_caps_run_before_json_parsing() -> None:
         assert (status, calls) == (413, 0)
 
     status, calls, _ = _run_guard(
-        "/api/auth/guest",
-        [b"guest body must never be read"],
-        settings=settings,
-        headers=[
-            (b"content-length", str(len(guest_oversized)).encode("ascii"))
-        ],
-    )
-    assert (status, calls) == (413, 0)
-
-    status, calls, _ = _run_guard(
-        "/api/auth/guest",
-        [guest_oversized[:8], guest_oversized[8:]],
-        settings=settings,
-    )
-    assert (status, calls) == (413, 0)
-
-    status, calls, _ = _run_guard(
         "/api/public/surveys/demo/responses",
         [oversized[:20], oversized[20:]],
         settings=settings,
@@ -156,23 +138,12 @@ def test_content_length_and_chunked_caps_run_before_json_parsing() -> None:
 def test_process_local_rate_limits_are_keyed_by_direct_ip_and_slug() -> None:
     settings = replace(
         get_settings(),
-        guest_create_rate_limit=1,
         signup_rate_limit=1,
         login_rate_limit=1,
         public_submit_rate_limit=1,
         rate_limit_window_seconds=60,
     )
     limiter = InProcessFixedWindowLimiter()
-
-    first_guest, _, _ = _run_guard(
-        "/api/auth/guest", [b"{}"], settings=settings, limiter=limiter
-    )
-    blocked_guest, calls, headers = _run_guard(
-        "/api/auth/guest", [b"{}"], settings=settings, limiter=limiter
-    )
-    assert first_guest == 204
-    assert (blocked_guest, calls) == (429, 0)
-    assert any(name.lower() == b"retry-after" for name, _ in headers)
 
     for auth_path in ("/api/auth/signup", "/api/auth/login"):
         first_auth, _, _ = _run_guard(

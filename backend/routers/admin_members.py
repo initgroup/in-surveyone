@@ -24,7 +24,7 @@ def list_admin_members(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, alias="pageSize", ge=1, le=100),
     query: str = Query(default="", max_length=100),
-    member_type: Literal["all", "member", "guest", "guest_unused", "guest_expired"] = Query(
+    member_type: Literal["all", "member"] = Query(
         default="all", alias="memberType"
     ),
     user: UserRecord = Depends(current_user),

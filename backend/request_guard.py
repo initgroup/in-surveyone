@@ -67,7 +67,6 @@ class PublicRequestGuardMiddleware:
     _PUBLIC_PREFIX = "/api/public/surveys/"
     _PUBLIC_SUFFIX = "/responses"
     _AUTH_ACTIONS = {
-        "/api/auth/guest": "guest-create",
         "/api/auth/signup": "signup",
         "/api/auth/login": "login",
     }
@@ -188,9 +187,6 @@ class PublicRequestGuardMiddleware:
         elif submission_slug is not None:
             maximum = self.settings.public_body_max_bytes
             too_large_detail = "Public response request body is too large."
-        elif auth_action == "guest-create":
-            maximum = self.settings.guest_body_max_bytes
-            too_large_detail = "Guest request body is too large."
         else:
             maximum = self.settings.auth_body_max_bytes
             too_large_detail = "Authentication request body is too large."
@@ -238,10 +234,7 @@ class PublicRequestGuardMiddleware:
             return
 
         client_ip = self._direct_client_ip(scope)
-        if auth_action == "guest-create":
-            rate_key = f"guest-create:{client_ip}"
-            rate_limit = self.settings.guest_create_rate_limit
-        elif auth_action == "signup":
+        if auth_action == "signup":
             rate_key = f"signup:{client_ip}"
             rate_limit = self.settings.signup_rate_limit
         elif auth_action == "login":

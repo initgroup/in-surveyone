@@ -24,6 +24,7 @@ RECIPIENT_HEADERS = (
     "fax",
     "kakaoId",
     "channels",
+    "audienceCode",
 )
 CONTACT_CHANNELS = {
     "email": "EMAIL",
@@ -117,7 +118,10 @@ def parse_recipient_file(filename: str, data: bytes) -> tuple[list[DeliveryRecip
 
     raw_headers = [_cell(value).lstrip("\ufeff") for value in rows[0]]
     header_lookup = {value.casefold(): value for value in RECIPIENT_HEADERS}
+    header_lookup.update({"이름": "name", "대상자명": "name", "휴대전화": "mobile", "휴대폰": "mobile", "전화번호": "mobile", "이메일": "email", "국가": "countryCode", "언어": "preferredLanguage", "대상구분": "audienceCode"})
     headers = [header_lookup.get(value.casefold(), value) for value in raw_headers]
+    if len(headers) != len(set(headers)):
+        raise DomainValidationError("파일에 같은 열 이름이 중복되어 있습니다.")
     required = {"name", "countryCode", "preferredLanguage"}
     missing = sorted(required - set(headers))
     if missing:
@@ -140,6 +144,8 @@ def parse_recipient_file(filename: str, data: bytes) -> tuple[list[DeliveryRecip
             for value in values.get("channels", "").replace(",", "|").replace(";", "|").split("|")
             if value.strip()
         ]
+        if values.get("mobile") and not values.get("kakaoId"):
+            values["kakaoId"] = values["mobile"]
         if not channels:
             channels = [
                 channel for field, channel in CONTACT_CHANNELS.items() if values.get(field)
@@ -149,6 +155,7 @@ def parse_recipient_file(filename: str, data: bytes) -> tuple[list[DeliveryRecip
                 DeliveryRecipientInput.model_validate(
                     {
                         **values,
+                        "audienceCode": values.get("audienceCode") or None,
                         "channels": channels,
                     }
                 )
@@ -179,14 +186,15 @@ def recipient_xlsx_sample() -> bytes:
             "010-0000-0000",
             "",
             "",
-            "EMAIL|SMS",
+            "EMAIL|SMS|KAKAO",
+            "",
         ]
     )
     fill = PatternFill("solid", fgColor="2457D6")
     for cell in sheet[1]:
         cell.fill = fill
         cell.font = Font(color="FFFFFF", bold=True)
-    widths = (22, 15, 20, 28, 20, 18, 22, 22)
+    widths = (22, 15, 20, 28, 20, 18, 22, 24, 22)
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[chr(64 + index)].width = width
     sheet.freeze_panes = "A2"

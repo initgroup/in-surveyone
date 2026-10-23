@@ -19,7 +19,7 @@ def normalize_contact(channel: str, value: str) -> str:
     candidate = value.strip()
     if channel.upper() == "EMAIL":
         return candidate.casefold()
-    if channel.upper() in {"SMS", "FAX"}:
+    if channel.upper() in {"SMS", "FAX", "KAKAO"} and all(character in "+0123456789 ()-" for character in candidate):
         digits = "".join(character for character in candidate if character.isdigit())
         return digits or candidate
     return candidate
@@ -111,7 +111,7 @@ def mask_contact(channel: str, value: str | None) -> str | None:
     if channel.upper() == "EMAIL" and "@" in value:
         local, domain = value.split("@", 1)
         return f"{local[:1]}***@{domain}"
-    if channel.upper() in {"SMS", "FAX"}:
+    if channel.upper() in {"SMS", "FAX", "KAKAO"}:
         digits = "".join(character for character in value if character.isdigit())
         if len(digits) >= 7:
             return f"{digits[:3]}-****-{digits[-4:]}"

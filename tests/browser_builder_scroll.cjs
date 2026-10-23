@@ -42,6 +42,7 @@ async function check(name,fn){await fn();checks++;console.log("PASS "+name);}
   const req=route.request(),url=new URL(req.url());let value,status=200;
   if(req.method()!=="GET") writes++;
   if(url.pathname==="/api/auth/me") value={user:{id:"test-user",tenantId:"test-tenant",displayName:"자동화 테스트",role:"OWNER"},expiresAt:new Date(Date.now()+3600000).toISOString()};
+  else if (url.pathname === "/api/version") value = {version: fs.readFileSync(path.join(root, "VERSION"), "utf8").trim()};
   else if(url.pathname==="/api/runtime-config") value={publicBaseUrl:"https://www.insurveyone.com",environment:"test"};
   else if(url.pathname===`/api/surveys/${survey.id}`) {
    if(req.method()==="PUT") {Object.assign(survey,req.postDataJSON());survey.revision++;}

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile, Query
 from fastapi.responses import Response
 
 from backend.dependencies import current_store, current_user
@@ -13,6 +13,8 @@ from backend.models import (
     DeploymentDraftView,
     DeploymentExecuteRequest,
     DeploymentExecuteResult,
+    DeploymentSendRequest,
+    DeliverySendResult,
 )
 from backend.stores import SurveyStore
 from backend.recipient_import import parse_recipient_file, recipient_xlsx_sample
@@ -100,3 +102,41 @@ def execute_deployment(
     store: SurveyStore = Depends(current_store),
 ) -> ApiResponse[DeploymentExecuteResult]:
     return ApiResponse(data=store.execute_deployment(user, survey_id, payload))
+
+
+@router.get("/solapi/templates", response_model=ApiResponse[list[dict]])
+def solapi_templates(pf_id: str = Query(alias="pfId", min_length=1, max_length=100),
+                     user: UserRecord = Depends(current_user), store: SurveyStore = Depends(current_store)):
+    from backend.errors import DomainValidationError
+    from backend.solapi import SolapiClient
+    if not store.delivery_providers(user).providers["kakao"].enabled:
+        raise DomainValidationError("SOLAPI 카카오 발송 설정이 준비되지 않았습니다.")
+    return ApiResponse(data=SolapiClient(store.settings).templates(pf_id))
+
+
+@router.post("/by-survey/{survey_id}/preview", response_model=ApiResponse[dict])
+def preview_deployment(survey_id: str, payload: DeploymentDraftRequest,
+                       offset: int = Query(default=0, ge=0, le=8000),
+                       recipient_id: str | None = Query(default=None, alias="recipientId", max_length=100),
+                       user: UserRecord = Depends(current_user), store: SurveyStore = Depends(current_store)):
+    return ApiResponse(data=store.preview_deployment(user, survey_id, payload, offset=offset, recipient_id=recipient_id))
+
+
+@router.get("/by-survey/{survey_id}/delivery-status", response_model=ApiResponse[DeliverySendResult])
+def delivery_status(survey_id: str, revision: int = Query(ge=1),
+                    user: UserRecord = Depends(current_user), store: SurveyStore = Depends(current_store)):
+    return ApiResponse(data=store.delivery_status(user, survey_id, revision))
+
+
+@router.post("/by-survey/{survey_id}/send", response_model=ApiResponse[DeliverySendResult])
+def send_deployment(survey_id: str, payload: DeploymentSendRequest,
+                    user: UserRecord = Depends(current_user), store: SurveyStore = Depends(current_store)):
+    return ApiResponse(data=store.send_deployment(user, survey_id, payload))
+
+
+@router.get("/history", response_model=ApiResponse[dict])
+def delivery_history(survey_id: str | None = Query(default=None, alias="surveyId", max_length=80),
+                     status: str | None = Query(default=None, pattern="^(QUEUED|ACCEPTED|FAILED|UNKNOWN|DISABLED|SENT|CANCELLED)$"),
+                     offset: int = Query(default=0, ge=0, le=1000000),
+                     user: UserRecord = Depends(current_user), store: SurveyStore = Depends(current_store)):
+    return ApiResponse(data=store.delivery_history(user, survey_id, offset=offset, status=status))

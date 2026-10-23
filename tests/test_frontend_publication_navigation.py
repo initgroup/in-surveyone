@@ -81,21 +81,24 @@ assert.equal(replacements,1);
 """)
 
 
-def test_distribution_url_shortcut_navigates_and_respects_unsaved_changes() -> None:
+def test_distribution_url_layer_preserves_unsaved_draft_and_rotates_current_links() -> None:
     run_node(r"""
 const page=Object.create(Pages.M03001),calls=[];
-const draft={messagesByLanguage:{ko:{emailBody:"Keep draft"}},revision:2};
-page.draft=draft;page.dirty=false;
-page.context={api:{post(){throw new Error("URL mutation belongs to project");}},navigate(route,params){calls.push([route,params]);},confirmMessage(){throw new Error("Unexpected confirmation");}};
+const draft={messagesByLanguage:{ko:{emailBody:"https://survey.example/s/old?lang=ko",kakaoVariables:{"#{URL}":"https://survey.example/s/old?audience=all"},kakaoBody:"Approved https://survey.example/s/old"}},revision:2};
+page.draft=draft;page.dirty=true;page.root={};
+page.current={id:"survey-a",publicUrl:"/s/old"};page.items=[page.current];page.publicBaseUrl="https://survey.example";
+page.context={api:{post(){throw new Error("Use shared layer only");}},navigate(){throw new Error("Must not navigate");},confirmMessage(){throw new Error("Must not discard draft");}};
+let options;
+global.SurveyPublicationLinks={async open(value){calls.push(value.surveyId);options=value;}};
+page.renderMessages=()=>{};page.markDirty=()=>{page.previewSignature=null;page.dirty=true;};
 await page.openProjectUrls("survey-a");
-assert.deepEqual(calls,[["M02001",{urlId:"survey-a"}]]);
-page.dirty=true;let confirmed=0;
-page.context.confirmMessage=async()=>{confirmed++;return false;};
-await page.openProjectUrls("survey-a");
-assert.equal(calls.length,1);assert.equal(page.dirty,true);assert.equal(page.draft,draft);
-page.context.confirmMessage=async()=>{confirmed++;return true;};
-await page.openProjectUrls("survey-a");
-assert.equal(calls.length,2);assert.equal(confirmed,2);assert.equal(draft.messagesByLanguage.ko.emailBody,"Keep draft");
+assert.deepEqual(calls,["survey-a"]);assert.equal(page.dirty,true);assert.equal(page.draft,draft);
+page.previewSignature="old-checked-plan";
+options.onRegenerate({slug:"new",publicUrl:"/s/new"});
+assert.equal(page.current.publicUrl,"/s/new");assert.equal(page.previewSignature,null);
+assert.equal(draft.messagesByLanguage.ko.emailBody,"https://survey.example/s/new?lang=ko");
+assert.equal(draft.messagesByLanguage.ko.kakaoVariables["#{URL}"],"https://survey.example/s/new?audience=all");
+assert.equal(draft.messagesByLanguage.ko.kakaoBody,"Approved https://survey.example/s/old");
 assert(!fs.readFileSync("frontend/js/M03001.js","utf8").includes("/public-url/regenerate"));
 """)
 
@@ -153,4 +156,16 @@ assert(content.innerHTML.includes('data-publication-retry'));
 fail=false;await click({target:{closest(selector){return selector==='[data-publication-retry]'?{}:null}}});
 assert.equal(configReads,2);assert(content.innerHTML.includes('https://www.insurveyone.com/s/current'));
 assert(!content.innerHTML.includes(location.origin));
+""")
+
+
+def test_distribution_cannot_send_or_rotate_urls_during_another_write() -> None:
+    run_node(r"""
+const page=Object.create(Pages.M03001);
+page.context={api:{post(){throw new Error("No concurrent send");}},toast(){}};
+global.SurveyPublicationLinks={open(){throw new Error("No concurrent URL rotation");}};
+for (const field of ["saving","sending","actionBusy"]) {
+    page.saving=false;page.sending=false;page.actionBusy=false;page[field]=true;
+    await page.execute();await page.openProjectUrls("survey-a");
+}
 """)

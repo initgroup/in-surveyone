@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
 from fastapi.encoders import jsonable_encoder
@@ -14,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.config import PROJECT_ROOT, get_settings
 from backend.database import close_database, database_status, get_oracle_pool
 from backend.errors import DomainError
+from backend.release import APPLICATION_VERSION
 from backend.request_guard import (
     InProcessFixedWindowLimiter,
     PublicRequestGuardMiddleware,
@@ -27,9 +29,11 @@ from backend.routers import (
     help,
     public,
     surveys,
+    showcase,
+    system_settings,
     templates,
 )
-from backend.stores import prime_database_guest_probe
+from backend.stores import prime_database_probe
 
 
 settings = get_settings()
@@ -79,7 +83,7 @@ async def lifespan(_: FastAPI):
         # Oracle mode is explicit: connection/configuration failures abort
         # startup and are never replaced with an in-process repository.
         get_oracle_pool().ping()
-        ready, reason = prime_database_guest_probe(settings)
+        ready, reason = prime_database_probe(settings)
         if not ready:
             raise RuntimeError(reason or "Oracle schema readiness check failed.")
     yield
@@ -88,7 +92,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.1.0",
+    version=APPLICATION_VERSION,
     description="기관별 설문 작성·배포·응답·분석을 위한 IN-SURVEYONE API",
     lifespan=lifespan,
 )
@@ -112,6 +116,12 @@ app.add_middleware(
 
 @app.exception_handler(DomainError)
 async def domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
+    if exc.status_code >= 500:
+        request_id = uuid4().hex
+        logger.error("Service request failed: reference=%s type=%s", request_id, type(exc).__name__)
+        return JSONResponse(status_code=exc.status_code, content={
+            "detail": exc.detail, "code": "SERVICE_UNAVAILABLE", "requestId": request_id,
+        }, headers={"Cache-Control": "no-store"})
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
@@ -153,21 +163,29 @@ async def protect_browser_writes(request: Request, call_next):
         _set_frontend_cache_policy(request, response)
         return response
     except Exception as exc:
-        repository_failure = isinstance(exc, RuntimeError) or _is_oracle_driver_error(exc)
-        if settings.db_mode != "oracle" or not repository_failure:
-            raise
-        logger.exception("Oracle repository request failed.")
-        return JSONResponse(
-            status_code=503,
-            content={
-                "detail": (
-                    "Oracle repository is unavailable; configuration or schema is "
-                    "not implemented correctly. Memory fallback is disabled."
-                )
-            },
+        repository_failure = settings.db_mode == "oracle" and (
+            isinstance(exc, RuntimeError) or _is_oracle_driver_error(exc)
         )
+        code = "REQUEST_TIMEOUT" if isinstance(exc, TimeoutError) else "DATABASE_UNAVAILABLE" if repository_failure else "SERVER_ERROR"
+        status = 504 if code == "REQUEST_TIMEOUT" else 503 if repository_failure else 500
+        request_id = uuid4().hex
+        # Driver exception strings/tracebacks can contain connection details.
+        logger.error("Request failed: reference=%s code=%s type=%s", request_id, code, type(exc).__name__)
+        if not request.url.path.startswith("/api/"):
+            return FileResponse(FRONTEND_DIR / "error.html", status_code=status,
+                                headers={"Cache-Control": "no-store", "X-SurveyOne-Error-Id": request_id})
+        messages = {
+            "DATABASE_UNAVAILABLE": "데이터베이스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+            "REQUEST_TIMEOUT": "서버 응답 대기 시간이 초과되었습니다. 처리 결과를 확인해 주세요.",
+            "SERVER_ERROR": "요청 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        }
+        return JSONResponse(status_code=status,
+                            content={"detail": messages[code], "code": code, "requestId": request_id},
+                            headers={"Cache-Control": "no-store"})
 
 
+
+app.include_router(system_settings.router, prefix="/api/system-settings", tags=["system-settings"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(
     admin_templates.router,
@@ -181,6 +199,7 @@ app.include_router(
 )
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(templates.router, prefix="/api/templates", tags=["templates"])
+app.include_router(showcase.router, prefix="/api/showcase", tags=["showcase"])
 app.include_router(surveys.router, prefix="/api/surveys", tags=["surveys"])
 app.include_router(deployments.router, prefix="/api/deployments", tags=["deployments"])
 app.include_router(public.router, prefix="/api/public", tags=["public-surveys"])
@@ -195,6 +214,12 @@ def health() -> dict[str, object]:
         "database": database_status(),
         "time": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/api/version")
+def application_version(response: Response) -> dict[str, object]:
+    response.headers["Cache-Control"] = "no-store"
+    return {"status": "success", "data": {"version": APPLICATION_VERSION}}
 
 
 @app.get("/api/runtime-config")
@@ -218,6 +243,11 @@ def _spa_response() -> Response:
         "<h1>IN-SURVEYONE API</h1><p><a href=\"/docs\">API 문서 열기</a></p>"
         "</body></html>"
     )
+
+
+@app.get("/error", include_in_schema=False)
+def service_error_page() -> Response:
+    return FileResponse(FRONTEND_DIR / "error.html", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/", include_in_schema=False)

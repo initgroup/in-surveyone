@@ -28,13 +28,9 @@ from backend.models import (
     DeploymentDraftView,
     DeploymentExecuteRequest,
     DeploymentExecuteResult,
-    GuestCapabilitiesView,
-    GuestFeatures,
-    GuestProvisionView,
-    GuestLimits,
-    GuestMode,
-    GuestModeCapability,
     LoginRequest,
+    LoginPolicyView,
+    LoginPolicyUpdate,
     PublicSurvey,
     PublishRequest,
     PublishResult,
@@ -45,6 +41,7 @@ from backend.models import (
     SurveyCreateRequest,
     SurveyDetail,
     SurveyPage,
+    SurveyPublicLinks,
     SurveyReport,
     SurveyResponseView,
     SurveyStatus,
@@ -61,7 +58,7 @@ _probe_at = 0.0
 _probe_result: tuple[bool, str | None] = (False, "Oracle has not been checked.")
 
 
-def _database_guest_probe(
+def _database_readiness_probe(
     settings: Settings, *, force_refresh: bool = False
 ) -> tuple[bool, str | None]:
     global _probe_at, _probe_result
@@ -86,15 +83,15 @@ def _database_guest_probe(
         return _probe_result
 
 
-def prime_database_guest_probe(settings: Settings | None = None) -> tuple[bool, str | None]:
-    return _database_guest_probe(settings or get_settings(), force_refresh=True)
+def prime_database_probe(settings: Settings | None = None) -> tuple[bool, str | None]:
+    return _database_readiness_probe(settings or get_settings(), force_refresh=True)
 
 
 @runtime_checkable
 class SurveyStore(Protocol):
-    def create_guest(
-        self, display_name: str, mode: GuestMode = GuestMode.DATABASE
-    ) -> GuestProvisionView: ...
+    def login_policy(self, user: UserRecord) -> LoginPolicyView: ...
+
+    def update_login_policy(self, user: UserRecord, request: LoginPolicyUpdate) -> LoginPolicyView: ...
 
     def signup(self, request: SignupRequest) -> tuple[str, AuthSessionView]: ...
     def login(self, request: LoginRequest) -> tuple[str, AuthSessionView]: ...
@@ -166,6 +163,7 @@ class SurveyStore(Protocol):
         sort: str = "updated-desc",
     ) -> SurveyPage: ...
     def get_survey(self, user: UserRecord, survey_id: str) -> SurveyDetail: ...
+    def public_links(self, user: UserRecord, survey_id: str) -> SurveyPublicLinks: ...
     def apply_template(
         self, user: UserRecord, survey_id: str, request: SurveyTemplateApplyRequest
     ) -> SurveyDetail: ...
@@ -211,6 +209,10 @@ class SurveyStore(Protocol):
     def execute_deployment(
         self, user: UserRecord, survey_id: str, request: DeploymentExecuteRequest
     ) -> DeploymentExecuteResult: ...
+    def preview_deployment(self, user, survey_id, request, *, offset=0, verify_templates=False, recipient_id=None) -> dict: ...
+    def delivery_history(self, user, survey_id=None, *, offset=0, status=None) -> dict: ...
+    def delivery_status(self, user, survey_id, revision): ...
+    def send_deployment(self, user, survey_id, request): ...
     def page_help(self, menu_id: str, language: str) -> dict[str, object]: ...
 
 
@@ -278,52 +280,3 @@ def public_store(slug: str) -> SurveyStore:
     if selected.environment == "test" and selected.db_mode == "memory":
         return memory_store
     return oracle_store()
-
-
-def guest_capabilities(
-    selected_mode: GuestMode = GuestMode.DATABASE,
-    *,
-    settings: Settings | None = None,
-) -> GuestCapabilitiesView:
-    selected = settings or get_settings()
-    database_configured, database_reason = _database_guest_probe(
-        selected,
-        force_refresh=selected_mode == GuestMode.DATABASE,
-    )
-    providers = {
-        "email": selected.email_provider not in {"", "disabled"},
-        "sms": selected.sms_provider not in {"", "disabled"},
-        "kakao": selected.kakao_provider not in {"", "disabled"},
-    }
-    database = GuestModeCapability(
-        mode=GuestMode.DATABASE,
-        title="게스트(손님)",
-        available=database_configured,
-        reason=(
-            f"첫 저장 전에는 계정을 만들지 않으며, 발급 후 미사용 계정은 {selected.guest_unused_ttl_hours}시간, 프로젝트 저장 계정은 {selected.guest_project_ttl_hours}시간 접근 가능한 Oracle 체험 공간입니다. "
-            "외부 발송과 맞춤 보고서 영구 저장은 미리보기만 제공됩니다."
-            if database_configured
-            else database_reason
-        ),
-        persistence="oracle-temporary-tenant",
-        expires_in_hours=selected.guest_unused_ttl_hours,
-        limits=GuestLimits(
-            max_projects=selected.db_guest_max_projects,
-            max_questions_per_survey=selected.db_guest_max_questions,
-            max_responses_per_survey=selected.db_guest_max_responses,
-        ),
-        features=GuestFeatures(
-            templates=True,
-            publish_demo_url=True,
-            external_delivery=False,
-            raw_data_export=True,
-            custom_report_persistence=False,
-            multilingual=True,
-            all_question_types=True,
-        ),
-        provider_configured=providers,
-    )
-    return GuestCapabilitiesView(
-        selected_mode=GuestMode.DATABASE,
-        modes=[database],
-    )

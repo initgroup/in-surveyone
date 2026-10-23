@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend.publication_links import public_link_items
+from backend.publication_links import public_link_items, public_links_metadata
 
 from backend.survey_audience import audience_submission, validate_audiences
 
@@ -19,6 +19,8 @@ from typing import Any, Iterable
 from uuid import uuid4
 
 from backend.config import Settings, get_settings
+from backend.delivery_service import outcome_metadata, preview_result, render_jobs, send_result
+from backend.solapi import SolapiClient
 from backend.answer_codes import coded_answers
 from backend.errors import (
     AuthenticationError,
@@ -51,10 +53,12 @@ from backend.models import (
     DeploymentExecuteRequest,
     DeploymentExecuteResult,
     DeploymentExecutionView,
+    DeploymentSendRequest,
+    DeliverySendResult,
     GuestMode,
-    GuestCredentialView,
-    GuestProvisionView,
     LoginRequest,
+    LoginPolicyView,
+    LoginPolicyUpdate,
     PublicSurvey,
     PublishRequest,
     PublishResult,
@@ -71,6 +75,7 @@ from backend.models import (
     SurveyDetail,
     SurveyLanguages,
     SurveyPage,
+    SurveyPublicLinks,
     SurveyProjectProfile,
     SurveyReport,
     SurveyResponseView,
@@ -93,7 +98,6 @@ from backend.models import (
 )
 from backend.security import (
     hash_password,
-    new_initial_password,
     new_session_token,
     session_token_hash,
     validate_idempotency_key,
@@ -287,7 +291,7 @@ class ResponseRecord:
 
 
 class MemoryStore:
-    """Thread-safe in-process repository for development and guest trials."""
+    """Thread-safe in-process repository for isolated automated tests."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
@@ -296,6 +300,7 @@ class MemoryStore:
         self._users: dict[str, UserRecord] = {}
         self._users_by_login: dict[str, str] = {}
         self._sessions: dict[str, SessionRecord] = {}
+        self._login_policy = LoginPolicyView()
         self._templates: dict[str, SurveyTemplate] = {}
         self._admin_templates: dict[str, AdminTemplateRecord] = {}
         self._surveys: dict[str, SurveyRecord] = {}
@@ -306,7 +311,7 @@ class MemoryStore:
         ] = {}
         self._deployment_drafts: dict[str, DeploymentDraftView] = {}
         self._deployment_history: dict[str, list[DeploymentDraftView]] = {}
-        self._guest_login_sequence = 0
+        self._delivery_work: dict[str, list[dict[str, Any]]] = {}
         self._seed()
 
     @staticmethod
@@ -441,7 +446,7 @@ class MemoryStore:
     @staticmethod
     def _require_system_admin(user: UserRecord) -> None:
         if not user.system_admin:
-            raise ForbiddenError("공용 템플릿 관리는 플랫폼 관리자만 사용할 수 있습니다.")
+            raise ForbiddenError("플랫폼 관리자 권한이 필요합니다.")
 
     def _admin_template_view_locked(
         self, record: AdminTemplateRecord
@@ -527,33 +532,14 @@ class MemoryStore:
         self._require_system_admin(user)
         normalized = query.strip().lower()
         normalized_type = member_type.strip().lower()
-        if normalized_type not in {"all", "member", "guest", "guest_unused", "guest_expired"}:
+        if normalized_type not in {"all", "member"}:
             raise DomainValidationError("회원 분류가 올바르지 않습니다.")
         with self._lock:
             members = [
                 candidate
                 for candidate in self._users.values()
-                if (
-                    normalized_type == "all"
-                    or (normalized_type == "guest" and candidate.is_guest)
-                    or (normalized_type == "member" and not candidate.is_guest)
-                    or (
-                        normalized_type == "guest_expired"
-                        and candidate.is_guest
-                        and candidate.tenant_expires_at is not None
-                        and candidate.tenant_expires_at <= utcnow()
-                    )
-                    or (
-                        normalized_type == "guest_unused"
-                        and candidate.is_guest
-                        and not any(
-                            survey.tenant_id == candidate.tenant_id
-                            and survey.owner_id == candidate.id
-                            and survey.status != SurveyStatus.DELETED
-                            for survey in self._surveys.values()
-                        )
-                    )
-                )
+                if not candidate.is_guest
+                and candidate.role != UserRole.GUEST
                 and (
                     not normalized
                     or normalized in candidate.login_id.lower()
@@ -927,52 +913,6 @@ class MemoryStore:
                     source.status = SurveyStatus.DELETED
                     source.updated_at = record.updated_at
 
-    def create_guest(
-        self,
-        display_name: str,
-        mode: GuestMode = GuestMode.DATABASE,
-    ) -> GuestProvisionView:
-        if mode != GuestMode.DATABASE:
-            raise DomainValidationError("Only database guest mode is supported.")
-        with self._lock:
-            now = utcnow()
-            expires_at = now + timedelta(hours=self.settings.guest_unused_ttl_hours)
-            self._guest_login_sequence += 1
-            login_id = f"quest{self._guest_login_sequence:03d}"
-            initial_password = new_initial_password()
-            tenant = TenantRecord(
-                id=new_id("tenant"),
-                name=f"게스트 체험공간 {login_id.upper()}",
-                created_at=now,
-                expires_at=expires_at,
-            )
-            user = UserRecord(
-                id=new_id("user"),
-                tenant_id=tenant.id,
-                login_id=login_id,
-                name=display_name.strip() or "게스트",
-                email=None,
-                organization_name=tenant.name,
-                password_hash=hash_password(initial_password),
-                role=UserRole.GUEST,
-                is_guest=True,
-                guest_mode=mode,
-                created_at=now,
-                tenant_expires_at=expires_at,
-            )
-            self._tenants[tenant.id] = tenant
-            self._users[user.id] = user
-            self._users_by_login[login_id] = user.id
-            return GuestProvisionView(
-                user=self._user_view(user),
-                expires_at=expires_at,
-                guest_credential=GuestCredentialView(
-                    login_id=login_id,
-                    initial_password=initial_password,
-                    expires_at=expires_at,
-                ),
-            )
-
     def signup(self, request: SignupRequest) -> tuple[str, AuthSessionView]:
         system_admin = self._system_admin_for_signup(request)
         with self._lock:
@@ -1020,12 +960,31 @@ class MemoryStore:
             raise DomainValidationError("관리자 인증키가 올바르지 않습니다.")
         return True
 
+    def login_policy(self, user: UserRecord) -> LoginPolicyView:
+        self._require_system_admin(user)
+        with self._lock:
+            return self._login_policy.model_copy(deep=True)
+
+    def update_login_policy(self, user: UserRecord, request: LoginPolicyUpdate) -> LoginPolicyView:
+        self._require_system_admin(user)
+        with self._lock:
+            if request.revision != self._login_policy.revision:
+                raise ConflictError("다른 관리자가 로그인 정책을 변경했습니다. 다시 불러온 뒤 저장하세요.")
+            self._login_policy = LoginPolicyView(
+                allow_concurrent_logins=request.allow_concurrent_logins,
+                revision=self._login_policy.revision + 1,
+                updated_at=utcnow(),
+            )
+            return self._login_policy.model_copy(deep=True)
+
     def login(self, request: LoginRequest) -> tuple[str, AuthSessionView]:
         with self._lock:
             user_id = self._users_by_login.get(self._normalize_login(request.login_id))
             user = self._users.get(user_id or "")
             if (
                 user is None
+                or user.is_guest
+                or user.role == UserRole.GUEST
                 or not user.active
                 or (
                     user.tenant_expires_at is not None
@@ -1056,6 +1015,8 @@ class MemoryStore:
             if expires_at is not None
             else session_expires_at
         )
+        if not self._login_policy.allow_concurrent_logins:
+            self._sessions = {key: session for key, session in self._sessions.items() if session.user_id != user.id}
         raw_token = new_session_token()
         token_hash = session_token_hash(raw_token, self.settings.session_secret)
         self._sessions[token_hash] = SessionRecord(
@@ -1079,7 +1040,7 @@ class MemoryStore:
                 self._sessions.pop(token_hash, None)
                 raise AuthenticationError("로그인 세션이 만료되었습니다.")
             user = self._users.get(session.user_id)
-            if user is None or not user.active:
+            if user is None or user.is_guest or user.role == UserRole.GUEST or not user.active:
                 self._sessions.pop(token_hash, None)
                 raise AuthenticationError("로그인 사용자를 찾을 수 없습니다.")
             expires_at = now + timedelta(seconds=self.settings.session_ttl_seconds)
@@ -1116,17 +1077,8 @@ class MemoryStore:
         admin_template: bool = False,
     ) -> SurveyDetail:
         with self._lock:
-            if user.is_guest:
-                owned_count = sum(
-                    survey.tenant_id == user.tenant_id
-                    and survey.owner_id == user.id
-                    and survey.status != SurveyStatus.DELETED
-                    for survey in self._surveys.values()
-                )
-                if owned_count >= self.settings.db_guest_max_projects:
-                    raise DomainValidationError(
-                        "Database guest project limit has been reached."
-                    )
+            if user.is_guest or user.role == UserRole.GUEST:
+                raise AuthenticationError("회원 로그인이 필요합니다.")
             template = None
             template_code = request.template_code or request.template_id
             if template_code:
@@ -1157,21 +1109,8 @@ class MemoryStore:
                 else [SurveySection(title="설문 문항", questions=[])]
             )
             self._validate_global_question_ids(sections)
-            if user.is_guest and sum(
-                len(section.questions) for section in sections
-            ) > self.settings.db_guest_max_questions:
-                raise DomainValidationError(
-                    "Database guest question limit has been exceeded."
-                )
 
             now = utcnow()
-            if user.is_guest:
-                project_expires_at = now + timedelta(hours=self.settings.guest_project_ttl_hours)
-                tenant = self._tenants.get(user.tenant_id)
-                if tenant is not None and (tenant.expires_at is None or tenant.expires_at < project_expires_at):
-                    self._tenants[user.tenant_id] = replace(tenant, expires_at=project_expires_at)
-                    user = replace(user, tenant_expires_at=project_expires_at)
-                    self._users[user.id] = user
             survey = SurveyRecord(
                 id=new_id("survey"),
                 tenant_id=user.tenant_id,
@@ -1357,13 +1296,13 @@ class MemoryStore:
         }
         providers: dict[str, DeliveryProviderView] = {}
         for code, provider_code in configured.items():
-            enabled = not user.is_guest and provider_code not in {"", "disabled"}
+            enabled = not user.is_guest and provider_code == "solapi" and code in {"sms", "kakao"}
+            if provider_code == "solapi":
+                enabled = enabled and code in {"sms", "kakao"} and bool(self.settings.solapi_api_key and self.settings.solapi_api_secret)
             reason = (
                 "발송 provider가 준비되었습니다."
                 if enabled
-                else "게스트 계정은 실제 외부 발송을 사용할 수 없습니다."
-                if user.is_guest
-                else f"{code.upper()} 발송 provider가 설정되지 않았습니다."
+                else f"{code.upper()} 발송 설정 또는 SOLAPI 인증정보가 준비되지 않았습니다."
             )
             providers[code] = DeliveryProviderView(
                 enabled=enabled,
@@ -1371,7 +1310,8 @@ class MemoryStore:
                 provider_code=provider_code if enabled else "disabled",
                 reason=reason,
             )
-        return DeliveryProvidersView(providers=providers)
+        return DeliveryProvidersView(providers=providers, default_sender=self.settings.solapi_default_sender,
+                                     kakao_pf_id=self.settings.solapi_kakao_pf_id)
 
     @staticmethod
     def _merge_masked_recipient_contacts(
@@ -1446,6 +1386,11 @@ class MemoryStore:
     ) -> DeploymentDraftView:
         with self._lock:
             survey, public = self._published_survey_locked(user, survey_id)
+            from backend.survey_audience import resolve_audience
+            active_ids = {item.id for item in request.delivery_recipients()}
+            for recipient in request.recipients:
+                if recipient.id in active_ids:
+                    resolve_audience(public, recipient.audience_code)
             current = self._deployment_drafts.get(survey_id)
             if request.revision is not None and (
                 current is None or request.revision != current.revision
@@ -1498,6 +1443,7 @@ class MemoryStore:
                 DeliveryChannel.KAKAO: "kakao_id",
                 DeliveryChannel.FAX: "fax",
             }
+            active_ids = {item.id for item in request.delivery_recipients()}
             seen_contacts: set[tuple[DeliveryChannel, str]] = set()
             for recipient in request.recipients:
                 for channel in recipient.channels:
@@ -1508,11 +1454,13 @@ class MemoryStore:
                         channel,
                         contact_hash(self.settings.delivery_secret, channel.value, value),
                     )
-                    if duplicate_key in seen_contacts:
+                    active = recipient.selected if request.delivery_options.send_scope is None else recipient.id in active_ids and channel in request.channels
+                    if active and duplicate_key in seen_contacts:
                         raise DomainValidationError(
                             f"같은 {channel.value} 연락처를 배포 대상에 중복 등록할 수 없습니다."
                         )
-                    seen_contacts.add(duplicate_key)
+                    if active:
+                        seen_contacts.add(duplicate_key)
             if executed_current is not None:
                 self._deployment_history.setdefault(survey_id, []).append(
                     executed_current.model_copy(deep=True)
@@ -1540,6 +1488,11 @@ class MemoryStore:
         survey_id: str,
         request: DeploymentExecuteRequest,
     ) -> DeploymentExecuteResult:
+        if not request.delivery_recipients():
+            raise DomainValidationError("발송할 대상자를 선택해 주세요.")
+        # Validate live payload before recording an irreversible execution history.
+        if any(provider.enabled and provider.provider_code == "solapi" for provider in self.delivery_providers(user).providers.values()):
+            self.preview_deployment(user, survey_id, request, verify_templates=True)
         saved = self.save_deployment(user, survey_id, request)
         with self._lock:
             raw = self._deployment_drafts[survey_id]
@@ -1551,7 +1504,7 @@ class MemoryStore:
             channel_counts = {channel: 0 for channel in raw.channels}
             queued_count = 0
             disabled_count = 0
-            for recipient in raw.recipients:
+            for recipient in raw.delivery_recipients():
                 available = [
                     channel
                     for channel in raw.channels
@@ -1594,6 +1547,15 @@ class MemoryStore:
                 else "DISABLED"
             )
             raw.execution_status = execution_status
+            _, public = self._published_survey_locked(user, survey_id)
+            jobs = render_jobs(self.settings, public, raw, providers, deployment_id=raw.deployment_id)
+            self._delivery_work[raw.deployment_id] = [
+                {"delivery_id": new_id("delivery"), "channel_code": job["channel"],
+                 "status_code": "QUEUED" if job["enabled"] else "DISABLED",
+                 "provider_message_id": None, "last_error_code": None,
+                 "payload": job["payload"], "provider_code": job["provider"], "created_at": utcnow(), "updated_at": utcnow(), "message_template_json": {}}
+                for job in jobs
+            ]
             self._deployment_drafts[survey_id] = raw
             return DeploymentExecuteResult(
                 deployment=self._masked_deployment(raw),
@@ -1602,6 +1564,76 @@ class MemoryStore:
                     channel_results=channel_results,
                 ),
             )
+
+    def preview_deployment(self, user, survey_id, request, *, offset=0, verify_templates=False, recipient_id=None):
+        with self._lock:
+            _, public = self._published_survey_locked(user, survey_id)
+            current = self._deployment_drafts.get(survey_id)
+            merged = self._merge_masked_recipient_contacts(request, current)
+        jobs = render_jobs(self.settings, public, merged, self.delivery_providers(user).providers,
+                           deployment_id=current.deployment_id if current else survey_id,
+                           verify_templates=verify_templates)
+        return preview_result(jobs, offset=offset, recipient_id=recipient_id)
+
+    def delivery_status(self, user, survey_id, revision):
+        with self._lock:
+            self._published_survey_locked(user, survey_id)
+            current = self._deployment_drafts.get(survey_id)
+            if current is None or current.revision != revision or not current.execution_status:
+                raise ConflictError("현재 배포 실행과 revision이 일치하지 않습니다.")
+            return send_result(self._delivery_work.get(current.deployment_id, []))
+
+    def delivery_history(self, user, survey_id=None, *, offset=0, status=None):
+        with self._lock:
+            if survey_id:
+                self._owned_survey_locked(user, survey_id)
+            result = []
+            for key, survey in self._surveys.items():
+                if survey.tenant_id != user.tenant_id or survey.owner_id != user.id or (survey_id and key != survey_id):
+                    continue
+                batches = [*self._deployment_history.get(key, []), self._deployment_drafts.get(key)]
+                for batch in batches:
+                    if batch is None:
+                        continue
+                    rows = self._delivery_work.get(batch.deployment_id, [])
+                    for item in send_result(rows).items:
+                        if status and item.status != status:
+                            continue
+                        result.append({**item.model_dump(by_alias=True, mode="json"), "surveyId": key, "surveyTitle": survey.title,
+                                       "surveyVersion": batch.survey_version, "batchId": batch.deployment_id})
+            result.sort(key=lambda item: (item.get("createdAt") or "", item["deliveryId"]), reverse=True)
+            return {"items": result[offset:offset + 50], "hasMore": len(result) > offset + 50, "offset": offset}
+
+    def send_deployment(self, user, survey_id, request: DeploymentSendRequest) -> DeliverySendResult:
+        with self._lock:
+            self._published_survey_locked(user, survey_id)
+            current = self._deployment_drafts.get(survey_id)
+            if current is None or current.revision != request.revision or not current.execution_status:
+                raise ConflictError("현재 배포 실행과 revision이 일치하지 않습니다.")
+            rows = self._delivery_work.get(current.deployment_id, [])
+            claimed = []
+            providers = self.delivery_providers(user).providers
+            for row in rows:
+                provider = providers[row["channel_code"].lower()]
+                if row["status_code"] == "QUEUED" and provider.enabled and row["provider_code"] == "solapi" and row["payload"]:
+                    row["updated_at"] = utcnow()
+                    row["status_code"] = "SENDING"
+                    row["last_error_code"] = "SOLAPI_OUTCOME_UNKNOWN"
+                    claimed.append(row)
+            scheduled = current.schedule.scheduled_at
+        # No store lock/DB transaction is held across the external request.
+        for channel in ("SMS", "KAKAO"):
+            group = [row for row in claimed if row["channel_code"] == channel]
+            messages = [{**row["payload"], "customFields": {"surveyoneDeliveryId": row["delivery_id"]}} for row in group]
+            outcomes = SolapiClient(self.settings).send_many(messages, scheduled)
+            with self._lock:
+                by_id = {row["delivery_id"]: row for row in group}
+                for outcome in outcomes:
+                    row = by_id[outcome.delivery_id]
+                    row.update(status_code="FAILED" if outcome.status == "FAILED" else "SENDING",
+                               provider_message_id=outcome.message_id, last_error_code=outcome.error_code,
+                               message_template_json={"deliveryResult": outcome_metadata(outcome, row["updated_at"])}, updated_at=utcnow())
+        return send_result(rows)
 
     def get_survey(self, user: UserRecord, survey_id: str) -> SurveyDetail:
         with self._lock:
@@ -1953,12 +1985,6 @@ class MemoryStore:
                 raise DomainValidationError(
                     "translations contain a locale not listed in supportedLocales."
                 )
-            if user.is_guest and sum(
-                len(section.questions) for section in survey.sections
-            ) > self.settings.db_guest_max_questions:
-                raise DomainValidationError(
-                    "Database guest question limit has been exceeded."
-                )
             survey.revision += 1
             survey.updated_at = utcnow()
             return self._detail_locked(survey)
@@ -1988,7 +2014,8 @@ class MemoryStore:
             raise DomainValidationError(str(exc)) from exc
 
         owner = self._users.get(survey.owner_id)
-        is_guest_demo = owner is not None and owner.is_guest
+        if owner is not None and owner.is_guest:
+            raise AuthenticationError("회원 로그인이 필요합니다.")
         requested_slug = request.slug
 
         if survey.slug:
@@ -2022,12 +2049,6 @@ class MemoryStore:
             },
             languages=survey.languages.model_copy(deep=True),
             published_at=now,
-            guest_demo=is_guest_demo,
-            experience_expires_at=(
-                self._tenants[survey.tenant_id].expires_at
-                if is_guest_demo
-                else None
-            ),
         )
         snapshot_json = public_survey.model_dump_json(by_alias=True)
         content_hash = hashlib.sha256(snapshot_json.encode("utf-8")).hexdigest()
@@ -2053,10 +2074,33 @@ class MemoryStore:
             published_at=now,
         )
 
+    def public_links(self, user: UserRecord, survey_id: str) -> SurveyPublicLinks:
+        with self._lock:
+            survey = self._owned_survey_locked(user, survey_id)
+            if not survey.slug:
+                raise ConflictError("설문을 먼저 저장·확정한 뒤 대상별 URL을 확인해 주세요.")
+            _, version = self._public_version_locked(survey.slug)
+            snapshot = json.loads(version.snapshot_json)
+            if snapshot.get("guestDemo"):
+                raise NotFoundError("공개 설문을 찾을 수 없습니다.")
+            settings = snapshot.get("settings") or {}
+            translation = (snapshot.get("translations") or {}).get(snapshot.get("defaultLocale", "ko")) or {}
+            title = translation.get("title")
+            return public_links_metadata(
+                survey_id=survey.id, title=title if title is not None else snapshot["title"], version=version.version,
+                slug=survey.slug,
+                settings=SurveySettings(
+                    audience_routes=settings.get("audienceRoutes") or [],
+                    default_audience=settings.get("defaultAudience"),
+                ),
+            )
+
     def public_survey(self, slug: str, language: str | None = None) -> PublicSurvey:
         with self._lock:
             survey, version = self._public_version_locked(slug)
             public = PublicSurvey.model_validate_json(version.snapshot_json)
+            if public.guest_demo or self._users[survey.owner_id].is_guest:
+                raise NotFoundError("공개 설문을 찾을 수 없습니다.")
             public.slug = survey.slug or public.slug
             return apply_public_availability(
                 apply_public_translation(public, language)
@@ -2166,13 +2210,6 @@ class MemoryStore:
                 raise ConflictError("아직 응답 기간이 시작되지 않았습니다.")
             if public_survey.settings.closes_at and now >= public_survey.settings.closes_at:
                 raise ConflictError("설문 응답 기간이 종료되었습니다.")
-            if len(self._responses.get(survey.id, [])) >= self.settings.db_guest_max_responses and any(
-                user.tenant_id == survey.tenant_id and user.is_guest
-                for user in self._users.values()
-            ):
-                raise ConflictError(
-                    "Database guest response limit has been reached."
-                )
             if public_survey.settings.one_response_per_respondent and request.respondent_key:
                 if any(
                     response.respondent_key == request.respondent_key
@@ -2349,7 +2386,7 @@ class MemoryStore:
             raise NotFoundError("공개 설문을 찾을 수 없습니다.")
         survey_id, version_number = route
         survey = self._surveys[survey_id]
-        if survey.status != SurveyStatus.PUBLISHED:
+        if survey.status != SurveyStatus.PUBLISHED or self._users[survey.owner_id].is_guest:
             raise NotFoundError("공개 설문을 찾을 수 없습니다.")
         tenant = self._tenants.get(survey.tenant_id)
         if tenant is None or (

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from conftest import signup_member
 import pytest
 
 from backend.models import SubmitResponseRequest
@@ -13,21 +13,10 @@ from main import app, settings
 
 
 def _provision_and_login(client: TestClient) -> dict:
-    provisioned = client.post("/api/auth/guest", json={"mode": "database"})
-    assert provisioned.status_code == 201, provisioned.text
-    credential = provisioned.json()["data"]["guestCredential"]
-    logged_in = client.post(
-        "/api/auth/login",
-        json={
-            "loginId": credential["loginId"],
-            "password": credential["initialPassword"],
-        },
-    )
-    assert logged_in.status_code == 200, logged_in.text
-    return provisioned.json()["data"]
+    return signup_member(client)
 
 
-def test_database_guest_probe_cache_expires_and_force_refreshes(monkeypatch) -> None:
+def test_database_readiness_probe_cache_expires_and_force_refreshes(monkeypatch) -> None:
     probe_settings = replace(
         settings,
         db_mode="oracle",
@@ -52,129 +41,20 @@ def test_database_guest_probe_cache_expires_and_force_refreshes(monkeypatch) -> 
     monkeypatch.setattr(stores, "oracle_store", lambda: ready_store)
     monkeypatch.setattr(stores.time, "monotonic", lambda: next(ticks))
 
-    assert stores._database_guest_probe(probe_settings) == (True, None)
-    assert stores._database_guest_probe(probe_settings) == (True, None)
+    assert stores._database_readiness_probe(probe_settings) == (True, None)
+    assert stores._database_readiness_probe(probe_settings) == (True, None)
     assert ready_store.calls == 1
-    assert stores._database_guest_probe(probe_settings) == (True, None)
+    assert stores._database_readiness_probe(probe_settings) == (True, None)
     assert ready_store.calls == 2
-    assert stores._database_guest_probe(probe_settings, force_refresh=True) == (
+    assert stores._database_readiness_probe(probe_settings, force_refresh=True) == (
         True,
         None,
     )
     assert ready_store.calls == 3
 
 
-def test_guest_capabilities_expose_only_database_mode_and_credentials() -> None:
-    with TestClient(app) as client:
-        capabilities = client.get("/api/auth/guest/capabilities")
-        assert capabilities.status_code == 200, capabilities.text
-        modes = {
-            item["mode"]: item for item in capabilities.json()["data"]["modes"]
-        }
-        assert set(modes) == {"database"}
-        assert capabilities.json()["data"]["selectedMode"] == "database"
-        assert modes["database"]["available"] is True
-        assert modes["database"]["features"]["externalDelivery"] is False
-        assert modes["database"]["features"]["customReportPersistence"] is False
-        assert modes["database"]["limits"]["maxProjects"] == settings.db_guest_max_projects
-        assert (
-            modes["database"]["limits"]["maxQuestionsPerSurvey"]
-            == settings.db_guest_max_questions
-        )
-        assert (
-            modes["database"]["limits"]["maxResponsesPerSurvey"]
-            == settings.db_guest_max_responses
-        )
-
-        guest = client.post(
-            "/api/auth/guest",
-            json={"mode": "database", "displayName": "Database tester"},
-        )
-        assert guest.status_code == 201, guest.text
-        assert guest.json()["data"]["user"]["guestMode"] == "database"
-        credential = guest.json()["data"]["guestCredential"]
-        assert credential["loginId"].startswith("quest")
-        assert len(credential["initialPassword"]) >= 24
-        assert guest.headers["cache-control"] == "no-store"
-        expires_at = datetime.fromisoformat(guest.json()["data"]["expiresAt"])
-        remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
-        assert settings.guest_unused_ttl_hours * 3600 - 10 <= remaining
-        assert "set-cookie" in guest.headers
-        assert guest.json()["data"]["session"]["user"]["loginId"] == credential["loginId"]
-        assert client.get("/api/auth/me").status_code == 200
-
-        login_id = credential["loginId"]
-        password = credential["initialPassword"]
-        relogged = client.post(
-            "/api/auth/login",
-            json={"loginId": login_id, "password": password},
-        )
-        assert relogged.status_code == 200, relogged.text
-        assert "guestCredential" not in relogged.json()["data"]
-        assert "initialPassword" not in relogged.text
-        cookie = next(
-            value.lower()
-            for value in relogged.headers.get_list("set-cookie")
-            if "path=/api" in value.lower()
-        )
-        assert "httponly" in cookie
-        assert "max-age=" not in cookie
-        session_expiry = datetime.fromisoformat(relogged.json()["data"]["expiresAt"])
-        assert session_expiry <= expires_at
-        me = client.get("/api/auth/me")
-        assert me.status_code == 200
-        assert me.headers["cache-control"] == "no-store"
-        assert "guestCredential" not in me.text
-        assert "initialPassword" not in me.text
-
-        persistent_client = TestClient(app)
-        persistent_login = persistent_client.post(
-            "/api/auth/login",
-            json={
-                "loginId": login_id,
-                "password": password,
-                "keepSignedIn": True,
-            },
-        )
-        persistent_cookie = next(
-            value.lower()
-            for value in persistent_login.headers.get_list("set-cookie")
-            if "path=/api" in value.lower()
-        )
-        assert persistent_login.headers["cache-control"] == "no-store"
-        max_age = int(persistent_cookie.split("max-age=", 1)[1].split(";", 1)[0])
-        assert 1 <= max_age <= settings.session_ttl_seconds
-
-        local = client.post("/api/auth/guest", json={"mode": "local"})
-        assert local.status_code == 422
-
-        reserved = client.post(
-            "/api/auth/signup",
-            json={
-                "loginId": "quest999",
-                "password": "SurveyOne!234",
-                "name": "Reserved",
-                "organizationName": "Reserved tenant",
-            },
-        )
-        assert reserved.status_code == 422
 
 
-def test_guest_project_save_extends_unused_account_retention() -> None:
-    with TestClient(app) as client:
-        guest = client.post("/api/auth/guest", json={"mode": "database"})
-        assert guest.status_code == 201, guest.text
-        data = guest.json()["data"]
-        initial_expiry = datetime.fromisoformat(data["expiresAt"])
-
-        created = client.post("/api/surveys", json={"title": "지연 발급 보존기간 확인"})
-        assert created.status_code == 201, created.text
-
-        user = stores.memory_store._users[data["user"]["id"]]
-        assert user.tenant_expires_at is not None
-        assert user.tenant_expires_at > initial_expiry
-        remaining = (user.tenant_expires_at - datetime.now(timezone.utc)).total_seconds()
-        assert settings.guest_project_ttl_hours * 3600 - 10 <= remaining
 
 
 def test_multilingual_snapshot_and_public_language_resolution() -> None:
@@ -355,7 +235,7 @@ def test_runtime_public_store_routes_every_slug_to_oracle(
         object.__setattr__(settings, "db_mode", original_mode)
 
 
-def test_database_guest_one_response_policy_requires_respondent_key() -> None:
+def test_member_one_response_policy_requires_respondent_key() -> None:
     with TestClient(app) as client:
         _provision_and_login(client)
         created = client.post(
@@ -383,7 +263,7 @@ def test_database_guest_one_response_policy_requires_respondent_key() -> None:
         assert "respondentkey" in rejected.json()["detail"].lower()
 
 
-def test_database_guest_response_idempotency_and_payload_limits() -> None:
+def test_member_response_idempotency_and_payload_limits() -> None:
     with TestClient(app) as client:
         _provision_and_login(client)
         created = client.post(
@@ -574,41 +454,3 @@ def test_server_logic_allows_hidden_required_and_rejects_hidden_answer() -> None
         )
         assert tampered.status_code == 422
         assert "숨겨진" in tampered.json()["detail"]
-
-
-def test_expired_database_guest_public_url_and_submission_are_blocked() -> None:
-    with TestClient(app) as client:
-        guest = _provision_and_login(client)
-        tenant_id = guest["user"]["tenantId"]
-        created = client.post(
-            "/api/surveys",
-            json={
-                "title": "Expiring demo",
-                "questions": [
-                    {"id": "q1", "type": "short_text", "title": "Optional"}
-                ],
-            },
-        )
-        published = client.post(
-            f"/api/surveys/{created.json()['data']['id']}/publish", json={}
-        )
-        slug = published.json()["data"]["slug"]
-        before = client.get(f"/api/public/surveys/{slug}")
-        assert before.status_code == 200
-        assert before.json()["data"]["guestDemo"] is True
-        assert before.json()["data"]["experienceExpiresAt"] is not None
-
-        tenant = stores.memory_store._tenants[tenant_id]
-        stores.memory_store._tenants[tenant_id] = replace(
-            tenant,
-            expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
-        )
-
-        assert client.get(f"/api/public/surveys/{slug}").status_code == 404
-        assert (
-            client.post(
-                f"/api/public/surveys/{slug}/responses",
-                json={"answers": {}},
-            ).status_code
-            == 404
-        )

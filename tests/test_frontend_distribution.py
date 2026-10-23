@@ -11,7 +11,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_distribution_starts_with_finalized_project_browser_and_four_step_workflow() -> None:
+def test_distribution_starts_with_finalized_project_browser_and_two_step_workflow() -> None:
     html = (PROJECT_ROOT / "frontend" / "pages" / "M03001.html").read_text(
         encoding="utf-8"
     )
@@ -39,17 +39,15 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     assert "data-distribution-context-deployment-state" in html
     assert "data-distribution-context-start" in html
     assert "data-distribution-context-end" in html
-    assert html.count('data-distribution-save>저장</button>') == 2
+    assert html.count('data-distribution-save>저장</button>') == 1
     assert "data-distribution-save>초안 저장</button>" not in html
-    assert html.count("data-distribution-step-target=") == 4
-    assert "국가·언어·연락수단" in html
-    assert "복수 채널·예약 설정" in html
-    assert "언어별 설문 URL·메시지" not in html  # compact step labels stay scannable
-    assert "언어별 URL과 안내문" in html
-    assert "저장하고 발송 대기열 등록" in html
-    assert "실제 메일·문자는 전송되지 않습니다." in html
-    assert "추후 발송 서비스와 전송 처리 기능 연계가 필요합니다." in html
-    assert html.index("실제 이메일·문자 발송은 연동되어 있지 않습니다.") < html.index("data-distribution-project-view")
+    assert html.count("data-distribution-step-target=") == 2
+    assert "data-recipient-grid" in html
+    assert "data-recipient-detail" in html
+    assert "data-delivery-preview" in html
+    assert "data-delivery-consent" in html
+    assert "data-delivery-option" in html
+    assert 'data-distribution-step-target="4" disabled' not in html
     assert "Excel 양식" in html
     assert '.csv,.txt,.xlsx' in html
     assert "data-recipient-import-progress" in html
@@ -67,9 +65,7 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     assert 'code: "FAX"' in script
     assert 'code: "vi"' in script
     assert 'code: "fil"' in script
-    assert 'executionStatus === "DISABLED"' in script
-    assert 'if (event.target.closest("[data-new-distribution-batch]"))' in script
-    assert 'this.draft.recipients = [this.blankRecipient()]' in script
+    assert "sendStagedDelivery()" in script
     assert "초안 입력값을 확인해 주세요." in script
     assert 'this.root.querySelectorAll("[data-distribution-step] input' in script
     assert "this.syncExecutionLock();" in script
@@ -78,7 +74,7 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     assert "연락처 마스킹 표시" in script
     assert "distribution-project-public-url" in script
     assert "data-project-url-management" in script
-    assert 'this.context.navigate("M02001", { urlId: surveyId })' in script
+    assert "window.SurveyPublicationLinks.open({" in script
     assert "/public-url/regenerate" not in script
     assert "replaceDraftPublicUrl(previousUrl, nextUrl)" in script
     assert "loadPublishedSurveyState(this.current)" in script
@@ -124,7 +120,7 @@ def test_distribution_starts_with_finalized_project_browser_and_four_step_workfl
     assert "scroll-margin-top: calc(var(--header-height) + 12px)" in css
     assert ".distribution-project-period" in css
     assert ".distribution-queue-explanation" in css
-    assert ".distribution-recipient" in css
+    assert ".recipient-grid" in css
     assert ".distribution-channel-grid" in css
     assert ".distribution-message-card" in css
     assert ".distribution-review-summary" in css
@@ -210,8 +206,20 @@ assert.deepEqual(Array.from(payload.channels), ["EMAIL", "SMS"]);
 assert.equal(payload.recipients[0].countryCode, "VN");
 assert.equal(payload.recipients[0].preferredLanguage, "vi");
 assert.deepEqual(Array.from(payload.recipients[0].channels), ["EMAIL", "SMS"]);
-assert.match(payload.messagesByLanguage.vi.emailBody, /lang=vi/);
-assert.match(payload.messagesByLanguage.vi.emailSubject, /Khảo sát gia đình đa văn hóa/);
+assert.ok(payload.messagesByLanguage.vi.emailBody.includes("{{surveyUrl}}"));
+assert.ok(payload.messagesByLanguage.vi.emailSubject.includes("{{surveyTitle}}"));
+assert.deepEqual(Array.from(payload.schedule.priority).sort(), ["EMAIL", "SMS"]);
+page.draft.deliveryOptions.sendScope = "INDIVIDUAL";
+page.draft.deliveryOptions.individualRecipientId = "recipient-1";
+page.draft.recipients[0].selected = false;
+const individualPayload = page.buildPayload();
+assert.equal(individualPayload.deliveryOptions.sendScope, "INDIVIDUAL");
+assert.equal(individualPayload.recipients[0].selected, false);
+assert.equal(page.previewRecipients().length, 1);
+page.draft.deliveryOptions.sendScope = "BULK";
+assert.equal(page.previewRecipients().length, 0);
+page.draft.recipients[0].selected = true;
+
 
 page.draft.recipients.push(page.blankRecipient());
 const payloadWithPlaceholder = page.buildPayload();
@@ -253,7 +261,7 @@ assert.equal(csv.length, 2);
 assert.equal(csv[1][0], "응답자, A001");
 assert.equal(csv[1][2], "vi");
 
-page.context = {{ confirmMessage: async () => true }};
+page.context = {{ confirmMessage: async () => true, api: {{ get: async () => ({{ defaultSender: "0211112222" }}) }} }};
 page.renderExecutionResult = () => {{}};
 page.renderRecipients = () => {{}};
 page.renderChannels = () => {{}};
@@ -261,18 +269,21 @@ page.renderMessages = () => {{}};
 page.updateWorkflow = () => {{}};
 page.syncExecutionLock = () => {{}};
 page.updateSaveState = () => {{}};
+page.setActionDisabled = () => {{}};
 page.root = {{ querySelector() {{ return {{ focus() {{}} }}; }} }};
-page.draft = page.normalizeDraft({{ channels: ["EMAIL", "SMS"], executionStatus: "QUEUED" }});
-page.startNewBatch().then(() => {{
-    assert.equal(page.draft.revision, null);
-    assert.equal(page.draft.executionStatus, null);
-    assert.equal(page.draft.recipients.length, 1);
-    assert.equal(page.draft.recipients[0].email, "");
-    assert.deepEqual(Array.from(page.draft.channels), ["EMAIL", "SMS"]);
-}}).catch((error) => {{
-    console.error(error);
-    process.exitCode = 1;
-}});
+page.deliveryDefaults = {{ senderNumber: "0233334444" }};
+page.draft = page.normalizeDraft({{ channels: ["EMAIL", "SMS"], deliveryOptions: {{ senderNumber: "0255556666" }}, executionStatus: "QUEUED" }});
+assert.equal(page.draft.deliveryOptions.senderNumber, "0255556666");
+const beforeRecipients = JSON.stringify(page.draft.recipients);
+page.enableDirectEditing();
+assert.equal(page.draft.revision, null);
+assert.equal(page.draft.executionStatus, null);
+assert.equal(page.draft.deliveryOptions.senderNumber, "0255556666");
+assert.equal(JSON.stringify(page.draft.recipients), beforeRecipients);
+assert.equal(page.awaitingDeliveryEdit, true);
+assert.equal(page.previewSignature, null);
+assert.deepEqual(Array.from(page.draft.channels), ["EMAIL", "SMS"]);
+
 """
     result = subprocess.run(
         [node, "-e", harness],

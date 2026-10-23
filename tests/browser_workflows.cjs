@@ -13,6 +13,7 @@ const question = { id: "q1", type: "single", title: "확인 문항", required: t
 let survey = { id: "ui-audit-survey", title: "기능 검증용 합성 설문", description: "실제 응답자가 없는 자동화 테스트", category: "satisfaction", status: "draft", revision: 3, questions: [question], sections: [{ id: "sec1", title: "기본", questions: [question] }], settings: { presentationMode: "scroll" }, skin: { preset: "ocean", primary: "#2457d6", accent: "#4ed7bd", font: "system", radius: "18px" }, languages: { defaultLocale: "ko", sourceLocale: "ko", activeLocales: ["ko"], translations: {} }, responseCount: 0, createdAt: "2026-10-22T00:00:00Z", updatedAt: "2026-10-22T00:00:00Z" };
 const report = { surveyId: survey.id, title: survey.title, totalResponses: 200, completedResponses: 200, partialResponses: 0, completionRate: 1, generatedAt: survey.createdAt, questions: [{ questionId: "q1", title: "확인 문항", type: "single", responseCount: 200, optionCounts: { "선택 1": 1, "선택 2": 199 }, distribution: { "선택 1": 1, "선택 2": 199 } }] };
 let rejectSave = false;
+let rejectExport = false;
 let lastPatch;
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, "http://localhost");
@@ -38,6 +39,8 @@ async function check(name, fn) { await fn(); checks += 1; console.log("PASS " + 
             let value;
             let status = 200;
             if (url.pathname === "/api/auth/me") value = { user: { id: "ui-test-user", tenantId: "ui-test-tenant", displayName: "자동화 테스트", role: "OWNER", systemAdmin: true }, expiresAt: new Date(Date.now() + 3600000).toISOString() };
+            else if (url.pathname === "/api/system-settings/login-policy") value = { allowConcurrentLogins: true, revision: 1, updatedAt: null };
+            else if (url.pathname === "/api/version") value = {version: fs.readFileSync(path.join(root, "VERSION"), "utf8").trim()};
             else if (url.pathname === "/api/runtime-config") value = { publicBaseUrl: "https://www.insurveyone.com", environment: "test" };
             else if (url.pathname === "/api/surveys/page") value = { items: [survey], page: 1, total: 1, totalAll: 1 };
             else if (url.pathname === "/api/surveys") value = { surveys: url.searchParams.has("status") ? [] : [survey] };
@@ -47,6 +50,10 @@ async function check(name, fn) { await fn(); checks += 1; console.log("PASS " + 
                     if (rejectSave) { status = 409; value = { detail: "다른 화면에서 수정되었습니다. 다시 불러와 주세요." }; }
                     else { survey = { ...survey, ...lastPatch, revision: survey.revision + 1 }; value = { survey }; }
                 } else value = { survey };
+            }
+            else if (url.pathname.endsWith("/report/export")) {
+                if (rejectExport) { status = 503; value = { code: "DATABASE_UNAVAILABLE", detail: "Synthetic unavailable" }; }
+                else return route.fulfill({ status: 200, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", body: Buffer.from("synthetic export") });
             }
             else if (url.pathname.endsWith("/report")) value = report;
             else if (url.pathname.endsWith("/responses")) value = { responses: [], items: [], total: 0, columns: [], survey };
@@ -238,6 +245,23 @@ async function check(name, fn) { await fn(); checks += 1; console.log("PASS " + 
                 if (["M01001", "M02001", "M03001", "M04001", "M06001"].includes(code)) await page.screenshot({ path: path.join(output, `readability-${code}-${width}.png`) });
             }
             await page.setViewportSize({ width: 1440, height: 1000 });
+        });
+        await check("report download failure preserves report and manual retry succeeds", async () => {
+            await navigate("M05001", { surveyId: survey.id });
+            const button = page.locator('[data-role="export"][data-format="xlsx"]');
+            await button.waitFor();
+            rejectExport = true;
+            await button.click();
+            const failure = page.locator('.service-failure-dialog[open]');
+            await failure.waitFor();
+            assert.ok((await failure.innerText()).includes("DATABASE_UNAVAILABLE"));
+            await failure.locator('[data-failure-return]').click();
+            rejectExport = false;
+            const downloadTask = page.waitForEvent('download');
+            await button.click();
+            const download = await downloadTask;
+            assert.ok(download.suggestedFilename().endsWith('.xlsx'));
+            await download.cancel();
         });
         await check("editor load failure retries and slow loading can cancel", async () => {
             await navigate("M02005", { surveyId: survey.id });

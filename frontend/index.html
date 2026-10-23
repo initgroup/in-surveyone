@@ -6,8 +6,9 @@
     <meta name="theme-color" content="#ffffff">
     <meta name="description" content="기관을 위한 설문 제작, 배포, 수집, 분석 통합 플랫폼 IN-SURVEYONE">
     <title>IN-SURVEYONE</title>
+    <link rel="stylesheet" href="/frontend/css/service-error.css?v=2026.10.23.23">
     <link rel="icon" href="/frontend/assets/images/surveyone-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/frontend/css/app.css?v=20261022.22">
+    <link rel="stylesheet" href="/frontend/css/app.css?v=2026.10.23.23">
 </head>
 <body>
     <a class="skip-link" href="#pageHost">본문 바로가기</a>
@@ -19,6 +20,7 @@
             </button>
             <a class="brand" href="#/M01001" aria-label="IN-SURVEYONE 홈">
                 <img src="/frontend/assets/images/inSurveyOneLogoW.png" alt="IN-SURVEYONE">
+                <span class="application-version" data-application-version role="status" aria-label="배포 버전 확인 중">버전 확인 중</span>
             </a>
             <div class="header-context">
                 <a class="workspace-chip" href="#/M01001" title="작업공간 대시보드로 이동" aria-label="현재 작업공간 대시보드로 이동">
@@ -35,7 +37,7 @@
                 <div class="header-page-actions">
                     <span class="save-state" data-save-state><i aria-hidden="true"></i> 읽기 전용 둘러보기</span>
                     <button class="button button-primary button-small" type="button" data-quick-create>
-                        <span aria-hidden="true">＋</span> 체험 시작
+                        <span aria-hidden="true">＋</span> 기능 둘러보기
                     </button>
                 </div>
                 <div class="header-session" data-session-status role="status" aria-label="로그인 세션 남은 시간" hidden>
@@ -65,7 +67,7 @@
 
         <aside class="app-sidebar" data-sidebar aria-label="주 메뉴">
             <nav class="app-navigation" data-navigation></nav>
-            <div class="sidebar-upgrade" data-guest-upgrade>
+            <div class="sidebar-upgrade" data-visitor-signup>
                 <strong>내 작업공간이 있나요?</strong>
                 <div class="sidebar-auth-actions">
                     <button class="button button-small button-layer" type="button" data-auth-action="login">로그인</button>
@@ -91,52 +93,14 @@
         <div class="auth-brand-mark"><img src="/frontend/assets/images/surveyone-mark.svg" alt=""></div>
         <p class="eyebrow">IN-SURVEYONE</p>
         <h2 id="authTitle" data-auth-title>IN-SURVEYONE 시작하기</h2>
-        <p class="auth-intro" data-auth-intro>계정 없이 작성하고 첫 저장 시 만료형 게스트 작업공간을 발급받습니다.</p>
+        <p class="auth-intro" data-auth-intro>로그인하면 기관 전용 설문 작업공간을 이용할 수 있습니다.</p>
         <div class="auth-mode-tabs" role="tablist">
-            <button type="button" role="tab" aria-selected="true" data-auth-tab="guest">게스트(손님)</button>
-            <button type="button" role="tab" aria-selected="false" data-auth-tab="login">로그인</button>
+            <button type="button" role="tab" aria-selected="true" data-auth-tab="login">로그인</button>
             <button type="button" role="tab" aria-selected="false" data-auth-tab="signup">회원가입</button>
         </div>
         <p class="form-message" data-auth-message role="status" aria-live="polite" tabindex="-1" hidden></p>
-        <section class="auth-panel" data-auth-panel="guest">
-            <div class="guest-account-request" data-guest-request-view>
-                <article class="guest-account-card is-disabled" data-guest-issue-card aria-describedby="guestCapabilityStatus">
-                    <div class="guest-account-heading"><strong>바로 작성해 보세요</strong><span>첫 저장 시 발급</span></div>
-                    <p>작성 중에는 계정이 생기지 않습니다. 처음 저장할 때 독립된 만료형 작업공간과 로그인 정보를 발급합니다.</p>
-                    <span class="guest-account-reason" data-guest-account-reason>사용 가능 여부를 확인하고 있습니다.</span>
-                </article>
-                <details class="auth-policy-details">
-                    <summary>게스트 이용 안내</summary>
-                    <ul>
-                        <li>설문과 응답은 계정 유효기간 동안 Oracle에 저장됩니다.</li>
-                        <li>게스트마다 작업공간과 데이터가 분리됩니다.</li>
-                        <li>초기 비밀번호는 첫 저장 직후 한 번만 표시됩니다.</li>
-                        <li>유효기간이 지나면 체험 데이터에 접근할 수 없습니다.</li>
-                    </ul>
-                </details>
-                <p class="guest-capability-status" id="guestCapabilityStatus" data-guest-capability-status role="status">게스트 계정 발급 상태를 확인하고 있습니다.</p>
-                <button class="button button-batch button-important button-block" type="button" data-guest-start disabled>프로젝트 작성 시작</button>
-                <button class="button button-function button-block" type="button" data-guest-capability-retry hidden>발급 상태 다시 확인</button>
-                <small>실제 연락처나 민감정보를 입력하지 마세요. 외부 메시지 발송은 제공자 설정에 따라 제한됩니다.</small>
-            </div>
-            <section class="guest-credential-result" data-guest-credentials hidden aria-labelledby="guestCredentialTitle">
-                <span class="guest-credential-success" aria-hidden="true">✓</span>
-                <h3 id="guestCredentialTitle" tabindex="-1" data-guest-credential-title>게스트 계정이 발급되었습니다</h3>
-                <p><strong>초기 비밀번호는 이 화면을 닫으면 다시 표시되지 않습니다.</strong> 지금 안전한 곳에 복사해 주세요.</p>
-                <dl class="guest-credential-list">
-                    <div><dt>아이디</dt><dd><code data-guest-login-id></code><button class="button button-small button-function" type="button" data-copy-guest-credential="loginId">복사</button></dd></div>
-                    <div><dt>초기 비밀번호</dt><dd><code data-guest-initial-password></code><button class="button button-small button-function" type="button" data-copy-guest-credential="initialPassword">복사</button></dd></div>
-                    <div><dt>최초 발급 기준</dt><dd><span data-guest-expires-at></span></dd></div>
-                </dl>
-                <p class="guest-credential-retention">프로젝트 저장이 완료되면 계정 보존기간은 체험 프로젝트 정책에 따라 연장됩니다.</p>
-                <button class="button button-function button-block" type="button" data-copy-guest-credential="all">자격정보 모두 복사</button>
-                <div class="guest-credential-actions">
-                    <button class="button button-function button-important" type="button" data-guest-login>작업 계속하기</button>
-                </div>
-            </section>
-        </section>
-        <form class="auth-panel" data-auth-panel="login" hidden data-login-form novalidate>
-            <label>아이디<input type="text" name="loginId" autocomplete="username" required placeholder="회원 또는 게스트 계정 아이디"></label>
+        <form class="auth-panel" data-auth-panel="login" data-login-form novalidate>
+            <label>아이디<input type="text" name="loginId" autocomplete="username" required placeholder="회원 계정 아이디"></label>
             <label>비밀번호<input type="password" name="password" autocomplete="current-password" required minlength="8" placeholder="8자 이상"></label>
             <label class="check-label"><input type="checkbox" name="keepSignedIn" value="true"> 이 브라우저에서 로그인 상태 유지</label>
             <aside class="shared-device-notice" role="note">
@@ -177,7 +141,7 @@
                         <h5>제3조 설문과 데이터의 책임</h5>
                         <p>회원은 설문 문항, 수신자 정보 및 응답을 적법한 목적과 권한 범위에서 처리해야 합니다. 불필요한 민감정보 수집, 타인 사칭, 불법 발송 및 권리 침해 콘텐츠 등록은 금지됩니다.</p>
                         <h5>제4조 서비스 이용과 제한</h5>
-                        <p>시스템 보안, 장애 대응, 법령 준수 또는 다른 사용자의 권리 보호를 위해 필요한 범위에서 기능이 일시 제한될 수 있습니다. 게스트 계정은 별도의 만료 기간과 사용량 제한이 적용됩니다.</p>
+                        <p>시스템 보안, 장애 대응, 법령 준수 또는 다른 사용자의 권리 보호를 위해 필요한 범위에서 기능이 일시 제한될 수 있습니다.</p>
                         <h5>제5조 템플릿과 게시물</h5>
                         <p>공용 템플릿은 회원 프로젝트의 시작 구조로 제공됩니다. 프로젝트로 복사된 이후의 수정과 운영 책임은 해당 프로젝트 소유자에게 있으며, 원본 템플릿의 후속 변경은 이미 복사된 프로젝트에 자동 반영되지 않습니다.</p>
                         <h5>제6조 탈퇴와 이용 종료</h5>
@@ -226,15 +190,15 @@
 
     <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="true"></div>
 
-    <script src="/frontend/config/app.config.js?v=20261022.22"></script>
-    <script src="/frontend/config/menu.config.js?v=20261022.22"></script>
-    <script src="/frontend/config/help.config.js?v=20261022.22"></script>
-    <script src="/frontend/js/common.js?v=20261022.22"></script>
-    <script src="/frontend/js/survey-content.js?v=20261022.22"></script>
-    <script src="/frontend/js/choice-layout.js?v=20261022.22"></script>
-    <script src="/frontend/js/question-numbering.js?v=20261022.22"></script>
-    <script src="/frontend/js/publication-links.js?v=20261022.22"></script>
-    <script src="/frontend/js/code-editor.js?v=20261022.22"></script>
-    <script src="/frontend/js/app.js?v=20261022.22"></script>
+    <script src="/frontend/config/app.config.js?v=2026.10.23.23"></script>
+    <script src="/frontend/config/menu.config.js?v=2026.10.23.23"></script>
+    <script src="/frontend/config/help.config.js?v=2026.10.23.23"></script>
+    <script src="/frontend/js/common.js?v=2026.10.23.23"></script>
+    <script src="/frontend/js/survey-content.js?v=2026.10.23.23"></script>
+    <script src="/frontend/js/choice-layout.js?v=2026.10.23.23"></script>
+    <script src="/frontend/js/question-numbering.js?v=2026.10.23.23"></script>
+    <script src="/frontend/js/publication-links.js?v=2026.10.23.23"></script>
+    <script src="/frontend/js/code-editor.js?v=2026.10.23.23"></script>
+    <script src="/frontend/js/app.js?v=2026.10.23.23"></script>
 </body>
 </html>

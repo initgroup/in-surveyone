@@ -111,27 +111,25 @@ class Settings:
     db_retry_count: int
     db_retry_delay: int
     db_pool_acquire_warn_seconds: float
-    guest_unused_ttl_hours: int
-    guest_project_ttl_hours: int
     email_provider: str
     sms_provider: str
     kakao_provider: str
     fax_provider: str
     delivery_secret: str
-    db_guest_max_projects: int
-    db_guest_max_questions: int
-    db_guest_max_responses: int
     public_submit_max_bytes: int
     public_body_max_bytes: int
     delivery_body_max_bytes: int
-    guest_body_max_bytes: int
     auth_body_max_bytes: int
-    guest_create_rate_limit: int
     signup_rate_limit: int
     login_rate_limit: int
     public_submit_rate_limit: int
     rate_limit_window_seconds: int
     admin_key: str | None = field(default=None, repr=False)
+    solapi_api_key: str | None = field(default=None, repr=False)
+    solapi_api_secret: str | None = field(default=None, repr=False)
+    solapi_timeout_seconds: int = 20
+    solapi_default_sender: str = ""
+    solapi_kakao_pf_id: str = ""
 
 
 def _optional_path(name: str, legacy_name: str | None = None) -> Path | None:
@@ -368,26 +366,16 @@ def get_settings() -> Settings:
         db_pool_acquire_warn_seconds=float(
             os.getenv("DB_POOL_ACQUIRE_WARN_SECONDS", "3")
         ),
-        guest_unused_ttl_hours=_env_int(
-            "SURVEYONE_GUEST_UNUSED_TTL_HOURS", 24, minimum=1
-        ),
-        guest_project_ttl_hours=_env_int(
-            "SURVEYONE_GUEST_PROJECT_TTL_HOURS", 168, minimum=1
-        ),
         email_provider=str(os.getenv("SURVEYONE_EMAIL_PROVIDER", "disabled")).strip().lower(),
         sms_provider=str(os.getenv("SURVEYONE_SMS_PROVIDER", "disabled")).strip().lower(),
         kakao_provider=str(os.getenv("SURVEYONE_KAKAO_PROVIDER", "disabled")).strip().lower(),
         fax_provider=str(os.getenv("SURVEYONE_FAX_PROVIDER", "disabled")).strip().lower(),
         delivery_secret=delivery_secret,
-        db_guest_max_projects=_env_int(
-            "SURVEYONE_DB_GUEST_MAX_PROJECTS", 10, minimum=1
-        ),
-        db_guest_max_questions=_env_int(
-            "SURVEYONE_DB_GUEST_MAX_QUESTIONS", 300, minimum=1
-        ),
-        db_guest_max_responses=_env_int(
-            "SURVEYONE_DB_GUEST_MAX_RESPONSES", 2_000, minimum=1
-        ),
+        solapi_api_key=_first_env("SOLAPI_API_KEY"),
+        solapi_api_secret=_first_env("SOLAPI_API_SECRET"),
+        solapi_timeout_seconds=_env_int("SURVEYONE_SOLAPI_TIMEOUT_SECONDS", 20, minimum=1),
+        solapi_default_sender=str(os.getenv("SURVEYONE_SOLAPI_DEFAULT_SENDER", "")).strip(),
+        solapi_kakao_pf_id=str(os.getenv("SURVEYONE_SOLAPI_KAKAO_PF_ID", "")).strip(),
         public_submit_max_bytes=_env_int(
             "SURVEYONE_PUBLIC_SUBMIT_MAX_BYTES", 262_144, minimum=4_096
         ),
@@ -397,14 +385,8 @@ def get_settings() -> Settings:
         delivery_body_max_bytes=_env_int(
             "SURVEYONE_DELIVERY_BODY_MAX_BYTES", 4_194_304, minimum=65_536
         ),
-        guest_body_max_bytes=_env_int(
-            "SURVEYONE_GUEST_BODY_MAX_BYTES", 16_384, minimum=1_024
-        ),
         auth_body_max_bytes=_env_int(
             "SURVEYONE_AUTH_BODY_MAX_BYTES", 16_384, minimum=1_024
-        ),
-        guest_create_rate_limit=_env_int(
-            "SURVEYONE_GUEST_CREATE_RATE_LIMIT", 60, minimum=1
         ),
         signup_rate_limit=_env_int(
             "SURVEYONE_SIGNUP_RATE_LIMIT", 30, minimum=1

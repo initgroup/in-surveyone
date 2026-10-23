@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from conftest import signup_member
 
 from backend.errors import DomainValidationError
 from backend.memory_store import MemoryStore, submission_payload_hash
@@ -116,8 +117,7 @@ def test_idempotency_distinguishes_audiences_and_reports_keep_option_ids() -> No
 
 def test_public_api_route_snapshot_and_partial_updates_are_atomic() -> None:
     with TestClient(app) as client:
-        guest = client.post("/api/auth/guest", json={"mode": "database"}).json()["data"]["guestCredential"]
-        assert client.post("/api/auth/login", json={"loginId": guest["loginId"], "password": guest["initialPassword"]}).status_code == 200
+        signup_member(client)
         fixture = fixture_survey()
         created = client.post("/api/surveys", json={"title": "Audience test", "sections": [s.model_dump(by_alias=True, mode="json") for s in fixture.sections], "settings": fixture.settings.model_dump(by_alias=True, mode="json")})
         assert created.status_code == 201, created.text

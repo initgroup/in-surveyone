@@ -225,17 +225,26 @@
         if (responseStatus !== "ALL") params.set("responseStatus", responseStatus);
         const label = format === "xlsx" ? "Excel" : "PDF";
         activeButton?.classList.add("is-exporting");
+        const downloadController = new AbortController();
+        const parentSignal = state.events.signal;
+        const cancelDownload = () => downloadController.abort();
+        parentSignal.addEventListener("abort", cancelDownload, { once: true });
+        const downloadOptions = { signal: parentSignal, timeoutMs: window.SURVEYONE_CONFIG.downloadTimeoutMs || 120000, onTimeout: cancelDownload };
         try {
-            const response = await fetch(
+            const response = await Common.failure.bounded(fetch(
                 `${window.SURVEYONE_CONFIG.apiBaseUrl}/api/surveys/${encodeURIComponent(id)}/report/export?${params}`,
                 {
                     credentials: "same-origin",
                     headers: { Accept: format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf" },
-                    signal: state.events.signal
+                    signal: downloadController.signal
                 }
-            );
+            ), downloadOptions);
             if (!response.ok) {
-                const message = await downloadError(response);
+                if (response.status >= 500) {
+                    const detail = await Common.failure.bounded(response.json().catch(() => null), downloadOptions);
+                    throw Common.failure.create(detail?.code || (response.status === 504 ? "REQUEST_TIMEOUT" : "SERVICE_UNAVAILABLE"), { status: response.status, requestId: detail?.requestId });
+                }
+                const message = await Common.failure.bounded(downloadError(response), downloadOptions);
                 if (response.status === 401) {
                     window.dispatchEvent(new CustomEvent("surveyone:session-invalid", {
                         detail: { endpoint: "/api/surveys/:id/report/export", message }
@@ -243,10 +252,10 @@
                 }
                 throw new Error(message);
             }
-            const blob = await response.blob();
+            const blob = await Common.failure.bounded(response.blob(), downloadOptions);
             const expectedType = format === "xlsx" ? "spreadsheetml" : "pdf";
             if (!blob.size || !(response.headers.get("content-type") || "").toLowerCase().includes(expectedType)) {
-                throw new Error(`${label} 파일 형식을 확인할 수 없습니다.`);
+                throw Common.failure.create("INVALID_RESPONSE");
             }
             const survey = selectedSurvey();
             const fallback = `${survey ? surveyTitle(survey) : "설문-보고서"}.${format}`;
@@ -261,8 +270,12 @@
             setTimeout(() => URL.revokeObjectURL(url), 0);
             notify(`${label} 보고서 다운로드를 시작했습니다.`, "success");
         } catch (error) {
-            if (error?.name !== "AbortError") notify(errorMessage(error), "error");
+            if (error?.name !== "AbortError") {
+                if (state.root && !parentSignal.aborted && Common.failure.isService(error)) Common.failure.open(error);
+                notify(errorMessage(error), "error");
+            }
         } finally {
+            parentSignal.removeEventListener("abort", cancelDownload);
             state.exporting = false;
             activeButton?.classList.remove("is-exporting");
             if (state.root) {
