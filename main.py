@@ -245,6 +245,15 @@ def _spa_response() -> Response:
     )
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    return FileResponse(
+        FRONTEND_DIR / "assets/images/surveyone.ico",
+        media_type="image/x-icon",
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
+
+
 @app.get("/error", include_in_schema=False)
 def service_error_page() -> Response:
     return FileResponse(FRONTEND_DIR / "error.html", headers={"Cache-Control": "no-store"})

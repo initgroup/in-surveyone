@@ -22,6 +22,16 @@ Copy-Item .env.example .env
 
 개발 도구가 필요 없는 운영용 환경만 만들 때는 `setup-venv.ps1 -ProductionOnly`를 사용합니다. `.env.example`에는 안전한 예시와 빈 자격정보만 있으며 실제 `.env`, Oracle 비밀번호, Wallet, 발송 사업자 키는 Git과 백업에서 제외됩니다.
 
+## 탭·바탕화면 아이콘
+
+관리자·공개 설문·오류 화면에 전용 탭 아이콘과 Apple touch 아이콘을 제공합니다. 관리자 홈에는 192/512px 아이콘을 연결한 web manifest도 있습니다. Windows 바탕화면 바로가기는 다음 명령으로 설치합니다.
+
+```powershell
+.\scripts\install-desktop-shortcut.ps1
+```
+
+공식 주소를 기본 브라우저로 열며, 로컬 개발용은 `-Url http://127.0.0.1:8300/`을 지정합니다. [아이콘 재생성·다른 PC 설치 안내](reference/branding/README.md)를 참고하세요.
+
 ## 현재 MVP 구현 범위
 
 현재 소스는 회원가입·로그인, 가입 없는 기능·템플릿 미리보기, 단계형 프로젝트 생성, 관리자 공용 템플릿, 문항/섹션·동적 문항·다국어 편집, 불변 버전 확정, 수신자별 다국어 배포 계획, `/s/{slug}` 모바일 응답, 원자료 조회·CSV, 기본형 집계·Excel/PDF 내보내기와 맞춤형 보고서 레이아웃 초안까지 한 흐름으로 실행할 수 있습니다.

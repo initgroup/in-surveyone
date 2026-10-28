@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "IN-SURVEYONE",
+  "short_name": "인서베이원",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2457d6",
+  "icons": [
+    { "src": "/frontend/assets/images/surveyone-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/frontend/assets/images/surveyone-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

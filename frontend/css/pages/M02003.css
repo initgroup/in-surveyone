@@ -654,8 +654,8 @@ textarea.builder-preview-input { min-height: 92px; resize: vertical; }
 [data-question-tools] .question-tool.is-selected { color: #fff; background: #2457d6; border-color: #2457d6; box-shadow: 0 2px 7px #2457d622; }
 [data-question-tools] .question-tool.is-selected .question-tool-icon { color: #fff; }
 .builder-tool-guide-actions { display: flex; align-items: stretch; gap: 6px; }
-.builder-insertion-guide .builder-tool-add-button { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 7px 8px; color: #fff; background: #2457d6; border: 1px solid #2457d6; border-radius: 6px; text-align: center; line-height: 1.35; word-break: keep-all; }
-.builder-insertion-guide .builder-tool-add-button:hover { background: #1949be; }
+.builder-insertion-guide .builder-tool-add-button { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 7px 8px; color: #fff; background: #0f766e; border: 1px solid #0f766e; border-radius: 6px; text-align: center; line-height: 1.35; word-break: keep-all; }
+.builder-insertion-guide .builder-tool-add-button:hover { background: #115e59; border-color: #115e59; }
 .builder-tool-guide-actions [data-scroll-selection] { flex: 0 0 auto; min-height: 44px; padding: 5px; font-size: var(--text-help); }
 
 @media (max-width: 60rem) {
